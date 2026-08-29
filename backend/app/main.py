@@ -1,19 +1,21 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
+from hashlib import sha256
+from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 from xml.sax.saxutils import escape, quoteattr
 
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.storage import save_file
-from app.database import engine, get_db
+from app.storage import delete_file, save_file
+from app.upload_validation import read_validated_upload
+from app.database import get_db
 from app import models
 from app.search import search_service
 from app.retention import RetentionService
-
-# Create all tables
-models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="LibreGED API", version="0.1.0")
 
@@ -27,9 +29,7 @@ class InstitutionCreate(BaseModel):
 
 class Institution(InstitutionCreate):
     id: str
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StudentCreate(BaseModel):
@@ -42,9 +42,7 @@ class StudentCreate(BaseModel):
 
 class Student(StudentCreate):
     id: str
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GuardianCreate(BaseModel):
@@ -57,9 +55,7 @@ class GuardianCreate(BaseModel):
 class Guardian(GuardianCreate):
     id: str
     student_id: str
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EnrollmentCreate(BaseModel):
@@ -73,9 +69,7 @@ class EnrollmentCreate(BaseModel):
 
 class Enrollment(EnrollmentCreate):
     id: str
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentCreate(BaseModel):
@@ -89,9 +83,7 @@ class DocumentCreate(BaseModel):
 
 class Document(DocumentCreate):
     id: str
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentVersion(BaseModel):
@@ -103,8 +95,7 @@ class DocumentVersion(BaseModel):
     uploaded_at: datetime
     checksum: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuditEvent(BaseModel):
@@ -114,9 +105,9 @@ class AuditEvent(BaseModel):
     action: str
     details: str
     created_at: datetime
+    hash_signature: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentRepresentation(BaseModel):
@@ -158,8 +149,7 @@ class SchemaVersionCreate(BaseModel):
 class SchemaVersion(SchemaVersionCreate):
     id: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AdvancedSearchRequest(BaseModel):
@@ -169,6 +159,7 @@ class AdvancedSearchRequest(BaseModel):
     status: str | None = None
     institution_id: str | None = None
     limit: int = 100
+    skip: int = 0
 
 
 class RetentionCleanupRequest(BaseModel):
@@ -194,23 +185,32 @@ def health_check():
 
 @app.post("/api/institutions", response_model=Institution)
 def create_institution(payload: InstitutionCreate, db: Session = Depends(get_db)):
+    if db.query(models.Institution).filter(models.Institution.cnpj == payload.cnpj).first():
+        raise HTTPException(status_code=409, detail="institution CNPJ already exists")
+
     institution = models.Institution(
-        id=str(len(db.query(models.Institution).all()) + 1),
+        id=str(uuid4()),
         name=payload.name,
         cnpj=payload.cnpj,
         legal_name=payload.legal_name,
     )
     db.add(institution)
+    add_audit(db, "institution", institution.id, "created", "Institution created")
     db.commit()
     db.refresh(institution)
-    add_audit(db, "institution", institution.id, "created", "Institution created")
     return institution
 
 
 @app.post("/api/students", response_model=Student)
 def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
+    institution = db.query(models.Institution).filter(models.Institution.id == payload.institution_id).first()
+    if institution is None:
+        raise HTTPException(status_code=404, detail="institution not found")
+    if db.query(models.Student).filter(models.Student.cpf == payload.cpf).first():
+        raise HTTPException(status_code=409, detail="student CPF already exists")
+
     student = models.Student(
-        id=str(len(db.query(models.Student).all()) + 1),
+        id=str(uuid4()),
         institution_id=payload.institution_id,
         full_name=payload.full_name,
         birth_date=payload.birth_date.isoformat(),
@@ -218,16 +218,22 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
         email=payload.email,
     )
     db.add(student)
+    add_audit(db, "student", student.id, "created", "Student created")
     db.commit()
     db.refresh(student)
-    add_audit(db, "student", student.id, "created", "Student created")
     return student
 
 
 @app.post("/api/students/{student_id}/guardians", response_model=Guardian)
 def create_guardian(student_id: str, payload: GuardianCreate, db: Session = Depends(get_db)):
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if student is None:
+        raise HTTPException(status_code=404, detail="student not found")
+    if db.query(models.Guardian).filter(models.Guardian.cpf == payload.cpf).first():
+        raise HTTPException(status_code=409, detail="guardian CPF already exists")
+
     guardian = models.Guardian(
-        id=str(len(db.query(models.Guardian).all()) + 1),
+        id=str(uuid4()),
         student_id=student_id,
         full_name=payload.full_name,
         cpf=payload.cpf,
@@ -235,16 +241,25 @@ def create_guardian(student_id: str, payload: GuardianCreate, db: Session = Depe
         relationship_type=payload.relationship_type,
     )
     db.add(guardian)
+    add_audit(db, "guardian", guardian.id, "created", f"Guardian created for student {student_id}")
     db.commit()
     db.refresh(guardian)
-    add_audit(db, "guardian", guardian.id, "created", f"Guardian created for student {student_id}")
     return guardian
 
 
 @app.post("/api/enrollments", response_model=Enrollment)
 def create_enrollment(payload: EnrollmentCreate, db: Session = Depends(get_db)):
+    institution = db.query(models.Institution).filter(models.Institution.id == payload.institution_id).first()
+    if institution is None:
+        raise HTTPException(status_code=404, detail="institution not found")
+    student = db.query(models.Student).filter(models.Student.id == payload.student_id).first()
+    if student is None:
+        raise HTTPException(status_code=404, detail="student not found")
+    if student.institution_id != institution.id:
+        raise HTTPException(status_code=409, detail="student does not belong to institution")
+
     enrollment = models.Enrollment(
-        id=str(len(db.query(models.Enrollment).all()) + 1),
+        id=str(uuid4()),
         institution_id=payload.institution_id,
         student_id=payload.student_id,
         course_name=payload.course_name,
@@ -253,16 +268,30 @@ def create_enrollment(payload: EnrollmentCreate, db: Session = Depends(get_db)):
         status=payload.status,
     )
     db.add(enrollment)
+    add_audit(db, "enrollment", enrollment.id, "created", f"Enrollment created for student {payload.student_id}")
     db.commit()
     db.refresh(enrollment)
-    add_audit(db, "enrollment", enrollment.id, "created", f"Enrollment created for student {payload.student_id}")
     return enrollment
 
 
 @app.post("/api/documents", response_model=Document)
 def create_document(payload: DocumentCreate, db: Session = Depends(get_db)):
+    institution = db.query(models.Institution).filter(models.Institution.id == payload.institution_id).first()
+    if institution is None:
+        raise HTTPException(status_code=404, detail="institution not found")
+    student = db.query(models.Student).filter(models.Student.id == payload.student_id).first()
+    if student is None:
+        raise HTTPException(status_code=404, detail="student not found")
+    enrollment = db.query(models.Enrollment).filter(models.Enrollment.id == payload.enrollment_id).first()
+    if enrollment is None:
+        raise HTTPException(status_code=404, detail="enrollment not found")
+    if student.institution_id != institution.id:
+        raise HTTPException(status_code=409, detail="student does not belong to institution")
+    if enrollment.student_id != student.id or enrollment.institution_id != institution.id:
+        raise HTTPException(status_code=409, detail="enrollment does not match student and institution")
+
     document = models.Document(
-        id=str(len(db.query(models.Document).all()) + 1),
+        id=str(uuid4()),
         institution_id=payload.institution_id,
         student_id=payload.student_id,
         enrollment_id=payload.enrollment_id,
@@ -271,12 +300,11 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db)):
         status=payload.status,
     )
     db.add(document)
+    add_audit(db, "document", document.id, "created", f"Document created: {payload.title}")
     db.commit()
     db.refresh(document)
     
     # Indexar para busca avançada
-    student = db.query(models.Student).filter(models.Student.id == payload.student_id).first()
-    enrollment = db.query(models.Enrollment).filter(models.Enrollment.id == payload.enrollment_id).first()
     search_service.index_document(
         doc_id=document.id,
         document_data={
@@ -292,7 +320,6 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db)):
         },
     )
     
-    add_audit(db, "document", document.id, "created", f"Document created: {payload.title}")
     return document
 
 
@@ -300,25 +327,41 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db)):
 def upload_document(document_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     document = db.query(models.Document).filter(models.Document.id == document_id).first()
     if document is None:
-        return {"detail": "document not found"}
+        raise HTTPException(status_code=404, detail="document not found")
 
-    stored_path = save_file(f"{document_id}-{file.filename}", file.file.read())
-    checksum = str(hash(stored_path))
     version_count = len(db.query(models.DocumentVersion).filter(models.DocumentVersion.document_id == document_id).all())
+    version_number = version_count + 1
+    original_name = Path(file.filename or "").name
+    if not original_name:
+        raise HTTPException(status_code=422, detail="file name is required")
+
+    content = read_validated_upload(file, original_name)
+    version_id = str(uuid4())
+    stored_path = save_file(f"{document_id}-v{version_number}-{version_id}-{original_name}", content)
+    checksum = sha256(content).hexdigest()
     
     version = models.DocumentVersion(
-        id=str(len(db.query(models.DocumentVersion).all()) + 1),
+        id=version_id,
         document_id=document_id,
-        version_number=version_count + 1,
-        file_name=file.filename,
+        version_number=version_number,
+        file_name=original_name,
         stored_path=stored_path,
         checksum=checksum,
     )
     db.add(version)
-    db.commit()
+    add_audit(db, "document", document_id, "uploaded", f"File uploaded: {original_name}")
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        delete_file(stored_path)
+        raise HTTPException(status_code=409, detail="document version already exists") from error
+    except Exception:
+        db.rollback()
+        delete_file(stored_path)
+        raise
     db.refresh(version)
-    add_audit(db, "document", document_id, "uploaded", f"File uploaded: {file.filename}")
-    return {"document_id": document_id, "version": DocumentVersion.from_orm(version).model_dump()}
+    return {"document_id": document_id, "version": DocumentVersion.model_validate(version).model_dump()}
 
 
 @app.post("/api/documents/{document_id}/xml")
@@ -330,6 +373,7 @@ def generate_document_xml(document_id: str, payload: XmlGenerationRequest, db: S
     def block(reason: str):
         document.status = "rejected"
         add_audit(db, "document", document_id, "xml_generation_blocked", reason)
+        db.commit()
         raise HTTPException(status_code=409, detail=reason)
 
     if not payload.schema_version:
@@ -351,7 +395,11 @@ def generate_document_xml(document_id: str, payload: XmlGenerationRequest, db: S
     if schema.environment != payload.environment:
         block("schema version is not approved for this environment")
 
-    now = datetime.now(schema.valid_from.tzinfo) if schema.valid_from.tzinfo else datetime.utcnow()
+    now = (
+        datetime.now(schema.valid_from.tzinfo)
+        if schema.valid_from.tzinfo
+        else datetime.now(UTC).replace(tzinfo=None)
+    )
     if schema.valid_from > now or (schema.valid_until is not None and schema.valid_until < now):
         block("schema version is outside its validity period")
 
@@ -365,6 +413,7 @@ def generate_document_xml(document_id: str, payload: XmlGenerationRequest, db: S
         "</documento>"
     )
     add_audit(db, "document", document_id, "xml_generated", f"XML generated with schema {schema.code}")
+    db.commit()
     return {"document_id": document_id, "schema_version": schema.code, "xml": xml}
 
 
@@ -375,22 +424,22 @@ def create_schema_version(payload: SchemaVersionCreate, db: Session = Depends(ge
     if db.query(models.SchemaVersion).filter(models.SchemaVersion.code == payload.code).first():
         raise HTTPException(status_code=409, detail="schema version code already exists")
     schema = models.SchemaVersion(
-        id=str(len(db.query(models.SchemaVersion).all()) + 1),
+        id=str(uuid4()),
         **payload.model_dump(),
     )
     db.add(schema)
+    add_audit(db, "schema_version", schema.id, "created", f"Schema version registered: {schema.code}")
     db.commit()
     db.refresh(schema)
-    add_audit(db, "schema_version", schema.id, "created", f"Schema version registered: {schema.code}")
     return schema
 
 
 @app.get("/api/documents")
-def list_documents(student_id: str | None = None, db: Session = Depends(get_db)):
+def list_documents(student_id: str | None = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     query = db.query(models.Document)
     if student_id:
         query = query.filter(models.Document.student_id == student_id)
-    return query.all()
+    return query.offset(skip).limit(limit).all()
 
 
 @app.post("/api/documents/advanced-search")
@@ -404,14 +453,17 @@ def advanced_search_documents(payload: AdvancedSearchRequest, db: Session = Depe
         institution_id=payload.institution_id,
         limit=payload.limit,
     )
-    # Retornar os documentos indexados (com metadados de busca)
-    return results
+    # The search_service might not support skip/offset directly if it's simple memory fallback, but we can truncate.
+    # We will just return the results as is for MVP, or apply skip manually.
+    return results[payload.skip:payload.skip+payload.limit] if hasattr(results, "__getitem__") else results
 
 
 @app.get("/api/documents/search")
 def search_documents(
     student_id: str | None = None,
     document_type: str | None = None,
+    skip: int = 0, 
+    limit: int = 100,
     db: Session = Depends(get_db)
 ):
     query = db.query(models.Document)
@@ -419,7 +471,7 @@ def search_documents(
         query = query.filter(models.Document.student_id == student_id)
     if document_type:
         query = query.filter(models.Document.document_type == document_type)
-    return query.all()
+    return query.offset(skip).limit(limit).all()
 
 
 @app.post("/api/documents/{document_id}/representation")
@@ -445,6 +497,7 @@ def generate_document_representation(document_id: str, db: Session = Depends(get
         summary=summary,
     )
     add_audit(db, "document", document_id, "representation_generated", "Academic visual representation generated")
+    db.commit()
     return representation.model_dump()
 
 
@@ -459,15 +512,16 @@ def get_document_retention_policy(document_id: str, db: Session = Depends(get_db
         document_id=document_id,
         retention_years=retention_years,
         status="active",
-        expires_at=f"{datetime.utcnow().year + retention_years}-12-31",
+        expires_at=f"{datetime.now(UTC).year + retention_years}-12-31",
     )
     add_audit(db, "document", document_id, "retention_checked", "Retention policy verified")
+    db.commit()
     return retention.model_dump()
 
 
 @app.get("/api/audit")
-def list_audit_events(db: Session = Depends(get_db)):
-    return db.query(models.AuditEvent).all()
+def list_audit_events(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.desc()).offset(skip).limit(limit).all()
 
 
 # ==================== Retention Management ====================
@@ -494,6 +548,7 @@ def execute_retention_cleanup(payload: RetentionCleanupRequest, db: Session = De
             "retention_cleanup_executed",
             f"Arquivados {result['to_archive']} documentos expirados"
         )
+        db.commit()
     
     return result
 
@@ -503,7 +558,7 @@ def get_retention_statistics(db: Session = Depends(get_db)):
     """Obter estatísticas sobre o ciclo de vida dos documentos."""
     stats = RetentionService.get_lifecycle_statistics(db)
     return {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "statistics": stats,
     }
 
@@ -517,7 +572,7 @@ def get_document_lifecycle(document_id: str, db: Session = Depends(get_db)):
     
     retention_years = RetentionService.get_retention_period(document.document_type)
     expiry_date = RetentionService.calculate_expiry_date(document.created_at, document.document_type)
-    days_remaining = (expiry_date - datetime.utcnow()).days
+    days_remaining = (expiry_date - datetime.now(UTC).replace(tzinfo=None)).days
     
     action_required = "NONE"
     if document.status == "archived":
@@ -543,13 +598,20 @@ def get_document_lifecycle(document_id: str, db: Session = Depends(get_db)):
 
 # ==================== Helper Functions ====================
 def add_audit(db: Session, entity: str, entity_id: str, action: str, details: str):
+    last_event = db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.desc()).first()
+    last_hash = last_event.hash_signature if last_event and last_event.hash_signature else "genesis"
+    
+    event_id = str(uuid4())
+    payload = f"{event_id}:{entity}:{entity_id}:{action}:{details}:{last_hash}"
+    signature = sha256(payload.encode("utf-8")).hexdigest()
+
     audit_event = models.AuditEvent(
-        id=str(len(db.query(models.AuditEvent).all()) + 1),
-        document_id="0",  # Placeholder for non-document audits
+        id=event_id,
+        document_id=entity_id if entity == "document" else None,
         entity=entity,
         entity_id=entity_id,
         action=action,
         details=details,
+        hash_signature=signature,
     )
     db.add(audit_event)
-    db.commit()

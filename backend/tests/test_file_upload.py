@@ -1,3 +1,6 @@
+from hashlib import sha256
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -59,10 +62,33 @@ def test_document_upload_and_audit():
     payload = response.json()
     assert payload["document_id"] == document["id"]
     assert payload["version"]["file_name"] == "historico.txt"
+    assert payload["version"]["version_number"] == 1
+    assert payload["version"]["checksum"] == sha256(b"conteudo do historico escolar").hexdigest()
+
+    second_response = client.post(
+        f"/api/documents/{document['id']}/upload",
+        files={"file": ("historico.txt", b"segunda versao", "text/plain")},
+    )
+    assert second_response.status_code == 200
+    second_version = second_response.json()["version"]
+    assert second_version["version_number"] == 2
+    assert second_version["stored_path"] != payload["version"]["stored_path"]
+    assert Path(payload["version"]["stored_path"]).read_bytes() == b"conteudo do historico escolar"
+    assert Path(second_version["stored_path"]).read_bytes() == b"segunda versao"
 
     audit = client.get("/api/audit")
     assert audit.status_code == 200
     assert len(audit.json()) > 0
+
+
+def test_upload_rejects_unknown_document():
+    response = client.post(
+        "/api/documents/unknown/upload",
+        files={"file": ("documento.txt", b"conteudo", "text/plain")},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "document not found"}
 
 
 def test_generate_xml_and_search_documents():

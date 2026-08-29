@@ -1,13 +1,9 @@
-import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
+from app.config import settings
 
-# Use SQLite for tests, PostgreSQL for production
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "sqlite:///./test.db"  # Default to local SQLite
-)
+DATABASE_URL = settings.DATABASE_URL
 
 # SQLite-specific settings for testing
 if "sqlite" in DATABASE_URL:

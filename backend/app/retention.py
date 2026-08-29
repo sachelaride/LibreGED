@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import List, Dict
 from sqlalchemy.orm import Session
@@ -76,7 +76,7 @@ class RetentionService:
     def check_retention_compliance(db: Session) -> List[Dict]:
         """Verificar quais documentos violam a política de retenção."""
         violations = []
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         for doc in db.query(models.Document).all():
             if doc.status in ["draft", "pending", "rejected"]:
@@ -154,7 +154,7 @@ class RetentionService:
             },
         }
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         for doc in db.query(models.Document).all():
             # Por status

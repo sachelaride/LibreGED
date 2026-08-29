@@ -1,10 +1,12 @@
 {
 	"folders": [
 		{
-			"path": "."
+			"name": "projeto - manual e dicas",
+			"path": "../../Downloads/projeto - manual e dicas"
 		},
 		{
-			"path": "../../Downloads/projeto - manual e dicas"
+			"name": "LibreGED",
+			"path": "."
 		}
 	],
 	"settings": {}

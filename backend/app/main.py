@@ -5,10 +5,12 @@ from typing import Literal
 from uuid import uuid4
 from xml.sax.saxutils import escape, quoteattr
 
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from datetime import timedelta
+from app.config import settings
 
 from app.storage import delete_file, save_file
 from app.upload_validation import read_validated_upload
@@ -16,11 +18,50 @@ from app.database import get_db
 from app import models
 from app.search import search_service
 from app.retention import RetentionService
+from app.auth import get_current_active_user, role_checker, check_institution_access
+from app.schemas_historico import Model as HistoricoPayload
+from app.historico_generator import generate_historico_xml
+from app.schemas_diploma import Model as DiplomaPayload
+from app.diploma_generator import generate_diploma_xml, generate_academica_xml
+from app.schemas_curriculo import Model as CurriculoPayload
+from app.curriculo_generator import generate_curriculo_xml
+from app.academic_validator import ValidationRequest, validate_documents
+from app.schemas_ged import GEDDocumentCreate, GEDDocumentResponse, DocumentStatusUpdate, DocumentTransitionResponse, DocumentCategoryCreate, DocumentCategoryResponse
+from app.models_ged import GEDDocument, DocumentCategory, DocumentTransitionHistory, GEDDocumentStatus
 
-app = FastAPI(title="LibreGED API", version="0.1.0")
+tags_metadata = [
+    {
+        "name": "GED - Documentação Jurídica (IES)",
+        "description": "Fase 1: Gerenciamento dos dados e documentos legais da Instituição de Ensino Superior.",
+    },
+    {
+        "name": "GED - Vida Acadêmica (Matrícula)",
+        "description": "Fase 2: Ingresso do aluno, documentação pessoal (RG, CPF) e contratos.",
+    },
+    {
+        "name": "GED - Vida Acadêmica (Curso)",
+        "description": "Fase 3: Acompanhamento durante o curso. Histórico Escolar e Currículo Escolar.",
+    },
+    {
+        "name": "GED - Vida Acadêmica (Diplomação)",
+        "description": "Fase 4: Conclusão. Emissão do Diploma Digital e Documentação Acadêmica de Registro.",
+    },
+    {
+        "name": "GED - Validações",
+        "description": "Auditoria, motor de consistência acadêmica inter-documentos e checagens anti-fraude.",
+    },
+    {
+        "name": "Sistema - Segurança e Acessos",
+        "description": "Autenticação, controle de usuários (Admin, Recepcionista, Acadêmico) e permissões por clínica/unidade.",
+    }
+]
 
+app = FastAPI(title="LibreGED API", version="0.1.0", openapi_tags=tags_metadata)
 
-# ==================== Pydantic Models ====================
+# Role definitions for dependency injection
+AdminOnly = Depends(role_checker(["admin_global"]))
+ClinicRoles = Depends(role_checker(["admin_global", "gestor_clinica", "recepcao", "academico", "orientador"]))
+
 class InstitutionCreate(BaseModel):
     name: str = Field(..., min_length=2)
     cnpj: str = Field(..., min_length=11)
@@ -182,9 +223,27 @@ class DocumentLifecycleInfo(BaseModel):
 def health_check():
     return {"status": "ok"}
 
+from fastapi.security import OAuth2PasswordRequestForm
+from app.auth import get_password_hash, create_access_token, verify_password
+
+@app.post("/api/auth/token")
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username, "role": user.role, "institution_id": user.institution_id}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
 
 @app.post("/api/institutions", response_model=Institution)
-def create_institution(payload: InstitutionCreate, db: Session = Depends(get_db)):
+def create_institution(payload: InstitutionCreate, db: Session = Depends(get_db), user: models.User = AdminOnly):
     if db.query(models.Institution).filter(models.Institution.cnpj == payload.cnpj).first():
         raise HTTPException(status_code=409, detail="institution CNPJ already exists")
 
@@ -202,7 +261,8 @@ def create_institution(payload: InstitutionCreate, db: Session = Depends(get_db)
 
 
 @app.post("/api/students", response_model=Student)
-def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
+def create_student(payload: StudentCreate, db: Session = Depends(get_db), user: models.User = ClinicRoles):
+    check_institution_access(user, payload.institution_id)
     institution = db.query(models.Institution).filter(models.Institution.id == payload.institution_id).first()
     if institution is None:
         raise HTTPException(status_code=404, detail="institution not found")
@@ -275,7 +335,8 @@ def create_enrollment(payload: EnrollmentCreate, db: Session = Depends(get_db)):
 
 
 @app.post("/api/documents", response_model=Document)
-def create_document(payload: DocumentCreate, db: Session = Depends(get_db)):
+def create_document(payload: DocumentCreate, db: Session = Depends(get_db), user: models.User = ClinicRoles):
+    check_institution_access(user, payload.institution_id)
     institution = db.query(models.Institution).filter(models.Institution.id == payload.institution_id).first()
     if institution is None:
         raise HTTPException(status_code=404, detail="institution not found")
@@ -417,6 +478,109 @@ def generate_document_xml(document_id: str, payload: XmlGenerationRequest, db: S
     return {"document_id": document_id, "schema_version": schema.code, "xml": xml}
 
 
+@app.post("/api/documents/historico/generate", tags=["GED - Vida Acadêmica (Curso)"])
+def generate_historico(payload: HistoricoPayload):
+    """Gera o XML do Histórico Escolar com formato MEC."""
+    try:
+        xml_output = generate_historico_xml(payload)
+        return {"xml": xml_output}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro na geração do XML do Histórico: {str(e)}")
+
+
+@app.post("/api/documents/diploma/generate", tags=["GED - Vida Acadêmica (Diplomação)"])
+def generate_diploma(payload: DiplomaPayload):
+    """Gera o XML do Diploma Digital com a formatação exigida pelo MEC."""
+    try:
+        xml_output = generate_diploma_xml(payload)
+        return {"xml": xml_output}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro na geração do XML do Diploma: {str(e)}")
+
+
+@app.post("/api/documents/academico/generate", tags=["GED - Vida Acadêmica (Diplomação)"])
+def generate_academica(payload: DiplomaPayload):
+    """Gera o XML Institucional de Documentação Acadêmica para Registro."""
+    try:
+        xml_output = generate_academica_xml(payload)
+        return {"xml": xml_output}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro na geração do XML Acadêmico: {str(e)}")
+
+
+@app.post("/api/documents/curriculo/generate", tags=["GED - Vida Acadêmica (Curso)"])
+def generate_curriculo(payload: CurriculoPayload):
+    """Gera o XML do Currículo Escolar com formato MEC."""
+    try:
+        xml_output = generate_curriculo_xml(payload)
+        return {"xml": xml_output}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro na geração do XML do Currículo: {str(e)}")
+
+
+@app.post("/api/documents/validate", tags=["GED - Validações"])
+def validate_academic_documents(req: ValidationRequest):
+    """Cruza dados entre Diploma, Histórico e Currículo para identificar inconsistências (ex: CPF divergente, Carga horária insuficiente)."""
+    errors = validate_documents(req)
+    if errors:
+        return {"valid": False, "errors": errors}
+    return {"valid": True, "errors": []}
+
+
+# --- GED Lifecycle and State Machine Endpoints ---
+
+@app.post("/api/ged/categories", response_model=DocumentCategoryResponse, tags=["GED - Vida Acadêmica (Matrícula)"])
+def create_category(payload: DocumentCategoryCreate, db: Session = Depends(get_db)):
+    """Cria uma categoria de documento (ex: 'Contratos', 'Comprovante de Residência')."""
+    db_cat = DocumentCategory(name=payload.name, description=payload.description)
+    db.add(db_cat)
+    db.commit()
+    db.refresh(db_cat)
+    return db_cat
+
+@app.post("/api/ged/documents", response_model=GEDDocumentResponse, tags=["GED - Vida Acadêmica (Matrícula)"])
+def create_document(payload: GEDDocumentCreate, db: Session = Depends(get_db)):
+    """Faz o registro de um novo documento de aluno no GED, com status inicial RASCUNHO."""
+    db_doc = GEDDocument(
+        title=payload.title,
+        file_path="fake/path/for/now",
+        category_id=payload.category_id,
+        student_id=payload.student_id,
+        academic_phase=payload.academic_phase,
+        status=GEDDocumentStatus.RASCUNHO
+    )
+    db.add(db_doc)
+    db.commit()
+    db.refresh(db_doc)
+    return db_doc
+
+@app.patch("/api/ged/documents/{document_id}/status", response_model=DocumentTransitionResponse, tags=["GED - Vida Acadêmica (Curso)"])
+def update_document_status(document_id: str, payload: DocumentStatusUpdate, db: Session = Depends(get_db)):
+    """Transiciona o documento de um estado para outro (Máquina de Estados)."""
+    db_doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
+    if not db_doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+        
+    old_status = db_doc.status
+    
+    # State machine rules
+    if old_status == GEDDocumentStatus.REJEITADO and payload.status == GEDDocumentStatus.ASSINADO:
+        raise HTTPException(status_code=400, detail="Não é possível transicionar de REJEITADO direto para ASSINADO")
+        
+    db_doc.status = payload.status
+    
+    transition = DocumentTransitionHistory(
+        document_id=db_doc.id,
+        from_status=old_status,
+        to_status=payload.status,
+        comments=payload.comments
+    )
+    db.add(transition)
+    db.commit()
+    db.refresh(transition)
+    return transition
+
+
 @app.post("/api/schema-versions", response_model=SchemaVersion, status_code=201)
 def create_schema_version(payload: SchemaVersionCreate, db: Session = Depends(get_db)):
     if payload.valid_until is not None and payload.valid_until <= payload.valid_from:
@@ -522,6 +686,25 @@ def get_document_retention_policy(document_id: str, db: Session = Depends(get_db
 @app.get("/api/audit")
 def list_audit_events(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.desc()).offset(skip).limit(limit).all()
+
+
+@app.get("/api/audit/verify")
+def verify_audit_chain(db: Session = Depends(get_db)):
+    """Verifica a integridade criptográfica da cadeia de eventos de auditoria."""
+    from hashlib import sha256
+    events = db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.asc()).all()
+    last_hash = "genesis"
+    
+    for event in events:
+        payload = f"{event.id}:{event.entity}:{event.entity_id}:{event.action}:{event.details}:{last_hash}"
+        expected_signature = sha256(payload.encode("utf-8")).hexdigest()
+        
+        if event.hash_signature != expected_signature:
+            return {"valid": False, "tampered_event_id": event.id, "message": "Audit chain validation failed"}
+            
+        last_hash = expected_signature
+        
+    return {"valid": True, "message": "Audit chain is intact and valid", "events_checked": len(events)}
 
 
 # ==================== Retention Management ====================

@@ -1,8 +1,9 @@
 import os
+from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-class Settings(BaseSettings):
-    DATABASE_URL: str = "sqlite:///./test.db"
+class BaseConfig(BaseSettings):
+    DATABASE_URL: str
     ENVIRONMENT: str = "development"
     MAX_UPLOAD_SIZE_BYTES: int = 10485760
     
@@ -11,10 +12,35 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
-    )
+class DevelopmentConfig(BaseConfig):
+    DATABASE_URL: str = "sqlite:///./dev.db"
+    ENVIRONMENT: str = "development"
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-settings = Settings()
+class TestConfig(BaseConfig):
+    DATABASE_URL: str = "sqlite:///./test.db"
+    ENVIRONMENT: str = "test"
+    model_config = SettingsConfigDict(env_file=".env.test", env_file_encoding="utf-8", extra="ignore")
+
+class StagingConfig(BaseConfig):
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/staging_db"
+    ENVIRONMENT: str = "staging"
+    model_config = SettingsConfigDict(env_file=".env.staging", env_file_encoding="utf-8", extra="ignore")
+
+class ProductionConfig(BaseConfig):
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/prod_db"
+    ENVIRONMENT: str = "production"
+    model_config = SettingsConfigDict(env_file=".env.production", env_file_encoding="utf-8", extra="ignore")
+
+@lru_cache
+def get_settings() -> BaseConfig:
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    if env == "test":
+        return TestConfig()
+    elif env in ["staging", "homologacao", "homologação"]:
+        return StagingConfig()
+    elif env == "production":
+        return ProductionConfig()
+    return DevelopmentConfig()
+
+settings = get_settings()

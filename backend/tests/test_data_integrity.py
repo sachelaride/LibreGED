@@ -210,3 +210,30 @@ def test_upload_version_conflict_rolls_back_audit_and_file():
 
     audit_response = client.get("/api/audit")
     assert not any(event["action"] == "uploaded" for event in audit_response.json())
+
+
+def test_audit_chain_verification_and_tamper_resistance():
+    institution = create_institution("IES Auditoria", "56.000.000/0001-00")
+    create_student(institution["id"], "60470480494")
+
+    verify_response = client.get("/api/audit/verify")
+    assert verify_response.status_code == 200
+    assert verify_response.json()["valid"] is True
+
+    audit_response = client.get("/api/audit")
+    events = audit_response.json()
+    assert len(events) > 0
+    first_event_id = events[-1]["id"]  # last in list is first chronologically
+
+    db = SessionLocal()
+    try:
+        event = db.query(models.AuditEvent).filter(models.AuditEvent.id == first_event_id).first()
+        event.details = "Tampered details"
+        db.commit()
+    finally:
+        db.close()
+
+    verify_response_tampered = client.get("/api/audit/verify")
+    assert verify_response_tampered.status_code == 200
+    assert verify_response_tampered.json()["valid"] is False
+    assert verify_response_tampered.json()["tampered_event_id"] == first_event_id

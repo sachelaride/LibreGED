@@ -1,7 +1,22 @@
+import os
 import pytest
+os.environ["ENVIRONMENT"] = "test"
 from app.database import engine
 from app import models
 from app import storage
+from app.main import app
+from app.auth import get_current_active_user
+
+def override_get_current_active_user():
+    return models.User(
+        id="test-admin-id",
+        username="admin_test",
+        hashed_password="...",
+        role="admin_global",
+        institution_id=None
+    )
+
+app.dependency_overrides[get_current_active_user] = override_get_current_active_user
 
 
 @pytest.fixture(autouse=True)

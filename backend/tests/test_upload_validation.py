@@ -59,13 +59,16 @@ def test_rejects_unsupported_or_mismatched_content(
     assert captured.value.status_code == expected_status
 
 
-def test_enforces_configured_size_limit(monkeypatch):
-    monkeypatch.setenv("MAX_UPLOAD_SIZE_BYTES", "4")
-
-    with pytest.raises(HTTPException) as captured:
-        read_validated_upload(upload_file("grande.txt", b"12345", "text/plain"), "grande.txt")
-
-    assert captured.value.status_code == 413
+def test_enforces_configured_size_limit():
+    from app.config import settings
+    old_value = settings.MAX_UPLOAD_SIZE_BYTES
+    settings.MAX_UPLOAD_SIZE_BYTES = 4
+    try:
+        with pytest.raises(HTTPException) as captured:
+            read_validated_upload(upload_file("grande.txt", b"12345", "text/plain"), "grande.txt")
+        assert captured.value.status_code == 413
+    finally:
+        settings.MAX_UPLOAD_SIZE_BYTES = old_value
 
 
 def test_rejected_upload_leaves_no_file_version_or_audit():

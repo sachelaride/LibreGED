@@ -19,6 +19,7 @@ EXPECTED_TABLES = {
     "institutions",
     "schema_versions",
     "students",
+    "users",
 }
 
 

@@ -154,3 +154,6 @@ class AuditEvent(Base):
     hash_signature = Column(String, nullable=True)
 
     document = relationship("Document", back_populates="audit_events")
+
+# Import GED models so they are registered with Base metadata
+from app import models_ged

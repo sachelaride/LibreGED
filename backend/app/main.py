@@ -594,6 +594,10 @@ def update_document_status(document_id: str, payload: DocumentStatusUpdate, db: 
 from app.api_ged_upload import router as upload_router
 app.include_router(upload_router)
 
+# Include Signature Router
+from app.api_digital_signature import router as signature_router
+app.include_router(signature_router)
+
 @app.post("/api/schema-versions", response_model=SchemaVersion, status_code=201)
 def create_schema_version(payload: SchemaVersionCreate, db: Session = Depends(get_db)):
     if payload.valid_until is not None and payload.valid_until <= payload.valid_from:

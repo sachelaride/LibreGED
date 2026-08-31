@@ -19,6 +19,16 @@ class GEDAcademicPhase(str, enum.Enum):
     FORMATURA = "FORMATURA"
     DIPLOMACAO = "DIPLOMACAO"
 
+class Signer(Base):
+    __tablename__ = "ged_signers"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False) # e.g. "João Reitor"
+    role = Column(String, nullable=False) # e.g. "Reitor"
+    cpf = Column(String, nullable=False, unique=True, index=True)
+    certificate_path = Column(String, nullable=True) # Path to the .p12/.pfx file
+    is_active = Column(Integer, default=1)
+
 class DocumentCategory(Base):
     __tablename__ = "ged_document_categories"
 

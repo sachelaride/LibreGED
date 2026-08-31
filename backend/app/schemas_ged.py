@@ -3,6 +3,20 @@ from typing import Optional, List
 from datetime import datetime
 from app.models_ged import GEDDocumentStatus, GEDAcademicPhase
 
+class SignerBase(BaseModel):
+    name: str
+    role: str
+    cpf: str
+    is_active: bool = True
+
+class SignerCreate(SignerBase):
+    pass
+
+class SignerResponse(SignerBase):
+    id: str
+    certificate_path: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
 class DocumentCategoryBase(BaseModel):
     index_code: Optional[str] = None
     name: str

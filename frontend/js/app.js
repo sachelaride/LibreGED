@@ -149,8 +149,10 @@ function createSidebarUserLabel() {
     label.style.color = 'white';
     label.style.fontWeight = '500';
     label.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-    const sidebarLogo = document.querySelector('.sidebar-logo');
-    sidebarLogo.parentNode.insertBefore(label, sidebarLogo.nextSibling);
+    const sidebarLogo = document.querySelector('.sidebar .logo');
+    if (sidebarLogo) {
+        sidebarLogo.parentNode.insertBefore(label, sidebarLogo.nextSibling);
+    }
     return label;
 }
 

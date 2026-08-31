@@ -4,8 +4,10 @@ from datetime import datetime
 from app.models_ged import GEDDocumentStatus, GEDAcademicPhase
 
 class DocumentCategoryBase(BaseModel):
+    index_code: Optional[str] = None
     name: str
     description: Optional[str] = None
+    is_active: bool = True
 
 class DocumentCategoryCreate(DocumentCategoryBase):
     pass
@@ -28,6 +30,7 @@ class GEDDocumentResponse(GEDDocumentBase):
     id: str
     file_path: str
     status: GEDDocumentStatus
+    extracted_metadata: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)

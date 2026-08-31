@@ -23,8 +23,10 @@ class DocumentCategory(Base):
     __tablename__ = "ged_document_categories"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String, nullable=False, unique=True, index=True) # e.g., "Documentos Pessoais", "Termos"
+    index_code = Column(String, nullable=True, unique=True, index=True) # e.g., "0001", "0002"
+    name = Column(String, nullable=False, index=True) # e.g., "Documentos Pessoais"
     description = Column(String, nullable=True)
+    is_active = Column(Integer, default=1)
     
     documents = relationship("GEDDocument", back_populates="category")
 
@@ -38,6 +40,8 @@ class GEDDocument(Base):
     
     status = Column(Enum(GEDDocumentStatus), default=GEDDocumentStatus.RASCUNHO, nullable=False)
     academic_phase = Column(Enum(GEDAcademicPhase), nullable=True) # Which phase does this belong to
+    
+    extracted_metadata = Column(Text, nullable=True) # Stores the JSON blob from OCR/AI
     
     # Relationships
     category_id = Column(String, ForeignKey("ged_document_categories.id"), nullable=False)

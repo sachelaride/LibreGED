@@ -5,10 +5,14 @@ from typing import Literal
 from uuid import uuid4
 from xml.sax.saxutils import escape, quoteattr
 
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from typing import List, Optional
+import os
+import json
 from datetime import timedelta
 from app.config import settings
 
@@ -28,6 +32,7 @@ from app.curriculo_generator import generate_curriculo_xml
 from app.academic_validator import ValidationRequest, validate_documents
 from app.schemas_ged import GEDDocumentCreate, GEDDocumentResponse, DocumentStatusUpdate, DocumentTransitionResponse, DocumentCategoryCreate, DocumentCategoryResponse
 from app.models_ged import GEDDocument, DocumentCategory, DocumentTransitionHistory, GEDDocumentStatus
+from app.ocr_engine import DocumentAnalyzer
 
 tags_metadata = [
     {
@@ -531,8 +536,13 @@ def validate_academic_documents(req: ValidationRequest):
 
 @app.post("/api/ged/categories", response_model=DocumentCategoryResponse, tags=["GED - Vida Acadêmica (Matrícula)"])
 def create_category(payload: DocumentCategoryCreate, db: Session = Depends(get_db)):
-    """Cria uma categoria de documento (ex: 'Contratos', 'Comprovante de Residência')."""
-    db_cat = DocumentCategory(name=payload.name, description=payload.description)
+    """Cria uma categoria de documento (ex: '0001 - Contratos', 'Comprovante de Residência')."""
+    db_cat = DocumentCategory(
+        index_code=payload.index_code,
+        name=payload.name, 
+        description=payload.description,
+        is_active=payload.is_active
+    )
     db.add(db_cat)
     db.commit()
     db.refresh(db_cat)
@@ -580,6 +590,9 @@ def update_document_status(document_id: str, payload: DocumentStatusUpdate, db: 
     db.refresh(transition)
     return transition
 
+# Include Upload Router
+from app.api_ged_upload import router as upload_router
+app.include_router(upload_router)
 
 @app.post("/api/schema-versions", response_model=SchemaVersion, status_code=201)
 def create_schema_version(payload: SchemaVersionCreate, db: Session = Depends(get_db)):

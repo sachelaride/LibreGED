@@ -69,13 +69,21 @@ def ingest_erp_data(
         document_id=doc.id
     )
     db.add(audit)
+    
+    # 5. Coloca na Fila de Processamento
+    from app.models_ged import FilaProcessamento
+    
+    fila = FilaProcessamento(documento_id=doc.id)
+    db.add(fila)
+    
     db.commit()
     db.refresh(audit)
+    db.refresh(fila)
     
     return IngestionResponse(
-        message="Dados ingeridos com sucesso e rascunho criado.",
+        message="Dados ingeridos com sucesso e enviados para a fila de processamento.",
         document_id=doc.id,
-        status="PROCESSED",
+        status="QUEUED",
         idempotency_key=x_idempotency_key,
         audit_id=audit.id
     )

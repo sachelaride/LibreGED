@@ -29,7 +29,7 @@ def test_erp_ingestion_idempotency():
     res1 = client.post("/api/integration/erp/ingest", json=payload, headers=headers)
     assert res1.status_code == 200
     json1 = res1.json()
-    assert json1["status"] == "PROCESSED"
+    assert json1["status"] == "QUEUED"
     doc_id1 = json1["document_id"]
     
     # 2. Segunda Requisição IDÊNTICA (Deve retornar CACHE / Ignorar)

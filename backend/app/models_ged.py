@@ -42,6 +42,17 @@ class ExternalIngestionAudit(Base):
     # We could link this to a generated document, but for now we keep it decoupled.
     document_id = Column(String, ForeignKey("ged_documents.id"), nullable=True)
 
+class FilaProcessamento(Base):
+    __tablename__ = "ged_fila_processamento"
+
+    job_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    documento_id = Column(String, ForeignKey("ged_documents.id"), nullable=False)
+    status = Column(String, nullable=False, default="PENDENTE") # PENDENTE, PROCESSANDO, CONCLUIDO, FALHA
+    tentativas = Column(Integer, default=0)
+    erro_mensagem = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
 class DocumentCategory(Base):
     __tablename__ = "ged_document_categories"
 

@@ -61,7 +61,41 @@ tags_metadata = [
     }
 ]
 
-app = FastAPI(title="LibreGED API", version="0.1.0", openapi_tags=tags_metadata)
+from contextlib import asynccontextmanager
+from app.worker_fila import start_worker, stop_worker
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.database import SessionLocal
+    from app.models import User
+    from app.auth import get_password_hash
+    db = SessionLocal()
+    admin = db.query(User).filter(User.username == "admin").first()
+    if not admin:
+        new_admin = User(
+            username="admin",
+            email="admin@libreged.com",
+            hashed_password=get_password_hash("admin123"),
+            full_name="Administrador Global",
+            role="admin_global"
+        )
+        db.add(new_admin)
+        db.commit()
+    db.close()
+    
+    start_worker()
+    yield
+    stop_worker()
+
+app = FastAPI(title="LibreGED API", version="0.1.0", openapi_tags=tags_metadata, lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Para desenvolvimento local
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Role definitions for dependency injection
 AdminOnly = Depends(role_checker(["admin_global"]))
@@ -643,8 +677,14 @@ def validate_xsd_endpoint(payload: XSDValidationRequest, db: Session = Depends(g
 from app.rvdd_generator import generate_rvdd_html
 from fastapi.responses import HTMLResponse
 
+@app.get("/api/ged/documents", response_model=List[GEDDocumentResponse], tags=["GED - Vida Acadêmica (Matrícula)"])
+def list_documents(db: Session = Depends(get_db), user: models.User = ClinicRoles):
+    """Lista todos os documentos GED."""
+    docs = db.query(GEDDocument).all()
+    return docs
+
 @app.get("/api/documents/{document_id}/rvdd", response_class=HTMLResponse, tags=["GED - Vida Acadêmica (Matrícula)"])
-def get_document_rvdd(document_id: str, db: Session = Depends(get_db)):
+def get_document_rvdd(document_id: str, db: Session = Depends(get_db), user: models.User = ClinicRoles):
     """Gera a Representação Visual do Diploma Digital (RVDD) em HTML."""
     from app.models_ged import GEDDocument
     

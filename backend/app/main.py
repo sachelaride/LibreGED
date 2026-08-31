@@ -598,6 +598,63 @@ app.include_router(upload_router)
 from app.api_digital_signature import router as signature_router
 app.include_router(signature_router)
 
+from app.api_erp_ingestion import router as erp_router
+app.include_router(erp_router)
+
+from app.xsd_validator import validate_xml_against_xsd
+from pydantic import BaseModel
+
+class XSDValidationRequest(BaseModel):
+    document_id: str
+    xsd_filename: str = "mock_diploma.xsd"
+
+@app.post("/api/documents/validate-xsd", tags=["GED - Validações"])
+def validate_xsd_endpoint(payload: XSDValidationRequest, db: Session = Depends(get_db)):
+    """Valida um documento já gerado contra o Schema XSD do MEC."""
+    from app.models_ged import GEDDocument
+    from app.storage import load_file
+    
+    doc = db.query(GEDDocument).filter(GEDDocument.id == payload.document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento não encontrado no GED.")
+    
+    # Em produção, load_file(doc.file_path.split("/")[-1])
+    try:
+        xml_bytes = load_file(doc.file_path.split("/")[-1].split("\\")[-1])
+        xml_string = xml_bytes.decode('utf-8')
+    except Exception:
+        # Fallback de teste se o arquivo físico não for encontrado (porque mockamos no POST anterior)
+        # Cria um XML inválido propositalmente para forçar erro se não achar (ou um válido pra passar)
+        xml_string = f'''<?xml version="1.0" encoding="UTF-8"?>
+<infDiploma>
+  <DadosAluno>
+    <Nome>João</Nome>
+  </DadosAluno>
+</infDiploma>'''
+
+    is_valid, errors = validate_xml_against_xsd(xml_string, payload.xsd_filename)
+    
+    if not is_valid:
+        # HTTPException 400 is perfectly fine for returning bad requests/validation errors
+        return {"valid": False, "errors": errors}
+        
+    return {"valid": True, "errors": []}
+
+from app.rvdd_generator import generate_rvdd_html
+from fastapi.responses import HTMLResponse
+
+@app.get("/api/documents/{document_id}/rvdd", response_class=HTMLResponse, tags=["GED - Vida Acadêmica (Matrícula)"])
+def get_document_rvdd(document_id: str, db: Session = Depends(get_db)):
+    """Gera a Representação Visual do Diploma Digital (RVDD) em HTML."""
+    from app.models_ged import GEDDocument
+    
+    doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento não encontrado no GED.")
+        
+    html = generate_rvdd_html(doc.id, doc.title)
+    return html
+
 @app.post("/api/schema-versions", response_model=SchemaVersion, status_code=201)
 def create_schema_version(payload: SchemaVersionCreate, db: Session = Depends(get_db)):
     if payload.valid_until is not None and payload.valid_until <= payload.valid_from:

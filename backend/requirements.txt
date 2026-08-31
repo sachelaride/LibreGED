@@ -6,6 +6,9 @@ httpx>=0.27.2
 python-multipart
 signxml
 cryptography>=0.0.20
+Jinja2
+qrcode
+Pillow
 sqlalchemy>=2.0.35
 alembic>=1.19.1
 psycopg>=3.2.1

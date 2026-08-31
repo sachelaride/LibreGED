@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Representação Visual do Diploma Digital</title>
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+        }
+        .diploma-container {
+            width: 800px;
+            min-height: 1100px;
+            background: #fff;
+            padding: 40px;
+            margin: 20px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            border: 10px double #gold;
+            text-align: center;
+            position: relative;
+        }
+        .header h1 {
+            font-size: 32px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .header h2 {
+            font-size: 24px;
+            font-weight: normal;
+        }
+        .content {
+            margin-top: 50px;
+            font-size: 18px;
+            line-height: 1.8;
+            text-align: justify;
+        }
+        .highlight {
+            font-weight: bold;
+            font-size: 22px;
+        }
+        .footer {
+            margin-top: 100px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+        .signatures {
+            text-align: center;
+        }
+        .signatures div {
+            border-top: 1px solid #000;
+            margin-top: 50px;
+            padding-top: 5px;
+            width: 200px;
+        }
+        .qrcode {
+            text-align: right;
+        }
+        .qrcode img {
+            width: 150px;
+            height: 150px;
+        }
+        .validation-url {
+            font-size: 12px;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+
+<div class="diploma-container">
+    <div class="header">
+        <h1>República Federativa do Brasil</h1>
+        <h2>Ministério da Educação</h2>
+        <h3>Instituto de Ensino Superior LibreGED</h3>
+    </div>
+
+    <div class="content">
+        <p>O Reitor do Instituto de Ensino Superior LibreGED, no uso de suas atribuições, confere a</p>
+        <p class="highlight" style="text-align: center;">{{ nome_aluno }}</p>
+        <p>nacionalidade brasileira, portador(a) do CPF nº {{ cpf_aluno }}, o grau de</p>
+        <p class="highlight" style="text-align: center;">Bacharel em {{ curso }}</p>
+        <p>concluído em {{ data_conclusao }}, outorgando-lhe o presente diploma para que possa gozar de todos os direitos e prerrogativas legais.</p>
+    </div>
+
+    <div class="footer">
+        <div class="signatures">
+            <div>
+                Assinado Digitalmente<br>
+                Reitor
+            </div>
+        </div>
+        
+        <div class="qrcode">
+            <img src="data:image/png;base64,{{ qrcode_base64 }}" alt="QR Code de Validação">
+            <div class="validation-url">
+                Para validar este diploma, acesse:<br>
+                <a href="{{ url_validacao }}">{{ url_validacao }}</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

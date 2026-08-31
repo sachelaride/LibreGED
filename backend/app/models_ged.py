@@ -29,6 +29,19 @@ class Signer(Base):
     certificate_path = Column(String, nullable=True) # Path to the .p12/.pfx file
     is_active = Column(Integer, default=1)
 
+class ExternalIngestionAudit(Base):
+    __tablename__ = "ged_external_ingestion_audit"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    correlation_id = Column(String, nullable=True, index=True)
+    idempotency_key = Column(String, nullable=False, unique=True, index=True)
+    source_system = Column(String, nullable=False)
+    raw_payload_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+    
+    # We could link this to a generated document, but for now we keep it decoupled.
+    document_id = Column(String, ForeignKey("ged_documents.id"), nullable=True)
+
 class DocumentCategory(Base):
     __tablename__ = "ged_document_categories"
 

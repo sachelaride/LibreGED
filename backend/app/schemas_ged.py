@@ -36,6 +36,7 @@ class GEDDocumentBase(BaseModel):
     category_id: str
     student_id: Optional[str] = None
     academic_phase: Optional[GEDAcademicPhase] = None
+    modality: Optional[str] = None
 
 class GEDDocumentCreate(GEDDocumentBase):
     pass # file_path will be handled by upload endpoint

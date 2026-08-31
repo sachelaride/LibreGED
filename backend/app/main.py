@@ -5,7 +5,7 @@ from typing import Literal
 from uuid import uuid4
 from xml.sax.saxutils import escape, quoteattr
 
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, status
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
@@ -72,11 +72,11 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     admin = db.query(User).filter(User.username == "admin").first()
     if not admin:
+        import uuid
         new_admin = User(
+            id=uuid.uuid4().hex,
             username="admin",
-            email="admin@libreged.com",
             hashed_password=get_password_hash("admin123"),
-            full_name="Administrador Global",
             role="admin_global"
         )
         db.add(new_admin)
@@ -599,7 +599,12 @@ def create_document(payload: GEDDocumentCreate, db: Session = Depends(get_db)):
     return db_doc
 
 @app.patch("/api/ged/documents/{document_id}/status", response_model=DocumentTransitionResponse, tags=["GED - Vida Acadêmica (Curso)"])
-def update_document_status(document_id: str, payload: DocumentStatusUpdate, db: Session = Depends(get_db)):
+def update_document_status(
+    document_id: str, 
+    payload: DocumentStatusUpdate, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     """Transiciona o documento de um estado para outro (Máquina de Estados)."""
     db_doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
     if not db_doc:
@@ -622,6 +627,11 @@ def update_document_status(document_id: str, payload: DocumentStatusUpdate, db: 
     db.add(transition)
     db.commit()
     db.refresh(transition)
+    
+    # Trigger webhook Se foi assinado ou mudou de status importante
+    from app.webhook_erp import notify_erp
+    background_tasks.add_task(notify_erp, document_id, payload.status.value)
+    
     return transition
 
 # Include Upload Router
@@ -679,8 +689,11 @@ from fastapi.responses import HTMLResponse
 
 @app.get("/api/ged/documents", response_model=List[GEDDocumentResponse], tags=["GED - Vida Acadêmica (Matrícula)"])
 def list_documents(db: Session = Depends(get_db), user: models.User = ClinicRoles):
-    """Lista todos os documentos GED."""
-    docs = db.query(GEDDocument).all()
+    """Lista todos os documentos GED vinculados à instituição do usuário."""
+    query = db.query(GEDDocument)
+    if user.role != "admin_global":
+        query = query.filter(GEDDocument.institution_id == user.institution_id)
+    docs = query.all()
     return docs
 
 @app.get("/api/documents/{document_id}/rvdd", response_class=HTMLResponse, tags=["GED - Vida Acadêmica (Matrícula)"])
@@ -691,6 +704,10 @@ def get_document_rvdd(document_id: str, db: Session = Depends(get_db), user: mod
     doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Documento não encontrado no GED.")
+    
+    # Validação Multitenant
+    if user.role != "admin_global" and doc.institution_id != user.institution_id:
+        raise HTTPException(status_code=403, detail="Você não tem permissão para visualizar um documento de outra clínica.")
         
     html = generate_rvdd_html(doc.id, doc.title)
     return html

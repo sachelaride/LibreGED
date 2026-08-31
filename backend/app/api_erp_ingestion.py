@@ -54,7 +54,9 @@ def ingest_erp_data(
         academic_phase=GEDAcademicPhase.DIPLOMACAO,
         status=GEDDocumentStatus.RASCUNHO,
         file_path="virtual_from_erp", # Como veio do ERP, ainda vamos gerar o XML real no pipeline
-        extracted_metadata=raw_json
+        extracted_metadata=raw_json,
+        institution_id=payload.institution_id,
+        modality=payload.aluno.curso.modalidade
     )
     db.add(doc)
     db.commit()
@@ -66,7 +68,8 @@ def ingest_erp_data(
         idempotency_key=x_idempotency_key,
         source_system=x_source_system,
         raw_payload_hash=payload_hash,
-        document_id=doc.id
+        document_id=doc.id,
+        callback_url=payload.callback_url
     )
     db.add(audit)
     

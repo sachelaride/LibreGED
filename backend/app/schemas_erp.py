@@ -5,6 +5,7 @@ class CourseERPDto(BaseModel):
     codigo_mec: str
     nome: str
     carga_horaria: int
+    modalidade: str
 
 class StudentERPDto(BaseModel):
     nome: str
@@ -19,6 +20,8 @@ class IngestionPayload(BaseModel):
     """
     aluno: StudentERPDto
     data_conclusao: str
+    institution_id: str
+    callback_url: Optional[str] = None
     
 class IngestionResponse(BaseModel):
     message: str

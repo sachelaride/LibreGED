@@ -101,16 +101,25 @@
                 <!-- View: Documentos -->
                 <section id="view-documentos" class="view">
                     <div class="glass-panel">
-                        <div class="table-header">
+                        <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h3>GED - Repositório Documental</h3>
-                            <button class="btn-secondary" id="btn-load-docs">Carregar</button>
+                            
+                            <div class="table-actions" style="display: flex; gap: 10px; align-items: center;">
+                                <select id="filter-modality" style="padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white;">
+                                    <option value="ALL" style="color: black;">Todas as Modalidades</option>
+                                    <option value="EAD" style="color: black;">EAD</option>
+                                    <option value="PRESENCIAL" style="color: black;">PRESENCIAL</option>
+                                    <option value="SEMIPRESENCIAL" style="color: black;">SEMI-PRESENCIAL</option>
+                                </select>
+                                <button class="btn-secondary" id="btn-load-docs">Carregar / Atualizar</button>
+                            </div>
                         </div>
                         <table class="styled-table">
                             <thead>
                                 <tr>
                                     <th>ID</th>
                                     <th>Título</th>
-                                    <th>Fase</th>
+                                    <th>Modalidade</th>
                                     <th>Status</th>
                                     <th>Ações</th>
                                 </tr>

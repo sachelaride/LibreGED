@@ -41,6 +41,9 @@ class ExternalIngestionAudit(Base):
     
     # We could link this to a generated document, but for now we keep it decoupled.
     document_id = Column(String, ForeignKey("ged_documents.id"), nullable=True)
+    
+    # Callback URL para webhook de reconciliação de status
+    callback_url = Column(String, nullable=True)
 
 class FilaProcessamento(Base):
     __tablename__ = "ged_fila_processamento"
@@ -76,15 +79,17 @@ class GEDDocument(Base):
     academic_phase = Column(Enum(GEDAcademicPhase), nullable=True) # Which phase does this belong to
     
     extracted_metadata = Column(Text, nullable=True) # Stores the JSON blob from OCR/AI
-    
     # Relationships
     category_id = Column(String, ForeignKey("ged_document_categories.id"), nullable=False)
     student_id = Column(String, index=True, nullable=True) # Could be CPF or a foreign key to a Student table in the future
+    institution_id = Column(String, ForeignKey("institutions.id"), nullable=True, index=True)
+    modality = Column(String, nullable=True, index=True) # EAD, PRESENCIAL, SEMIPRESENCIAL
     
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     
     category = relationship("DocumentCategory", back_populates="documents")
+    institution = relationship("Institution")
     transitions = relationship("DocumentTransitionHistory", back_populates="document", cascade="all, delete-orphan")
 
 

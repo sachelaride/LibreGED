@@ -31,7 +31,7 @@ async def upload_scanner_document(
     content = await file.read()
     file_ext = file.filename.split(".")[-1] if file.filename else "pdf"
     safe_name = f"{uuid.uuid4()}.{file_ext}"
-    saved_path = save_file(safe_name, content)
+    saved_path = save_file(safe_name, content, db=db)
     
     # Acionar OCR mockado
     extracted_data = analyzer.analyze_document(saved_path, cat.name)

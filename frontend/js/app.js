@@ -74,6 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if(target === 'documentos') {
                 loadDocuments();
+            } else if (target === 'storage') {
+                loadStorageAreas();
             }
         });
     });

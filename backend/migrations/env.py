@@ -1,10 +1,15 @@
-from logging.config import fileConfig
+﻿from logging.config import fileConfig
 import os
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.models import Base
+from app import models_ged
+from app import models_storage
+from app import models_ged_config
+from app import models_workflow
+from app import models_templates
 
 
 config = context.config
@@ -54,3 +59,6 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
+
+
+

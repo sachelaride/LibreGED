@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+﻿from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal
@@ -36,28 +36,28 @@ from app.ocr_engine import DocumentAnalyzer
 
 tags_metadata = [
     {
-        "name": "GED - Documentação Jurídica (IES)",
-        "description": "Fase 1: Gerenciamento dos dados e documentos legais da Instituição de Ensino Superior.",
+        "name": "GED - DocumentaÃ§Ã£o JurÃ­dica (IES)",
+        "description": "Fase 1: Gerenciamento dos dados e documentos legais da InstituiÃ§Ã£o de Ensino Superior.",
     },
     {
-        "name": "GED - Vida Acadêmica (Matrícula)",
-        "description": "Fase 2: Ingresso do aluno, documentação pessoal (RG, CPF) e contratos.",
+        "name": "GED - Vida AcadÃªmica (MatrÃ­cula)",
+        "description": "Fase 2: Ingresso do aluno, documentaÃ§Ã£o pessoal (RG, CPF) e contratos.",
     },
     {
-        "name": "GED - Vida Acadêmica (Curso)",
-        "description": "Fase 3: Acompanhamento durante o curso. Histórico Escolar e Currículo Escolar.",
+        "name": "GED - Vida AcadÃªmica (Curso)",
+        "description": "Fase 3: Acompanhamento durante o curso. HistÃ³rico Escolar e CurrÃ­culo Escolar.",
     },
     {
-        "name": "GED - Vida Acadêmica (Diplomação)",
-        "description": "Fase 4: Conclusão. Emissão do Diploma Digital e Documentação Acadêmica de Registro.",
+        "name": "GED - Vida AcadÃªmica (DiplomaÃ§Ã£o)",
+        "description": "Fase 4: ConclusÃ£o. EmissÃ£o do Diploma Digital e DocumentaÃ§Ã£o AcadÃªmica de Registro.",
     },
     {
-        "name": "GED - Validações",
-        "description": "Auditoria, motor de consistência acadêmica inter-documentos e checagens anti-fraude.",
+        "name": "GED - ValidaÃ§Ãµes",
+        "description": "Auditoria, motor de consistÃªncia acadÃªmica inter-documentos e checagens anti-fraude.",
     },
     {
-        "name": "Sistema - Segurança e Acessos",
-        "description": "Autenticação, controle de usuários (Admin, Recepcionista, Acadêmico) e permissões por clínica/unidade.",
+        "name": "Sistema - SeguranÃ§a e Acessos",
+        "description": "AutenticaÃ§Ã£o, controle de usuÃ¡rios (Admin, Recepcionista, AcadÃªmico) e permissÃµes por clÃ­nica/unidade.",
     }
 ]
 
@@ -404,7 +404,7 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db), user
     db.commit()
     db.refresh(document)
     
-    # Indexar para busca avançada
+    # Indexar para busca avanÃ§ada
     search_service.index_document(
         doc_id=document.id,
         document_data={
@@ -437,7 +437,7 @@ def upload_document(document_id: str, file: UploadFile = File(...), db: Session 
 
     content = read_validated_upload(file, original_name)
     version_id = str(uuid4())
-    stored_path = save_file(f"{document_id}-v{version_number}-{version_id}-{original_name}", content)
+    stored_path = save_file(f"{document_id}-v{version_number}-{version_id}-{original_name}", content, db=db)
     checksum = sha256(content).hexdigest()
     
     version = models.DocumentVersion(
@@ -517,49 +517,49 @@ def generate_document_xml(document_id: str, payload: XmlGenerationRequest, db: S
     return {"document_id": document_id, "schema_version": schema.code, "xml": xml}
 
 
-@app.post("/api/documents/historico/generate", tags=["GED - Vida Acadêmica (Curso)"])
+@app.post("/api/documents/historico/generate", tags=["GED - Vida AcadÃªmica (Curso)"])
 def generate_historico(payload: HistoricoPayload):
-    """Gera o XML do Histórico Escolar com formato MEC."""
+    """Gera o XML do HistÃ³rico Escolar com formato MEC."""
     try:
         xml_output = generate_historico_xml(payload)
         return {"xml": xml_output}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro na geração do XML do Histórico: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro na geraÃ§Ã£o do XML do HistÃ³rico: {str(e)}")
 
 
-@app.post("/api/documents/diploma/generate", tags=["GED - Vida Acadêmica (Diplomação)"])
+@app.post("/api/documents/diploma/generate", tags=["GED - Vida AcadÃªmica (DiplomaÃ§Ã£o)"])
 def generate_diploma(payload: DiplomaPayload):
-    """Gera o XML do Diploma Digital com a formatação exigida pelo MEC."""
+    """Gera o XML do Diploma Digital com a formataÃ§Ã£o exigida pelo MEC."""
     try:
         xml_output = generate_diploma_xml(payload)
         return {"xml": xml_output}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro na geração do XML do Diploma: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro na geraÃ§Ã£o do XML do Diploma: {str(e)}")
 
 
-@app.post("/api/documents/academico/generate", tags=["GED - Vida Acadêmica (Diplomação)"])
+@app.post("/api/documents/academico/generate", tags=["GED - Vida AcadÃªmica (DiplomaÃ§Ã£o)"])
 def generate_academica(payload: DiplomaPayload):
-    """Gera o XML Institucional de Documentação Acadêmica para Registro."""
+    """Gera o XML Institucional de DocumentaÃ§Ã£o AcadÃªmica para Registro."""
     try:
         xml_output = generate_academica_xml(payload)
         return {"xml": xml_output}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro na geração do XML Acadêmico: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro na geraÃ§Ã£o do XML AcadÃªmico: {str(e)}")
 
 
-@app.post("/api/documents/curriculo/generate", tags=["GED - Vida Acadêmica (Curso)"])
+@app.post("/api/documents/curriculo/generate", tags=["GED - Vida AcadÃªmica (Curso)"])
 def generate_curriculo(payload: CurriculoPayload):
-    """Gera o XML do Currículo Escolar com formato MEC."""
+    """Gera o XML do CurrÃ­culo Escolar com formato MEC."""
     try:
         xml_output = generate_curriculo_xml(payload)
         return {"xml": xml_output}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro na geração do XML do Currículo: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro na geraÃ§Ã£o do XML do CurrÃ­culo: {str(e)}")
 
 
-@app.post("/api/documents/validate", tags=["GED - Validações"])
+@app.post("/api/documents/validate", tags=["GED - ValidaÃ§Ãµes"])
 def validate_academic_documents(req: ValidationRequest):
-    """Cruza dados entre Diploma, Histórico e Currículo para identificar inconsistências (ex: CPF divergente, Carga horária insuficiente)."""
+    """Cruza dados entre Diploma, HistÃ³rico e CurrÃ­culo para identificar inconsistÃªncias (ex: CPF divergente, Carga horÃ¡ria insuficiente)."""
     errors = validate_documents(req)
     if errors:
         return {"valid": False, "errors": errors}
@@ -568,9 +568,9 @@ def validate_academic_documents(req: ValidationRequest):
 
 # --- GED Lifecycle and State Machine Endpoints ---
 
-@app.post("/api/ged/categories", response_model=DocumentCategoryResponse, tags=["GED - Vida Acadêmica (Matrícula)"])
+@app.post("/api/ged/categories", response_model=DocumentCategoryResponse, tags=["GED - Vida AcadÃªmica (MatrÃ­cula)"])
 def create_category(payload: DocumentCategoryCreate, db: Session = Depends(get_db)):
-    """Cria uma categoria de documento (ex: '0001 - Contratos', 'Comprovante de Residência')."""
+    """Cria uma categoria de documento (ex: '0001 - Contratos', 'Comprovante de ResidÃªncia')."""
     db_cat = DocumentCategory(
         index_code=payload.index_code,
         name=payload.name, 
@@ -582,7 +582,7 @@ def create_category(payload: DocumentCategoryCreate, db: Session = Depends(get_d
     db.refresh(db_cat)
     return db_cat
 
-@app.post("/api/ged/documents", response_model=GEDDocumentResponse, tags=["GED - Vida Acadêmica (Matrícula)"])
+@app.post("/api/ged/documents", response_model=GEDDocumentResponse, tags=["GED - Vida AcadÃªmica (MatrÃ­cula)"])
 def create_document(payload: GEDDocumentCreate, db: Session = Depends(get_db)):
     """Faz o registro de um novo documento de aluno no GED, com status inicial RASCUNHO."""
     db_doc = GEDDocument(
@@ -598,14 +598,14 @@ def create_document(payload: GEDDocumentCreate, db: Session = Depends(get_db)):
     db.refresh(db_doc)
     return db_doc
 
-@app.patch("/api/ged/documents/{document_id}/status", response_model=DocumentTransitionResponse, tags=["GED - Vida Acadêmica (Curso)"])
+@app.patch("/api/ged/documents/{document_id}/status", response_model=DocumentTransitionResponse, tags=["GED - Vida AcadÃªmica (Curso)"])
 def update_document_status(
     document_id: str, 
     payload: DocumentStatusUpdate, 
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    """Transiciona o documento de um estado para outro (Máquina de Estados)."""
+    """Transiciona o documento de um estado para outro (MÃ¡quina de Estados)."""
     db_doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
     if not db_doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -614,7 +614,7 @@ def update_document_status(
     
     # State machine rules
     if old_status == GEDDocumentStatus.REJEITADO and payload.status == GEDDocumentStatus.ASSINADO:
-        raise HTTPException(status_code=400, detail="Não é possível transicionar de REJEITADO direto para ASSINADO")
+        raise HTTPException(status_code=400, detail="NÃ£o Ã© possÃ­vel transicionar de REJEITADO direto para ASSINADO")
         
     db_doc.status = payload.status
     
@@ -645,6 +645,10 @@ app.include_router(signature_router)
 from app.api_erp_ingestion import router as erp_router
 app.include_router(erp_router)
 
+# Include Storage Config Router
+from app.api_storage_config import router as storage_router
+app.include_router(storage_router)
+
 from app.xsd_validator import validate_xml_against_xsd
 from pydantic import BaseModel
 
@@ -652,27 +656,27 @@ class XSDValidationRequest(BaseModel):
     document_id: str
     xsd_filename: str = "mock_diploma.xsd"
 
-@app.post("/api/documents/validate-xsd", tags=["GED - Validações"])
+@app.post("/api/documents/validate-xsd", tags=["GED - ValidaÃ§Ãµes"])
 def validate_xsd_endpoint(payload: XSDValidationRequest, db: Session = Depends(get_db)):
-    """Valida um documento já gerado contra o Schema XSD do MEC."""
+    """Valida um documento jÃ¡ gerado contra o Schema XSD do MEC."""
     from app.models_ged import GEDDocument
     from app.storage import load_file
     
     doc = db.query(GEDDocument).filter(GEDDocument.id == payload.document_id).first()
     if not doc:
-        raise HTTPException(status_code=404, detail="Documento não encontrado no GED.")
+        raise HTTPException(status_code=404, detail="Documento nÃ£o encontrado no GED.")
     
-    # Em produção, load_file(doc.file_path.split("/")[-1])
+    # Em produÃ§Ã£o, load_file(doc.file_path.split("/")[-1])
     try:
         xml_bytes = load_file(doc.file_path.split("/")[-1].split("\\")[-1])
         xml_string = xml_bytes.decode('utf-8')
     except Exception:
-        # Fallback de teste se o arquivo físico não for encontrado (porque mockamos no POST anterior)
-        # Cria um XML inválido propositalmente para forçar erro se não achar (ou um válido pra passar)
+        # Fallback de teste se o arquivo fÃ­sico nÃ£o for encontrado (porque mockamos no POST anterior)
+        # Cria um XML invÃ¡lido propositalmente para forÃ§ar erro se nÃ£o achar (ou um vÃ¡lido pra passar)
         xml_string = f'''<?xml version="1.0" encoding="UTF-8"?>
 <infDiploma>
   <DadosAluno>
-    <Nome>João</Nome>
+    <Nome>JoÃ£o</Nome>
   </DadosAluno>
 </infDiploma>'''
 
@@ -687,29 +691,29 @@ def validate_xsd_endpoint(payload: XSDValidationRequest, db: Session = Depends(g
 from app.rvdd_generator import generate_rvdd_html
 from fastapi.responses import HTMLResponse
 
-@app.get("/api/ged/documents", response_model=List[GEDDocumentResponse], tags=["GED - Vida Acadêmica (Matrícula)"])
+@app.get("/api/ged/documents", response_model=List[GEDDocumentResponse], tags=["GED - Vida AcadÃªmica (MatrÃ­cula)"])
 def list_documents(db: Session = Depends(get_db), user: models.User = ClinicRoles):
-    """Lista todos os documentos GED vinculados à instituição do usuário."""
+    """Lista todos os documentos GED vinculados Ã  instituiÃ§Ã£o do usuÃ¡rio."""
     query = db.query(GEDDocument)
     if user.role != "admin_global":
         query = query.filter(GEDDocument.institution_id == user.institution_id)
     docs = query.all()
     return docs
 
-@app.get("/api/documents/{document_id}/rvdd", response_class=HTMLResponse, tags=["GED - Vida Acadêmica (Matrícula)"])
+@app.get("/api/documents/{document_id}/rvdd", response_class=HTMLResponse, tags=["GED - Vida AcadÃªmica (MatrÃ­cula)"])
 def get_document_rvdd(document_id: str, db: Session = Depends(get_db), user: models.User = ClinicRoles):
-    """Gera a Representação Visual do Diploma Digital (RVDD) em HTML."""
+    """Gera a RepresentaÃ§Ã£o Visual do Diploma Digital (RVDD) em HTML."""
     from app.models_ged import GEDDocument
     
     doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
     if not doc:
-        raise HTTPException(status_code=404, detail="Documento não encontrado no GED.")
+        raise HTTPException(status_code=404, detail="Documento nÃ£o encontrado no GED.")
     
-    # Validação Multitenant
+    # ValidaÃ§Ã£o Multitenant
     if user.role != "admin_global" and doc.institution_id != user.institution_id:
-        raise HTTPException(status_code=403, detail="Você não tem permissão para visualizar um documento de outra clínica.")
+        raise HTTPException(status_code=403, detail="VocÃª nÃ£o tem permissÃ£o para visualizar um documento de outra clÃ­nica.")
         
-    html = generate_rvdd_html(doc.id, doc.title)
+    html = generate_rvdd_html(doc.id, doc.title, db=db)
     return html
 
 @app.post("/api/schema-versions", response_model=SchemaVersion, status_code=201)
@@ -739,7 +743,7 @@ def list_documents(student_id: str | None = None, skip: int = 0, limit: int = 10
 
 @app.post("/api/documents/advanced-search")
 def advanced_search_documents(payload: AdvancedSearchRequest, db: Session = Depends(get_db)):
-    """Buscar documentos com filtros avançados usando Elasticsearch (ou fallback em memória)."""
+    """Buscar documentos com filtros avanÃ§ados usando Elasticsearch (ou fallback em memÃ³ria)."""
     results = search_service.search(
         query=payload.query,
         student_name=payload.student_name,
@@ -777,8 +781,8 @@ def generate_document_representation(document_id: str, db: Session = Depends(get
 
     student = db.query(models.Student).filter(models.Student.id == document.student_id).first()
     enrollment = db.query(models.Enrollment).filter(models.Enrollment.student_id == document.student_id).first()
-    student_name = student.full_name if student else "Aluno não identificado"
-    course_name = enrollment.course_name if enrollment else "Curso não informado"
+    student_name = student.full_name if student else "Aluno nÃ£o identificado"
+    course_name = enrollment.course_name if enrollment else "Curso nÃ£o informado"
 
     summary = (
         f"{document.title} - {student_name} - {course_name} - "
@@ -821,7 +825,7 @@ def list_audit_events(skip: int = 0, limit: int = 100, db: Session = Depends(get
 
 @app.get("/api/audit/verify")
 def verify_audit_chain(db: Session = Depends(get_db)):
-    """Verifica a integridade criptográfica da cadeia de eventos de auditoria."""
+    """Verifica a integridade criptogrÃ¡fica da cadeia de eventos de auditoria."""
     from hashlib import sha256
     events = db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.asc()).all()
     last_hash = "genesis"
@@ -841,7 +845,7 @@ def verify_audit_chain(db: Session = Depends(get_db)):
 # ==================== Retention Management ====================
 @app.get("/api/documents/retention/check")
 def check_retention_violations(db: Session = Depends(get_db)):
-    """Verificar quais documentos violam a política de retenção."""
+    """Verificar quais documentos violam a polÃ­tica de retenÃ§Ã£o."""
     violations = RetentionService.check_retention_compliance(db)
     return {
         "total_violations": len(violations),
@@ -869,7 +873,7 @@ def execute_retention_cleanup(payload: RetentionCleanupRequest, db: Session = De
 
 @app.get("/api/documents/retention/stats")
 def get_retention_statistics(db: Session = Depends(get_db)):
-    """Obter estatísticas sobre o ciclo de vida dos documentos."""
+    """Obter estatÃ­sticas sobre o ciclo de vida dos documentos."""
     stats = RetentionService.get_lifecycle_statistics(db)
     return {
         "timestamp": datetime.now(UTC).isoformat(),
@@ -879,7 +883,7 @@ def get_retention_statistics(db: Session = Depends(get_db)):
 
 @app.get("/api/documents/{document_id}/lifecycle")
 def get_document_lifecycle(document_id: str, db: Session = Depends(get_db)):
-    """Obter informações de ciclo de vida de um documento específico."""
+    """Obter informaÃ§Ãµes de ciclo de vida de um documento especÃ­fico."""
     document = db.query(models.Document).filter(models.Document.id == document_id).first()
     if document is None:
         return {"detail": "document not found"}
@@ -929,3 +933,8 @@ def add_audit(db: Session, entity: str, entity_id: str, action: str, details: st
         hash_signature=signature,
     )
     db.add(audit_event)
+
+
+
+
+

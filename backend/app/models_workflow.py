@@ -1,0 +1,53 @@
+import uuid
+from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
+from app.models import Base, utc_now
+
+class Workflow(Base):
+    __tablename__ = "ged_workflows"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False, unique=True, index=True)
+    internal_name = Column(String, nullable=False, unique=True, index=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=utc_now)
+    
+    states = relationship("WorkflowState", back_populates="workflow", cascade="all, delete-orphan")
+    transitions = relationship("WorkflowTransition", back_populates="workflow", cascade="all, delete-orphan")
+
+class WorkflowState(Base):
+    __tablename__ = "ged_workflow_states"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    workflow_id = Column(String, ForeignKey("ged_workflows.id"), nullable=False)
+    label = Column(String, nullable=False)
+    is_initial = Column(Boolean, default=False)
+    is_completion = Column(Boolean, default=False)
+    
+    workflow = relationship("Workflow", back_populates="states")
+
+class WorkflowTransition(Base):
+    __tablename__ = "ged_workflow_transitions"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    workflow_id = Column(String, ForeignKey("ged_workflows.id"), nullable=False)
+    origin_state_id = Column(String, ForeignKey("ged_workflow_states.id"), nullable=False)
+    destination_state_id = Column(String, ForeignKey("ged_workflow_states.id"), nullable=False)
+    label = Column(String, nullable=False)
+    
+    workflow = relationship("Workflow", back_populates="transitions")
+    origin_state = relationship("WorkflowState", foreign_keys=[origin_state_id])
+    destination_state = relationship("WorkflowState", foreign_keys=[destination_state_id])
+
+class DocumentWorkflowInstance(Base):
+    __tablename__ = "ged_document_workflow_instances"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id = Column(String, nullable=False, index=True)
+    workflow_id = Column(String, ForeignKey("ged_workflows.id"), nullable=False)
+    current_state_id = Column(String, ForeignKey("ged_workflow_states.id"), nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+    
+    workflow = relationship("Workflow")
+    current_state = relationship("WorkflowState")

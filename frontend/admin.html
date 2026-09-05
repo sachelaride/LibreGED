@@ -1,0 +1,311 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreGED - Administração</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <script>
+        function parseJwt(token) {
+            try { return JSON.parse(decodeURIComponent(window.atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')).split('').map(function(c) { return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''))); } catch(e) { return null; }
+        }
+        const token = localStorage.getItem('ged_token');
+        if(!token) window.location.href = 'login.html';
+        const payload = parseJwt(token);
+        if(!payload || payload.role !== 'admin_global') window.location.href = 'login.html';
+    </script>
+</head>
+<body>
+
+    <div class="app-container" id="app-wrapper">
+        <!-- Sidebar Esquerda -->
+        <aside class="sidebar glass-panel" id="main-sidebar">
+            <div class="logo">
+                <h2>Libre<span>GED</span> <small>Admin</small></h2>
+            </div>
+            <nav class="menu">
+                <a href="#" class="menu-item active" data-target="dashboard">
+                    <span class="icon">📊</span> Painel de Controle
+                </a>
+                <a href="#" class="menu-item" data-target="usuarios">
+                    <span class="icon">👥</span> Gestão de Usuários
+                </a>
+                <a href="#" class="menu-item" data-target="storage">
+                    <span class="icon">🗄️</span> Armazenamento
+                </a>
+                <a href="#" class="menu-item" data-target="workflows">
+                    <span class="icon">🔄</span> Workflows
+                </a>
+                <a href="#" class="menu-item" data-target="templates">
+                    <span class="icon">📄</span> Templates (RVDD)
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="avatar">AD</div>
+                    <div class="details">
+                        <p class="name" id="user-display-name">Admin</p>
+                        <p class="role">Administrador Global</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Conteúdo Principal -->
+        <main class="main-content" id="main-content">
+            <header class="topbar">
+                <h1 id="page-title">Painel de Controle</h1>
+                <div class="actions">
+                    <button class="btn-secondary" id="btn-logout" onclick="localStorage.removeItem('ged_token'); window.location.href='login.html'">Sair</button>
+                </div>
+            </header>
+
+            <div class="content-area">
+                
+                <!-- View: Dashboard -->
+                <section id="view-dashboard" class="view active">
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        
+                        <!-- Card Administração -->
+                        <div class="glass-panel" style="flex: 1; min-width: 250px; padding: 0; overflow: hidden; border-radius: 12px;">
+                            <div style="background: #111827; padding: 20px; text-align: center; border-bottom: 3px solid #4ade80;">
+                                <div style="background: #4ade80; color: #111827; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 20px;">🔧</div>
+                                <h3 style="margin: 0; font-size: 14px; text-transform: uppercase;">Administração</h3>
+                            </div>
+                            <div style="padding: 15px;">
+                                <ul style="list-style: none; padding: 0; margin: 0;">
+                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;"><span>Configurar Licença</span> <span>→</span></li>
+                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;"><span>Painel de Monitoramento</span> <span>→</span></li>
+                                    <li style="padding: 10px 0; display: flex; justify-content: space-between;"><span>Usuários Logados</span> <span>→</span></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Card Ambiente -->
+                        <div class="glass-panel" style="flex: 1; min-width: 250px; padding: 0; overflow: hidden; border-radius: 12px;">
+                            <div style="background: #111827; padding: 20px; text-align: center; border-bottom: 3px solid #4ade80;">
+                                <div style="background: #4ade80; color: #111827; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 20px;">🗄️</div>
+                                <h3 style="margin: 0; font-size: 14px; text-transform: uppercase;">Ambiente</h3>
+                            </div>
+                            <div style="padding: 15px;">
+                                <ul style="list-style: none; padding: 0; margin: 0;">
+                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; cursor: pointer;" onclick="document.querySelector('[data-target=storage]').click()"><span>Áreas de Armazenamento</span> <span>→</span></li>
+                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; cursor: pointer;" onclick="document.querySelector('[data-target=storage]').click()"><span>Partições</span> <span>→</span></li>
+                                    <li style="padding: 10px 0; display: flex; justify-content: space-between;"><span>LDAPs / SAMLs</span> <span>→</span></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Card Documentos -->
+                        <div class="glass-panel" style="flex: 1; min-width: 250px; padding: 0; overflow: hidden; border-radius: 12px;">
+                            <div style="background: #111827; padding: 20px; text-align: center; border-bottom: 3px solid #4ade80;">
+                                <div style="background: #4ade80; color: #111827; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 20px;">📄</div>
+                                <h3 style="margin: 0; font-size: 14px; text-transform: uppercase;">Documentos</h3>
+                            </div>
+                            <div style="padding: 15px;">
+                                <ul style="list-style: none; padding: 0; margin: 0;">
+                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;"><span>Índices e Máscaras</span> <span>→</span></li>
+                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;"><span>Tipos de Documentos</span> <span>→</span></li>
+                                    <li style="padding: 10px 0; display: flex; justify-content: space-between; cursor: pointer;" onclick="document.querySelector('[data-target=templates]').click()"><span>Templates RVDD</span> <span>→</span></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+
+                <!-- View: Usuarios -->
+                <section id="view-usuarios" class="view" style="display: none;">
+                    <div class="glass-panel" style="min-height: 400px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3>Gestão de Usuários</h3>
+                            <button class="btn-primary btn-small" onclick="openUserModal()">+ Novo Usuário</button>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Usuário</th>
+                                    <th>Papel</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-users-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- View: Storage -->
+                <section id="view-storage" class="view" style="display: none;">
+                    <div style="display: flex; gap: 20px;">
+                        <div class="glass-panel" style="flex: 1; min-height: 400px; padding: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h3>Áreas de Armazenamento</h3>
+                                <button class="btn-primary btn-small" onclick="openAreaModal()">+ Nova Área</button>
+                            </div>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome da Área</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-areas-body">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="glass-panel" style="flex: 2; min-height: 400px; padding: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h3>Partições</h3>
+                                <button class="btn-primary btn-small" onclick="openPartitionModal()" id="btn-new-partition" disabled>+ Nova Partição</button>
+                            </div>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Caminho</th>
+                                        <th>Limite Arq</th>
+                                        <th>Limite GB</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-partitions-body">
+                                    <tr><td colspan="5" style="text-align:center;">Selecione uma área à esquerda</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- View: Workflows -->
+                <section id="view-workflows" class="view" style="display: none;">
+                    <div class="glass-panel">
+                        <h3>Gestão de Workflows (Em breve)</h3>
+                        <p class="text-muted">Ferramenta para criação de etapas de aprovação de documentos.</p>
+                    </div>
+                </section>
+
+                                                <!-- View: Tipos de Documentos -->
+                <section id="view-templates" class="view" style="display: none;">
+                    <div style="display: flex; gap: 15px; height: 600px;">
+                        <div class="glass-panel" style="flex: 1; padding: 15px; display: flex; flex-direction: column;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                                <h4>Tipos de Documentos</h4>
+                                <button class="btn-primary btn-small">+ Novo</button>
+                            </div>
+                            <div style="flex: 1; overflow-y: auto;">
+                                <table class="data-table">
+                                    <thead><tr><th>Nome</th><th>Ativo</th></tr></thead>
+                                    <tbody id="table-doctypes-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="glass-panel" style="flex: 1.5; padding: 15px; display: flex; flex-direction: column;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                                <h4>Índices do Tipo</h4>
+                                <button class="btn-primary btn-small" disabled>+ Adicionar</button>
+                            </div>
+                            <div style="flex: 1; overflow-y: auto;">
+                                <table class="data-table">
+                                    <thead><tr><th>Nome do Índice</th><th>Obrigatório</th></tr></thead>
+                                    <tbody id="table-mapped-indices-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- View: Templates HTML -->
+                <section id="view-templates-html" class="view" style="display: none;">
+                    <div class="glass-panel" style="min-height: 400px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3>Templates RVDD (HTML)</h3>
+                            <button class="btn-primary btn-small" onclick="openTemplateModal()">+ Novo Template</button>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome do Template</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-templates-body">
+                                <tr><td colspan="3" style="text-align:center">Nenhum template cadastrado.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Modal Template -->
+                <div class="modal-overlay" id="modal-template">
+                    <div class="modal-content glass-panel" style="width: 800px; padding: 30px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2>Editor de Template HTML</h2>
+                            <button class="btn-close" onclick="document.getElementById('modal-template').classList.remove('active')">✖</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Nome do Template</label>
+                            <input type="text" id="tpl-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Código HTML (Jinja2)</label>
+                            <textarea id="tpl-html" style="width:100%; height:300px; font-family:monospace; background:#111; color:#0f0; border:1px solid #4ade80; padding:10px; border-radius:4px;"></textarea>
+                        </div>
+                        <p class="text-muted" style="font-size:12px;">Variáveis disponíveis: {{ nome_aluno }}, {{ cpf_aluno }}, {{ curso }}, {{ qrcode_base64 }}</p>
+                        <button class="btn-primary w-100" onclick="saveTemplate()">Salvar Template</button>
+                    </div>
+                </div>
+    <!-- Scripts -->
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+        function getAuthHeaders() {
+            return { 'Authorization': 'Bearer ' + localStorage.getItem('ged_token') };
+        }
+
+        // Tab Navigation
+        document.querySelectorAll('.menu-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+                document.querySelectorAll('.view').forEach(v => {
+                    v.classList.remove('active');
+                    v.style.display = 'none';
+                });
+                
+                item.classList.add('active');
+                const target = item.getAttribute('data-target');
+                const targetView = document.getElementById('view-' + target);
+                if (targetView) {
+                    targetView.classList.add('active');
+                    targetView.style.display = 'block';
+                }
+                
+                document.getElementById('page-title').innerText = item.innerText.trim();
+
+                if(target === 'storage') loadStorageAreas();
+                if(target === 'usuarios') loadUsers();
+            });
+        });
+        
+        async function loadUsers() {
+            // Placeholder para a próxima fase
+            document.getElementById('table-users-body').innerHTML = '<tr><td colspan="4" style="text-align:center">Carregando usuários...</td></tr>';
+        }
+    </script>
+    <script src="js/storage.js"></script>
+    <script src="js/admin_templates.js"></script>
+    <script src="js/admin_workflows.js"></script><script src="js/admin_users.js"></script>
+</body>
+</html>
+
+
+
+
+
+

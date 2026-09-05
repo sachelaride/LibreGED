@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreGED - Acesso</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #1f2937, #111827);
+        }
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-card glass-panel">
+        <div class="logo" style="text-align: center; margin-bottom: 2rem;">
+            <h2>Libre<span>GED</span></h2>
+            <p class="text-muted">Acesso Restrito</p>
+        </div>
+        <form id="login-form">
+            <div class="form-group">
+                <label>Usuário</label>
+                <input type="text" id="login-username" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>Senha</label>
+                <input type="password" id="login-password" required autocomplete="current-password">
+            </div>
+            <p id="login-error" class="error-msg"></p>
+            <button type="submit" class="btn-primary w-100" id="btn-login">Entrar no Sistema</button>
+        </form>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-login');
+            const err = document.getElementById('login-error');
+            
+            btn.innerHTML = 'Processando...';
+            btn.disabled = true;
+            err.innerText = '';
+            
+            const formData = new URLSearchParams();
+            formData.append('username', document.getElementById('login-username').value);
+            formData.append('password', document.getElementById('login-password').value);
+            
+            try {
+                const response = await fetch(`${API_URL}/auth/token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('ged_token', data.access_token);
+                    redirectBasedOnRole(data.access_token);
+                } else {
+                    err.innerText = 'Usuário ou senha inválidos.';
+                    btn.disabled = false;
+                    btn.innerHTML = 'Entrar no Sistema';
+                }
+            } catch (error) {
+                err.innerText = 'Falha ao conectar no servidor. ' + error.message;
+                btn.disabled = false;
+                btn.innerHTML = 'Entrar no Sistema';
+            }
+        });
+
+        function parseJwt(token) {
+            try {
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+                return JSON.parse(jsonPayload);
+            } catch(e) {
+                return null;
+            }
+        }
+
+        function redirectBasedOnRole(token) {
+            const payload = parseJwt(token);
+            if(payload && payload.role === 'admin_global') {
+                window.location.href = 'admin.html';
+            } else {
+                window.location.href = 'app.html';
+            }
+        }
+
+        // Auto redirect if already logged in
+        const token = localStorage.getItem('ged_token');
+        if(token) {
+            const payload = parseJwt(token);
+            // Check expiry
+            const now = Math.floor(Date.now() / 1000);
+            if (payload && payload.exp > now) {
+                redirectBasedOnRole(token);
+            } else {
+                localStorage.removeItem('ged_token');
+            }
+        }
+    </script>
+</body>
+</html>

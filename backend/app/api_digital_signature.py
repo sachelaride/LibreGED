@@ -25,7 +25,7 @@ async def create_signer(
     content = await p12_file.read()
     file_ext = p12_file.filename.split(".")[-1] if p12_file.filename else "p12"
     safe_name = f"cert_{uuid.uuid4()}.{file_ext}"
-    saved_path = save_file(safe_name, content)
+    saved_path = save_file(safe_name, content, db=db)
     
     db_signer = Signer(
         name=name,
@@ -77,7 +77,7 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
     # Salvar o novo XML Assinado por cima
     # Em produção, poderíamos versionar o arquivo.
     file_name = doc.file_path.split("/")[-1].split("\\")[-1]
-    save_file(file_name, signed_xml.encode('utf-8'))
+    save_file(file_name, signed_xml.encode('utf-8'), db=db)
     
     # Atualiza Status
     old_status = doc.status

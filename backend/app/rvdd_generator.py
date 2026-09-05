@@ -1,9 +1,11 @@
-from jinja2 import Environment, FileSystemLoader
+﻿from jinja2 import Environment, FileSystemLoader, Template
 import qrcode
 import base64
 from io import BytesIO
 from pathlib import Path
 import datetime
+from sqlalchemy.orm import Session
+from app import models_templates
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
@@ -26,18 +28,23 @@ def generate_qrcode_base64(data: str) -> str:
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
     return img_str
 
-def generate_rvdd_html(document_id: str, document_title: str) -> str:
+def generate_rvdd_html(document_id: str, document_title: str, db: Session = None, template_id: str = None) -> str:
     """
-    Carrega o template rvdd.html e injeta as variáveis do Diploma.
+    Carrega o template rvdd.html ou do banco de dados e injeta as variáveis do Diploma.
     """
-    template = env.get_template("rvdd.html")
+    if template_id and db:
+        db_template = db.query(models_templates.GEDTemplate).filter_by(id=template_id).first()
+        if db_template:
+            template = Template(db_template.html_content)
+        else:
+            template = env.get_template("rvdd.html")
+    else:
+        template = env.get_template("rvdd.html")
     
     # URL de verificação simulada
     url_validacao = f"https://libreged.edu.br/validar/{document_id}"
     qr_base64 = generate_qrcode_base64(url_validacao)
     
-    # Em produção, esses dados viriam do XML do documento (load_file) ou do banco de dados (extracted_metadata)
-    # Por hora, geramos dados fixos baseados no title para demonstração do RVDD.
     nome_aluno = "Estudante Demonstração"
     if "João" in document_title:
         nome_aluno = "João da Silva"
@@ -48,6 +55,7 @@ def generate_rvdd_html(document_id: str, document_title: str) -> str:
         curso="Sistemas de Informação",
         data_conclusao=datetime.datetime.now().strftime("%d de %B de %Y"),
         qrcode_base64=qr_base64,
+        codigo_validacao=document_id.split('-')[0].upper(),
         url_validacao=url_validacao
     )
     

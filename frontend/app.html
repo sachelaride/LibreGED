@@ -1,0 +1,276 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreGED - Sistema</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+        let currentSignerId = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('ged_token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+            loadPendingDocuments();
+        });
+
+        function logout() {
+            localStorage.removeItem('ged_token');
+            window.location.href = 'login.html';
+        }
+
+        async function registerSigner() {
+            const name = document.getElementById('signer-name').value;
+            const cpf = document.getElementById('signer-cpf').value;
+            const fileInput = document.getElementById('signer-cert');
+            
+            if (!name || !cpf || fileInput.files.length === 0) {
+                alert('Preencha nome, CPF e selecione o certificado .p12');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('role', 'acadêmico');
+            formData.append('cpf', cpf);
+            formData.append('p12_file', fileInput.files[0]);
+            
+            try {
+                const response = await fetch(${API_URL}/signers, {
+                    method: 'POST',
+                    headers: { 'Authorization': Bearer  },
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    currentSignerId = data.id;
+                    document.getElementById('signer-status').style.display = 'block';
+                } else {
+                    alert('Erro ao registrar signatário.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Erro de conexão.');
+            }
+        }
+
+        async function loadPendingDocuments() {
+            // Mock for now. In a real scenario, fetch from /api/documents?status=AGUARDANDO_ASSINATURA
+            const tbody = document.getElementById('table-pending-sign');
+            tbody.innerHTML = 
+                <tr>
+                    <td>Diploma_Engenharia_Pedro.xml</td>
+                    <td><span class="badge" style="background:#eab308">Pendente</span></td>
+                    <td><button class="btn-primary btn-small" onclick="signDocument('mock-id')">Assinar</button></td>
+                </tr>
+            ;
+        }
+
+        async function signDocument(docId) {
+            if (!currentSignerId) {
+                alert('Por favor, configure o seu certificado no cofre primeiro.');
+                return;
+            }
+            const password = document.getElementById('signer-password').value;
+            if (!password) {
+                alert('Digite a senha do certificado para assinar.');
+                return;
+            }
+            
+            // In a real scenario, this calls /api/documents/{docId}/sign
+            // For now, mock success
+            alert('Assinatura Digital ICP-Brasil injetada com sucesso no documento!');
+        }
+    </script>
+</head>
+<body>
+
+    <div class="app-container" id="app-wrapper">
+        <!-- Sidebar Esquerda -->
+        <aside class="sidebar glass-panel" id="main-sidebar">
+            <div class="logo">
+                <h2>Libre<span>GED</span></h2>
+            </div>
+            <nav class="menu">
+                <a href="#" class="menu-item active" data-target="documentos">
+                    <span class="icon">📂</span> Documentos
+                </a>
+                <a href="#" class="menu-item" data-target="assinaturas">
+                    <span class="icon">✍️</span> Assinatura Lote
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="avatar">US</div>
+                    <div class="details">
+                        <p class="name" id="user-display-name">Usuário</p>
+                        <p class="role">Secretaria</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Conteúdo Principal -->
+        <main class="main-content" id="main-content">
+            <header class="topbar">
+                <h1 id="page-title">Documentos</h1>
+                <div class="actions">
+                    <button class="btn-secondary" id="btn-logout" onclick="localStorage.removeItem('ged_token'); window.location.href='login.html'">Sair</button>
+                </div>
+            </header>
+
+            <div class="content-area">
+                
+                <!-- View: Documentos -->
+                <section id="view-documentos" class="view active">
+                    <div class="glass-panel" style="min-height: 400px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3>GED - Repositório Documental</h3>
+                            
+                            <div class="table-actions" style="display: flex; gap: 10px; align-items: center;">
+                                <select id="filter-modality" style="padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white;">
+                                    <option value="ALL" style="color: black;">Todas as Modalidades</option>
+                                    <option value="EAD" style="color: black;">EAD</option>
+                                    <option value="PRESENCIAL" style="color: black;">PRESENCIAL</option>
+                                    <option value="SEMIPRESENCIAL" style="color: black;">SEMI-PRESENCIAL</option>
+                                </select>
+                                <button class="btn-secondary" id="btn-load-docs">Carregar / Atualizar</button>
+                            </div>
+                        </div>
+                        <table class="styled-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Título</th>
+                                    <th>Modalidade</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-docs-body">
+                                <tr><td colspan="5" style="text-align:center">Nenhum documento carregado.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+                
+                <!-- View: Assinaturas -->
+                <section id="view-assinaturas" class="view" style="display: none;">
+                    <div class="glass-panel">
+                        <h3>Módulo de Assinatura Digital (Lote)</h3>
+                        <p class="text-muted">Selecione documentos pendentes e aplique sua assinatura A1.</p>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal para Visualizar a RVDD -->
+    <div class="modal-overlay" id="modal-rvdd">
+        <div class="modal-content glass-panel" style="width: 80%; height: 80vh; padding: 0;">
+            <div class="modal-header" style="padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;">
+                <h3 style="margin: 0;">Visualização RVDD (Diploma Digital)</h3>
+                <button class="btn-close" id="btn-close-modal" onclick="document.getElementById('modal-rvdd').classList.remove('active')">✖</button>
+            </div>
+            <div class="modal-body" style="height: calc(100% - 60px);">
+                <iframe id="rvdd-frame" src="" frameborder="0" style="width: 100%; height: 100%;"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+        let currentSignerId = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('ged_token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+            loadPendingDocuments();
+        });
+
+        function logout() {
+            localStorage.removeItem('ged_token');
+            window.location.href = 'login.html';
+        }
+
+        async function registerSigner() {
+            const name = document.getElementById('signer-name').value;
+            const cpf = document.getElementById('signer-cpf').value;
+            const fileInput = document.getElementById('signer-cert');
+            
+            if (!name || !cpf || fileInput.files.length === 0) {
+                alert('Preencha nome, CPF e selecione o certificado .p12');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('role', 'acadêmico');
+            formData.append('cpf', cpf);
+            formData.append('p12_file', fileInput.files[0]);
+            
+            try {
+                const response = await fetch(${API_URL}/signers, {
+                    method: 'POST',
+                    headers: { 'Authorization': Bearer  },
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    currentSignerId = data.id;
+                    document.getElementById('signer-status').style.display = 'block';
+                } else {
+                    alert('Erro ao registrar signatário.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Erro de conexão.');
+            }
+        }
+
+        async function loadPendingDocuments() {
+            // Mock for now. In a real scenario, fetch from /api/documents?status=AGUARDANDO_ASSINATURA
+            const tbody = document.getElementById('table-pending-sign');
+            tbody.innerHTML = 
+                <tr>
+                    <td>Diploma_Engenharia_Pedro.xml</td>
+                    <td><span class="badge" style="background:#eab308">Pendente</span></td>
+                    <td><button class="btn-primary btn-small" onclick="signDocument('mock-id')">Assinar</button></td>
+                </tr>
+            ;
+        }
+
+        async function signDocument(docId) {
+            if (!currentSignerId) {
+                alert('Por favor, configure o seu certificado no cofre primeiro.');
+                return;
+            }
+            const password = document.getElementById('signer-password').value;
+            if (!password) {
+                alert('Digite a senha do certificado para assinar.');
+                return;
+            }
+            
+            // In a real scenario, this calls /api/documents/{docId}/sign
+            // For now, mock success
+            alert('Assinatura Digital ICP-Brasil injetada com sucesso no documento!');
+        }
+    </script>
+</body>
+</html>
+
+

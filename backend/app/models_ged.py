@@ -1,4 +1,4 @@
-import enum
+﻿import enum
 import uuid
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum, Text
 from sqlalchemy.orm import relationship
@@ -23,7 +23,7 @@ class Signer(Base):
     __tablename__ = "ged_signers"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String, nullable=False) # e.g. "João Reitor"
+    name = Column(String, nullable=False) # e.g. "JoÃ£o Reitor"
     role = Column(String, nullable=False) # e.g. "Reitor"
     cpf = Column(String, nullable=False, unique=True, index=True)
     certificate_path = Column(String, nullable=True) # Path to the .p12/.pfx file
@@ -42,7 +42,7 @@ class ExternalIngestionAudit(Base):
     # We could link this to a generated document, but for now we keep it decoupled.
     document_id = Column(String, ForeignKey("ged_documents.id"), nullable=True)
     
-    # Callback URL para webhook de reconciliação de status
+    # Callback URL para webhook de reconciliaÃ§Ã£o de status
     callback_url = Column(String, nullable=True)
 
 class FilaProcessamento(Base):
@@ -108,3 +108,13 @@ class DocumentTransitionHistory(Base):
     timestamp = Column(DateTime, default=utc_now)
     
     document = relationship("GEDDocument", back_populates="transitions")
+
+class GEDDocumentIndexValue(Base):
+    __tablename__ = "ged_document_index_values"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id = Column(String, ForeignKey("ged_documents.id"), nullable=False, index=True)
+    index_id = Column(String, ForeignKey("ged_indices.id"), nullable=False)
+    value = Column(String, nullable=False)
+    
+    document = relationship("GEDDocument")

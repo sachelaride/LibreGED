@@ -1,11 +1,11 @@
-﻿let currentStorageAreaId = null;
+let currentStorageAreaId = null;
 
 async function loadStorageAreas() {
     const tbody = document.getElementById('table-areas-body');
     tbody.innerHTML = '<tr><td colspan="2" style="text-align:center">Carregando...</td></tr>';
     
     try {
-        const response = await fetch(${API_URL}/storage/areas, {
+        const response = await fetch(`${API_URL}/storage/areas`, {
             headers: getAuthHeaders()
         });
         if(!response.ok) throw new Error("Erro ao carregar áreas");

@@ -10,6 +10,9 @@ from app.search import SearchService
 import uuid
 import json
 
+from app.auth import get_current_active_user, check_document_type_access
+from app.models import User
+
 router = APIRouter()
 
 @router.post("/api/documents/upload", response_model=GEDDocumentResponse, tags=["GED - Execução"])
@@ -18,11 +21,14 @@ async def upload_document(
     document_type_id: str = Form(...),
     indices_json: str = Form("[]"), # Expects JSON string of list of dicts [{"index_id": "...", "value": "..."}]
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     doc_type = db.query(DocumentType).filter(DocumentType.id == document_type_id).first()
     if not doc_type:
         raise HTTPException(status_code=400, detail="Tipo de Documento inválido.")
+        
+    check_document_type_access(db, current_user, document_type_id)
         
     from app.upload_validation import scan_for_malware
     content = await file.read()
@@ -38,6 +44,8 @@ async def upload_document(
         file_path=saved_path,
         category_id=doc_type.id, # Backward compatibility for existing schemas
         status=GEDDocumentStatus.PENDENTE_VALIDACAO,
+        institution_id=current_user.institution_id,
+        uploaded_by_user_id=current_user.id
     )
     db.add(db_doc)
     db.flush() # Get the document ID
@@ -74,6 +82,7 @@ async def upload_document(
                 document_id=db_doc.id,
                 from_status=None,
                 to_status=GEDDocumentStatus.PENDENTE_VALIDACAO,
+                changed_by_user_id=current_user.id,
                 comments=f"Workflow iniciado no estado: {initial_state.label}"
             )
             db.add(transition)

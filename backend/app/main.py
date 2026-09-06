@@ -23,6 +23,9 @@ from app import models
 from app.search import search_service
 from app.retention import RetentionService
 from app.auth import get_current_active_user, role_checker, check_institution_access
+from app.filewatch import run_filewatch_cycle
+from fastapi_utils.tasks import repeat_every
+
 from app.schemas_historico import Model as HistoricoPayload
 from app.historico_generator import generate_historico_xml
 from app.schemas_diploma import Model as DiplomaPayload
@@ -89,6 +92,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="LibreGED API", version="0.1.0", openapi_tags=tags_metadata, lifespan=lifespan)
 
+@app.on_event("startup")
+@repeat_every(seconds=10)
+async def filewatch_task():
+    try:
+        await run_filewatch_cycle()
+    except Exception as e:
+        print(f"Erro no ciclo FileWatch: {e}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # Para desenvolvimento local
@@ -100,6 +111,9 @@ app.add_middleware(
 # Role definitions for dependency injection
 AdminOnly = Depends(role_checker(["admin_global"]))
 ClinicRoles = Depends(role_checker(["admin_global", "gestor_clinica", "recepcao", "academico", "orientador"]))
+
+from app.api_admin import router as admin_router
+app.include_router(admin_router)
 
 class InstitutionCreate(BaseModel):
     name: str = Field(..., min_length=2)
@@ -605,12 +619,16 @@ def update_document_status(
     document_id: str, 
     payload: DocumentStatusUpdate, 
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """Transiciona o documento de um estado para outro (MÃ¡quina de Estados)."""
     db_doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
     if not db_doc:
         raise HTTPException(status_code=404, detail="Document not found")
+        
+    from app.auth import verify_document_ownership
+    verify_document_ownership(current_user, db_doc)
         
     old_status = db_doc.status
     
@@ -618,12 +636,18 @@ def update_document_status(
     if old_status == GEDDocumentStatus.REJEITADO and payload.status == GEDDocumentStatus.ASSINADO:
         raise HTTPException(status_code=400, detail="NÃ£o Ã© possÃ­vel transicionar de REJEITADO direto para ASSINADO")
         
+    # Segregation of Duties (SoD)
+    if payload.status in [GEDDocumentStatus.VALIDO, GEDDocumentStatus.ASSINADO, GEDDocumentStatus.REJEITADO]:
+        if db_doc.uploaded_by_user_id == current_user.id and current_user.role != "admin_global":
+            raise HTTPException(status_code=403, detail="Segregation of duties: You cannot validate/approve a document you uploaded")
+        
     db_doc.status = payload.status
     
     transition = DocumentTransitionHistory(
         document_id=db_doc.id,
         from_status=old_status,
         to_status=payload.status,
+        changed_by_user_id=current_user.id,
         comments=payload.comments
     )
     db.add(transition)
@@ -796,10 +820,17 @@ def search_documents(
 
 
 @app.post("/api/documents/{document_id}/representation")
-def generate_document_representation(document_id: str, db: Session = Depends(get_db)):
+def generate_document_representation(
+    document_id: str, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
     document = db.query(models.Document).filter(models.Document.id == document_id).first()
     if document is None:
         return {"detail": "document not found"}
+        
+    from app.auth import verify_document_ownership
+    verify_document_ownership(current_user, document)
 
     student = db.query(models.Student).filter(models.Student.id == document.student_id).first()
     enrollment = db.query(models.Enrollment).filter(models.Enrollment.student_id == document.student_id).first()
@@ -817,16 +848,23 @@ def generate_document_representation(document_id: str, db: Session = Depends(get
         visual_type="academic-card",
         summary=summary,
     )
-    add_audit(db, "document", document_id, "representation_generated", "Academic visual representation generated")
+    add_audit(db, "document", document_id, "representation_generated", "Academic visual representation generated", current_user.id)
     db.commit()
     return representation.model_dump()
 
 
 @app.get("/api/documents/{document_id}/retention")
-def get_document_retention_policy(document_id: str, db: Session = Depends(get_db)):
+def get_document_retention_policy(
+    document_id: str, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
     document = db.query(models.Document).filter(models.Document.id == document_id).first()
     if document is None:
         return {"detail": "document not found"}
+        
+    from app.auth import verify_document_ownership
+    verify_document_ownership(current_user, document)
 
     retention_years = 5 if document.status in {"validated", "signed", "archived"} else 3
     retention = RetentionPolicy(
@@ -835,7 +873,7 @@ def get_document_retention_policy(document_id: str, db: Session = Depends(get_db
         status="active",
         expires_at=f"{datetime.now(UTC).year + retention_years}-12-31",
     )
-    add_audit(db, "document", document_id, "retention_checked", "Retention policy verified")
+    add_audit(db, "document", document_id, "retention_checked", "Retention policy verified", current_user.id)
     db.commit()
     return retention.model_dump()
 
@@ -853,7 +891,7 @@ def verify_audit_chain(db: Session = Depends(get_db)):
     last_hash = "genesis"
     
     for event in events:
-        payload = f"{event.id}:{event.entity}:{event.entity_id}:{event.action}:{event.details}:{last_hash}"
+        payload = f"{event.id}:{event.entity}:{event.entity_id}:{event.action}:{event.details}:{event.user_id}:{last_hash}"
         expected_signature = sha256(payload.encode("utf-8")).hexdigest()
         
         if event.hash_signature != expected_signature:
@@ -904,11 +942,18 @@ def get_retention_statistics(db: Session = Depends(get_db)):
 
 
 @app.get("/api/documents/{document_id}/lifecycle")
-def get_document_lifecycle(document_id: str, db: Session = Depends(get_db)):
+def get_document_lifecycle(
+    document_id: str, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
     """Obter informaÃ§Ãµes de ciclo de vida de um documento especÃ­fico."""
     document = db.query(models.Document).filter(models.Document.id == document_id).first()
     if document is None:
         return {"detail": "document not found"}
+        
+    from app.auth import verify_document_ownership
+    verify_document_ownership(current_user, document)
     
     retention_years = RetentionService.get_retention_period(document.document_type)
     expiry_date = RetentionService.calculate_expiry_date(document.created_at, document.document_type)
@@ -937,12 +982,12 @@ def get_document_lifecycle(document_id: str, db: Session = Depends(get_db)):
 
 
 # ==================== Helper Functions ====================
-def add_audit(db: Session, entity: str, entity_id: str, action: str, details: str):
+def add_audit(db: Session, entity: str, entity_id: str, action: str, details: str, user_id: str = None):
     last_event = db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.desc()).first()
     last_hash = last_event.hash_signature if last_event and last_event.hash_signature else "genesis"
     
     event_id = str(uuid4())
-    payload = f"{event_id}:{entity}:{entity_id}:{action}:{details}:{last_hash}"
+    payload = f"{event_id}:{entity}:{entity_id}:{action}:{details}:{user_id}:{last_hash}"
     signature = sha256(payload.encode("utf-8")).hexdigest()
 
     audit_event = models.AuditEvent(
@@ -952,6 +997,7 @@ def add_audit(db: Session, entity: str, entity_id: str, action: str, details: st
         entity_id=entity_id,
         action=action,
         details=details,
+        user_id=user_id,
         hash_signature=signature,
     )
     db.add(audit_event)

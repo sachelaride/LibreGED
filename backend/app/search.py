@@ -33,33 +33,65 @@ class SearchService:
         db.commit()
         return True
 
-    def search(self, db: Session, query_string: str, page: int = 1, size: int = 50) -> Dict:
+    def search(self, db: Session, query_string: str, user=None, allowed_document_type_ids: List[str] = None, page: int = 1, size: int = 50) -> Dict:
         """Busca em milissegundos cruzando Título, Metadados (Índices) e Conteúdo Extraído (OCR)."""
         safe_query = f"{query_string}*" if query_string else ""
         
         if not safe_query:
             return {"items": [], "total": 0, "page": page, "size": size, "pages": 0}
             
+        # Condições RBAC
+        rbac_joins = ""
+        rbac_where = ""
+        params = {"q": safe_query}
+        
+        if user and user.role != "admin_global":
+            rbac_joins = "JOIN documents doc ON doc.id = ged_documents_fts.document_id"
+            
+            # Filtro por Campus e Instituição
+            if user.campus_id:
+                rbac_where += " AND doc.campus_id = :campus_id"
+                params["campus_id"] = user.campus_id
+            elif user.institution_id:
+                # Gestor global da instituição
+                rbac_where += " AND doc.institution_id = :inst_id"
+                params["inst_id"] = user.institution_id
+                
+            # Filtro por Document Types permitidos
+            if allowed_document_type_ids is not None:
+                if not allowed_document_type_ids:
+                    # Se a lista estiver vazia e não for admin global, não acha nada (fail-closed)
+                    return {"items": [], "total": 0, "page": page, "size": size, "pages": 0}
+                
+                placeholders = ", ".join([f":dt_{i}" for i in range(len(allowed_document_type_ids))])
+                rbac_where += f" AND doc.document_type IN ({placeholders})"
+                for i, dt_id in enumerate(allowed_document_type_ids):
+                    params[f"dt_{i}"] = dt_id
+            
         # Obter o total
-        count_query = text("""
+        count_query = text(f"""
             SELECT COUNT(*) 
             FROM ged_documents_fts 
-            WHERE ged_documents_fts MATCH :q
+            {rbac_joins}
+            WHERE ged_documents_fts MATCH :q {rbac_where}
         """)
-        total = db.execute(count_query, {"q": safe_query}).scalar() or 0
+        total = db.execute(count_query, params).scalar() or 0
         
         # Paginação
         offset = (page - 1) * size
+        params["limit"] = size
+        params["offset"] = offset
         
-        query = text("""
-            SELECT document_id, title, snippet(ged_documents_fts, 2, '<b>', '</b>', '...', 15) as snippet
+        query = text(f"""
+            SELECT ged_documents_fts.document_id, ged_documents_fts.title, snippet(ged_documents_fts, 2, '<b>', '</b>', '...', 15) as snippet
             FROM ged_documents_fts 
-            WHERE ged_documents_fts MATCH :q
+            {rbac_joins}
+            WHERE ged_documents_fts MATCH :q {rbac_where}
             ORDER BY rank
             LIMIT :limit OFFSET :offset
         """)
         
-        results = db.execute(query, {"q": safe_query, "limit": size, "offset": offset}).fetchall()
+        results = db.execute(query, params).fetchall()
         
         hits = []
         for r in results:

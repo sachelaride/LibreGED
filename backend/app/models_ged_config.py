@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.models import Base, utc_now
@@ -40,3 +40,13 @@ class DocumentTypeIndex(Base):
     index = relationship("GedIndex")
 
 
+class UserDocumentType(Base):
+    __tablename__ = "ged_user_document_types"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    document_type_id = Column(String, ForeignKey("ged_document_types.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now)
+    
+    # We can add relationships here if needed, but normally we just query this table
+    # or add a relationship on User (via models.py string ref) or DocumentType.

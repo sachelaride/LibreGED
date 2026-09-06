@@ -32,7 +32,7 @@ def test_ocr_upload():
         pass
         
     # 2. Upload de um arquivo mock via Scanner
-    file_content = b"fake image bytes representing an RG"
+    file_content = b"\xff\xd8fake image bytes representing an RG"
     
     upload_res = client.post(
         "/api/documents/upload",

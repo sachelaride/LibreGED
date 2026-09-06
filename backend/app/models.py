@@ -23,6 +23,36 @@ class Institution(Base):
     enrollments = relationship("Enrollment", back_populates="institution", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="institution", cascade="all, delete-orphan")
     users = relationship("User", back_populates="institution", cascade="all, delete-orphan")
+    campuses = relationship("Campus", back_populates="institution", cascade="all, delete-orphan")
+    settings = relationship("InstitutionSettings", back_populates="institution", uselist=False, cascade="all, delete-orphan")
+
+
+class InstitutionSettings(Base):
+    __tablename__ = "institution_settings"
+
+    id = Column(String, primary_key=True, index=True)
+    institution_id = Column(String, ForeignKey("institutions.id"), nullable=False, unique=True, index=True)
+    max_upload_size_mb = Column(Integer, default=10)
+    allowed_mime_types = Column(String, default="application/pdf,image/jpeg,image/png")
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    institution = relationship("Institution", back_populates="settings")
+
+
+class Campus(Base):
+    __tablename__ = "campuses"
+
+    id = Column(String, primary_key=True, index=True)
+    institution_id = Column(String, ForeignKey("institutions.id"), nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now)
+
+    institution = relationship("Institution", back_populates="campuses")
+    users = relationship("User", back_populates="campus")
+    students = relationship("Student", back_populates="campus")
+    enrollments = relationship("Enrollment", back_populates="campus")
+    documents = relationship("Document", back_populates="campus")
 
 
 class User(Base):
@@ -33,9 +63,11 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False)  # admin_global, gestor_clinica, recepcao, academico, orientador
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=True, index=True)
+    campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now)
 
     institution = relationship("Institution", back_populates="users")
+    campus = relationship("Campus", back_populates="users")
 
 
 class Student(Base):
@@ -47,9 +79,11 @@ class Student(Base):
     birth_date = Column(String, nullable=False)  # Stored as ISO string
     cpf = Column(String, nullable=False, unique=True, index=True)
     email = Column(String, nullable=False, index=True)
+    campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now)
 
     institution = relationship("Institution", back_populates="students")
+    campus = relationship("Campus", back_populates="students")
     guardians = relationship("Guardian", back_populates="student", cascade="all, delete-orphan")
     enrollments = relationship("Enrollment", back_populates="student", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="student", cascade="all, delete-orphan")
@@ -79,9 +113,11 @@ class Enrollment(Base):
     class_name = Column(String, nullable=False)
     year = Column(Integer, nullable=False, index=True)
     status = Column(String, nullable=False, index=True)  # active, inactive, transferred, graduated
+    campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now)
 
     institution = relationship("Institution", back_populates="enrollments")
+    campus = relationship("Campus", back_populates="enrollments")
     student = relationship("Student", back_populates="enrollments")
     documents = relationship("Document", back_populates="enrollment", cascade="all, delete-orphan")
 
@@ -96,9 +132,11 @@ class Document(Base):
     document_type = Column(String, nullable=False, index=True)  # historico, contrato, diploma, etc
     title = Column(String, nullable=False)
     status = Column(String, nullable=False, index=True)  # draft, pending, validated, signed, archived, rejected
+    campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now, index=True)
 
     institution = relationship("Institution", back_populates="documents")
+    campus = relationship("Campus", back_populates="documents")
     student = relationship("Student", back_populates="documents")
     enrollment = relationship("Enrollment", back_populates="documents")
     versions = relationship("DocumentVersion", back_populates="document", cascade="all, delete-orphan")
@@ -150,10 +188,28 @@ class AuditEvent(Base):
     entity_id = Column(String, nullable=False, index=True)
     action = Column(String, nullable=False, index=True)
     details = Column(String)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now, index=True)
     hash_signature = Column(String, nullable=True)
 
     document = relationship("Document", back_populates="audit_events")
+
+class IngestionJob(Base):
+    __tablename__ = "ingestion_jobs"
+
+    id = Column(String, primary_key=True, index=True)
+    institution_id = Column(String, ForeignKey("institutions.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, index=True)  # PENDING, PROCESSING, QUARANTINE, COMPLETED, FAILED, INDEX_PENDING
+    file_path = Column(String, nullable=False)
+    manifest_path = Column(String, nullable=False)
+    file_hash = Column(String, nullable=True)
+    error_message = Column(String, nullable=True)
+    retries = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=utc_now, index=True)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+    completed_at = Column(DateTime, nullable=True)
+
+    institution = relationship("Institution")
 
 # Import GED models so they are registered with Base metadata
 from app import models_ged

@@ -1,5 +1,5 @@
-﻿function openUserModal() {
-    const html = 
+function openUserModal() {
+    const html = `
         <div class="modal-overlay active" id="modal-user">
             <div class="modal-content glass-panel" style="width: 400px; padding: 30px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -24,7 +24,7 @@
                 <button class="btn-primary w-100" onclick="saveUser()">Salvar</button>
             </div>
         </div>
-    ;
+    `;
     document.body.insertAdjacentHTML('beforeend', html);
 }
 
@@ -33,21 +33,21 @@ async function loadUsers() {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Carregando...</td></tr>';
     
     try {
-        const response = await fetch(${API_URL}/users, { headers: getAuthHeaders() });
+        const response = await fetch(`${API_URL}/users`, { headers: getAuthHeaders() });
         const users = await response.json();
         tbody.innerHTML = '';
         users.forEach(u => {
             const tr = document.createElement('tr');
-            tr.innerHTML = 
-                <td></td>
-                <td><span class="badge "></span></td>
+            tr.innerHTML = `
+                <td>${u.username}</td>
+                <td><span class="badge ${u.role === 'admin' ? 'badge-danger' : 'badge-primary'}">${u.role}</span></td>
                 <td>Ativo</td>
                 <td>-</td>
-            ;
+            `;
             tbody.appendChild(tr);
         });
     } catch(e) {
-        tbody.innerHTML = <tr><td colspan="4" style="color:red"></td></tr>;
+        tbody.innerHTML = `<tr><td colspan="4" style="color:red">Erro: ${e.message}</td></tr>`;
     }
 }
 
@@ -57,7 +57,7 @@ async function saveUser() {
     const role = document.getElementById('new-role').value;
     
     try {
-        const response = await fetch(${API_URL}/users, {
+        const response = await fetch(`${API_URL}/users`, {
             method: 'POST',
             headers: {
                 ...getAuthHeaders(),

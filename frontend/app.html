@@ -1,172 +1,159 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LibreGED - Sistema</title>
+    <title>LibreGED - Operacional</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <!-- Icon set via CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
     <script>
-        const API_URL = 'http://localhost:8000/api';
-        let currentSignerId = null;
+        // Authentication check
+        const token = localStorage.getItem('ged_token');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+        
+        function parseJwt(token) {
+            try {
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+                return JSON.parse(jsonPayload);
+            } catch(e) { return null; }
+        }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const token = localStorage.getItem('ged_token');
-            if (!token) {
-                window.location.href = 'login.html';
-                return;
-            }
-            loadPendingDocuments();
-        });
-
-        function logout() {
+        const payload = parseJwt(token);
+        if (!payload || payload.exp < Math.floor(Date.now() / 1000)) {
             localStorage.removeItem('ged_token');
             window.location.href = 'login.html';
         }
-
-        async function registerSigner() {
-            const name = document.getElementById('signer-name').value;
-            const cpf = document.getElementById('signer-cpf').value;
-            const fileInput = document.getElementById('signer-cert');
-            
-            if (!name || !cpf || fileInput.files.length === 0) {
-                alert('Preencha nome, CPF e selecione o certificado .p12');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('name', name);
-            formData.append('role', 'acadêmico');
-            formData.append('cpf', cpf);
-            formData.append('p12_file', fileInput.files[0]);
-            
-            try {
-                const response = await fetch(${API_URL}/signers, {
-                    method: 'POST',
-                    headers: { 'Authorization': Bearer  },
-                    body: formData
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    currentSignerId = data.id;
-                    document.getElementById('signer-status').style.display = 'block';
-                } else {
-                    alert('Erro ao registrar signatário.');
-                }
-            } catch (err) {
-                console.error(err);
-                alert('Erro de conexão.');
-            }
-        }
-
-        async function loadPendingDocuments() {
-            // Mock for now. In a real scenario, fetch from /api/documents?status=AGUARDANDO_ASSINATURA
-            const tbody = document.getElementById('table-pending-sign');
-            tbody.innerHTML = 
-                <tr>
-                    <td>Diploma_Engenharia_Pedro.xml</td>
-                    <td><span class="badge" style="background:#eab308">Pendente</span></td>
-                    <td><button class="btn-primary btn-small" onclick="signDocument('mock-id')">Assinar</button></td>
-                </tr>
-            ;
-        }
-
-        async function signDocument(docId) {
-            if (!currentSignerId) {
-                alert('Por favor, configure o seu certificado no cofre primeiro.');
-                return;
-            }
-            const password = document.getElementById('signer-password').value;
-            if (!password) {
-                alert('Digite a senha do certificado para assinar.');
-                return;
-            }
-            
-            // In a real scenario, this calls /api/documents/{docId}/sign
-            // For now, mock success
-            alert('Assinatura Digital ICP-Brasil injetada com sucesso no documento!');
+        
+        // Prevent admin from using this panel
+        if(payload && (payload.role === 'admin_global' || payload.role === 'gestor_clinica')) {
+            window.location.href = 'admin.html';
         }
     </script>
-</head>
-<body>
 
-    <div class="app-container" id="app-wrapper">
-        <!-- Sidebar Esquerda -->
-        <aside class="sidebar glass-panel" id="main-sidebar">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar glass-panel">
             <div class="logo">
                 <h2>Libre<span>GED</span></h2>
             </div>
-            <nav class="menu">
-                <a href="#" class="menu-item active" data-target="documentos">
-                    <span class="icon">📂</span> Documentos
+            
+            <div style="flex-grow: 1; padding: 20px 0;">
+                <a href="#search" class="menu-item active" data-target="search">
+                    <i class="fa-solid fa-magnifying-glass" style="margin-right: 12px; font-size:18px;"></i>
+                    Busca de Documentos
                 </a>
-                <a href="#" class="menu-item" data-target="assinaturas">
-                    <span class="icon">✍️</span> Assinatura Lote
+                <a href="#academic" class="menu-item" data-target="academic">
+                    <i class="fa-solid fa-graduation-cap" style="margin-right: 12px; font-size:18px;"></i>
+                    Dossiê Acadêmico
                 </a>
-            </nav>
+                <a href="#uploads" class="menu-item" data-target="uploads">
+                    <i class="fa-solid fa-cloud-arrow-up" style="margin-right: 12px; font-size:18px;"></i>
+                    Meus Uploads
+                </a>
+            </div>
+
             <div class="sidebar-footer">
                 <div class="user-info">
-                    <div class="avatar">US</div>
+                    <div class="avatar" id="user-avatar">?</div>
                     <div class="details">
-                        <p class="name" id="user-display-name">Usuário</p>
-                        <p class="role">Secretaria</p>
+                        <div class="name" id="user-name">Usuário</div>
+                        <div class="role" id="user-role">Secretaria</div>
                     </div>
                 </div>
-            </div>
-        </aside>
-
-        <!-- Conteúdo Principal -->
-        <main class="main-content" id="main-content">
-            <header class="topbar">
-                <h1 id="page-title">Documentos</h1>
-                <div class="actions">
-                    <button class="btn-secondary" id="btn-logout" onclick="localStorage.removeItem('ged_token'); window.location.href='login.html'">Sair</button>
+                <div class="mt-20">
+                    <button class="btn-secondary w-100" onclick="logout()">
+                        <i class="fa-solid fa-right-from-bracket" style="margin-right:8px;"></i> Sair
+                    </button>
                 </div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="topbar glass-panel">
+                <h1 id="page-title">Busca Global</h1>
             </header>
 
             <div class="content-area">
                 
-                <!-- View: Documentos -->
-                <section id="view-documentos" class="view active">
-                    <div class="glass-panel" style="min-height: 400px; padding: 20px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                            <h3>GED - Repositório Documental</h3>
-                            
-                            <div class="table-actions" style="display: flex; gap: 10px; align-items: center;">
-                                <select id="filter-modality" style="padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white;">
-                                    <option value="ALL" style="color: black;">Todas as Modalidades</option>
-                                    <option value="EAD" style="color: black;">EAD</option>
-                                    <option value="PRESENCIAL" style="color: black;">PRESENCIAL</option>
-                                    <option value="SEMIPRESENCIAL" style="color: black;">SEMI-PRESENCIAL</option>
-                                </select>
-                                <button class="btn-secondary" id="btn-load-docs">Carregar / Atualizar</button>
-                            </div>
+                <!-- View: Busca -->
+                <section id="view-search" class="view active">
+                    <div class="glass-panel" style="padding: 30px; text-align:center; min-height: 400px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                        <h2 style="font-size: 36px; margin-bottom: 20px;">O que você procura?</h2>
+                        <div style="width: 100%; max-width: 600px; display:flex; gap:10px;">
+                            <input type="text" id="search-query" class="form-control" placeholder="Buscar por CPF, nome, código..." style="padding: 16px; font-size: 16px; width: 100%; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;">
+                            <button class="btn-primary" onclick="performSearch()" style="padding: 16px 30px;"><i class="fa-solid fa-search"></i></button>
                         </div>
-                        <table class="styled-table">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Título</th>
-                                    <th>Modalidade</th>
-                                    <th>Status</th>
-                                    <th>Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-docs-body">
-                                <tr><td colspan="5" style="text-align:center">Nenhum documento carregado.</td></tr>
-                            </tbody>
-                        </table>
+                        <div id="search-results" style="margin-top: 40px; width: 100%; max-width: 800px; text-align:left;">
+                            <p class="text-muted" style="text-align:center;">Digite um termo para começar a busca.</p>
+                        </div>
                     </div>
                 </section>
-                
-                <!-- View: Assinaturas -->
-                <section id="view-assinaturas" class="view" style="display: none;">
-                    <div class="glass-panel">
-                        <h3>Módulo de Assinatura Digital (Lote)</h3>
-                        <p class="text-muted">Selecione documentos pendentes e aplique sua assinatura A1.</p>
+
+                <!-- View: Dossiê Acadêmico -->
+                <section id="view-academic" class="view">
+                    <div class="glass-panel" style="padding: 30px; min-height: 400px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                            <h2>Novo Dossiê Acadêmico</h2>
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:30px;">
+                            <!-- Formulario Metadata -->
+                            <div>
+                                <div class="form-group" style="margin-bottom:15px;">
+                                    <label style="display:block; margin-bottom:5px; color:var(--text-muted);">Nome do Aluno</label>
+                                    <input type="text" id="student-name" style="width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px;">
+                                </div>
+                                <div class="form-group" style="margin-bottom:15px;">
+                                    <label style="display:block; margin-bottom:5px; color:var(--text-muted);">CPF</label>
+                                    <input type="text" id="student-cpf" style="width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px;">
+                                </div>
+                                <div class="form-group" style="margin-bottom:25px;">
+                                    <label style="display:block; margin-bottom:5px; color:var(--text-muted);">Matrícula (Opcional)</label>
+                                    <input type="text" id="student-reg" style="width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px;">
+                                </div>
+                                <button class="btn-primary w-100" onclick="createDossier()">Avançar para Upload</button>
+                            </div>
+                            <!-- Área de Upload (Iniciamente opaca/desabilitada) -->
+                            <div id="upload-zone" style="opacity: 0.5; pointer-events:none;">
+                                <div style="border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 40px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease;">
+                                    <i class="fa-solid fa-file-arrow-up" style="font-size: 48px; color: var(--primary); margin-bottom:20px;"></i>
+                                    <h3>Arraste documentos aqui</h3>
+                                    <p class="text-muted" style="margin-top:10px;">ou clique para selecionar</p>
+                                    <input type="file" id="file-input" style="display:none;" multiple>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- View: Uploads -->
+                <section id="view-uploads" class="view">
+                    <div class="glass-panel" style="padding: 30px; min-height: 400px;">
+                        <h2>Meus Uploads Recentes</h2>
+                        <table class="styled-table mt-20" style="width: 100%; border-collapse: collapse; margin-top:20px;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                                    <th style="padding: 15px;">Arquivo</th>
+                                    <th style="padding: 15px;">Data</th>
+                                    <th style="padding: 15px;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-my-uploads-body">
+                                <tr><td colspan="3" style="text-align:center; padding:20px;">Nenhum upload recente.</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </section>
 
@@ -174,106 +161,54 @@
         </main>
     </div>
 
-    <!-- Modal para Visualizar a RVDD -->
-    <div class="modal-overlay" id="modal-rvdd">
-        <div class="modal-content glass-panel" style="width: 80%; height: 80vh; padding: 0;">
-            <div class="modal-header" style="padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;">
-                <h3 style="margin: 0;">Visualização RVDD (Diploma Digital)</h3>
-                <button class="btn-close" id="btn-close-modal" onclick="document.getElementById('modal-rvdd').classList.remove('active')">✖</button>
-            </div>
-            <div class="modal-body" style="height: calc(100% - 60px);">
-                <iframe id="rvdd-frame" src="" frameborder="0" style="width: 100%; height: 100%;"></iframe>
-            </div>
-        </div>
-    </div>
-
     <!-- Scripts -->
     <script>
         const API_URL = 'http://localhost:8000/api';
-        let currentSignerId = null;
+        function getAuthHeaders() {
+            return { 'Authorization': 'Bearer ' + localStorage.getItem('ged_token') };
+        }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const token = localStorage.getItem('ged_token');
-            if (!token) {
-                window.location.href = 'login.html';
-                return;
-            }
-            loadPendingDocuments();
-        });
+        // Setup User Info
+        if(payload) {
+            document.getElementById('user-name').innerText = payload.sub || 'Usuário';
+            document.getElementById('user-avatar').innerText = (payload.sub || 'U').charAt(0).toUpperCase();
+        }
 
         function logout() {
             localStorage.removeItem('ged_token');
             window.location.href = 'login.html';
         }
 
-        async function registerSigner() {
-            const name = document.getElementById('signer-name').value;
-            const cpf = document.getElementById('signer-cpf').value;
-            const fileInput = document.getElementById('signer-cert');
+        // Router (Hash Based)
+        function handleRoute() {
+            const hash = window.location.hash.substring(1) || 'search';
             
-            if (!name || !cpf || fileInput.files.length === 0) {
-                alert('Preencha nome, CPF e selecione o certificado .p12');
-                return;
+            // Update menu
+            document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+            const activeMenu = document.querySelector(`.menu-item[data-target="${hash}"]`);
+            if(activeMenu) {
+                activeMenu.classList.add('active');
+                document.getElementById('page-title').innerText = activeMenu.innerText.trim();
             }
-            
-            const formData = new FormData();
-            formData.append('name', name);
-            formData.append('role', 'acadêmico');
-            formData.append('cpf', cpf);
-            formData.append('p12_file', fileInput.files[0]);
-            
-            try {
-                const response = await fetch(${API_URL}/signers, {
-                    method: 'POST',
-                    headers: { 'Authorization': Bearer  },
-                    body: formData
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    currentSignerId = data.id;
-                    document.getElementById('signer-status').style.display = 'block';
-                } else {
-                    alert('Erro ao registrar signatário.');
-                }
-            } catch (err) {
-                console.error(err);
-                alert('Erro de conexão.');
+
+            // Update Views
+            document.querySelectorAll('.view').forEach(v => {
+                v.classList.remove('active');
+                v.style.display = 'none'; // reset transition
+            });
+            const activeView = document.getElementById('view-' + hash);
+            if(activeView) {
+                // trick to restart animation
+                setTimeout(() => {
+                    activeView.style.display = 'block';
+                    activeView.classList.add('active');
+                }, 10);
             }
         }
 
-        async function loadPendingDocuments() {
-            // Mock for now. In a real scenario, fetch from /api/documents?status=AGUARDANDO_ASSINATURA
-            const tbody = document.getElementById('table-pending-sign');
-            tbody.innerHTML = 
-                <tr>
-                    <td>Diploma_Engenharia_Pedro.xml</td>
-                    <td><span class="badge" style="background:#eab308">Pendente</span></td>
-                    <td><button class="btn-primary btn-small" onclick="signDocument('mock-id')">Assinar</button></td>
-                </tr>
-            ;
-        }
-
-        async function signDocument(docId) {
-            if (!currentSignerId) {
-                alert('Por favor, configure o seu certificado no cofre primeiro.');
-                return;
-            }
-            const password = document.getElementById('signer-password').value;
-            if (!password) {
-                alert('Digite a senha do certificado para assinar.');
-                return;
-            }
-            
-            // In a real scenario, this calls /api/documents/{docId}/sign
-            // For now, mock success
-            alert('Assinatura Digital ICP-Brasil injetada com sucesso no documento!');
-        }
+        window.addEventListener('hashchange', handleRoute);
+        window.addEventListener('DOMContentLoaded', handleRoute);
     </script>
+    <script src="js/app_operations.js"></script>
 </body>
 </html>
-
-
-
-
-

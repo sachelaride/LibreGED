@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -15,7 +15,9 @@
         const token = localStorage.getItem('ged_token');
         if(!token) window.location.href = 'login.html';
         const payload = parseJwt(token);
-        if(!payload || payload.role !== 'admin_global') window.location.href = 'login.html';
+        if(!payload || (payload.role !== 'admin_global' && payload.role !== 'gestor_clinica')) {
+            window.location.href = 'login.html';
+        }
     </script>
 </head>
 <body>
@@ -30,17 +32,33 @@
                 <a href="#" class="menu-item active" data-target="dashboard">
                     <span class="icon">📊</span> Painel de Controle
                 </a>
-                <a href="#" class="menu-item" data-target="usuarios">
+                
+                <!-- Admin Global Somente -->
+                <a href="#" class="menu-item role-admin-global" data-target="usuarios">
                     <span class="icon">👥</span> Gestão de Usuários
                 </a>
-                <a href="#" class="menu-item" data-target="storage">
+                <a href="#" class="menu-item role-admin-global" data-target="storage">
                     <span class="icon">🗄️</span> Armazenamento
                 </a>
-                <a href="#" class="menu-item" data-target="workflows">
+                <a href="#" class="menu-item role-admin-global" data-target="workflows">
                     <span class="icon">🔄</span> Workflows
                 </a>
-                <a href="#" class="menu-item" data-target="templates">
+                <a href="#" class="menu-item role-admin-global" data-target="templates">
                     <span class="icon">📄</span> Templates (RVDD)
+                </a>
+
+                <!-- Gestor Clínica Somente -->
+                <a href="#" class="menu-item role-gestor-clinica" data-target="settings" style="display: none;">
+                    <span class="icon">⚙️</span> Configurações
+                </a>
+                <a href="#" class="menu-item role-gestor-clinica" data-target="indices" style="display: none;">
+                    <span class="icon">🏷️</span> Índices e Máscaras
+                </a>
+                <a href="#" class="menu-item role-gestor-clinica" data-target="doc-types" style="display: none;">
+                    <span class="icon">📁</span> Tipos Documentais
+                </a>
+                <a href="#" class="menu-item role-gestor-clinica" data-target="ingestions" style="display: none;">
+                    <span class="icon">⏳</span> Fila de Ingestão
                 </a>
             </nav>
             <div class="sidebar-footer">
@@ -107,8 +125,8 @@
                             </div>
                             <div style="padding: 15px;">
                                 <ul style="list-style: none; padding: 0; margin: 0;">
-                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;"><span>Índices e Máscaras</span> <span>→</span></li>
-                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;"><span>Tipos de Documentos</span> <span>→</span></li>
+                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; cursor:pointer;" onclick="document.querySelector('[data-target=indices]').click()"><span>Índices e Máscaras</span> <span>→</span></li>
+                                    <li style="padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; cursor:pointer;" onclick="document.querySelector('[data-target=doc-types]').click()"><span>Tipos de Documentos</span> <span>→</span></li>
                                     <li style="padding: 10px 0; display: flex; justify-content: space-between; cursor: pointer;" onclick="document.querySelector('[data-target=templates]').click()"><span>Templates RVDD</span> <span>→</span></li>
                                 </ul>
                             </div>
@@ -261,11 +279,167 @@
                         <button class="btn-primary w-100" onclick="saveTemplate()">Salvar Template</button>
                     </div>
                 </div>
+                
+                <!-- View: Settings (Configurações da Clínica) -->
+                <section id="view-settings" class="view" style="display: none;">
+                    <div class="glass-panel" style="min-height: 400px; padding: 20px; max-width: 600px;">
+                        <h3>Configurações da Clínica</h3>
+                        <form id="form-settings" onsubmit="event.preventDefault(); saveClinicSettings();" style="margin-top: 20px;">
+                            <div class="form-group">
+                                <label>Tamanho Máximo de Upload (MB)</label>
+                                <input type="number" id="set-max-upload" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Tipos MIME Permitidos (separados por vírgula)</label>
+                                <input type="text" id="set-mime-types" required>
+                            </div>
+                            <button type="submit" class="btn-primary w-100">Salvar Configurações</button>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- View: Tipos Documentais -->
+                <section id="view-doc-types" class="view" style="display: none;">
+                    <div class="glass-panel" style="min-height: 400px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3>Tipos Documentais</h3>
+                            <button class="btn-primary btn-small" onclick="openDocTypeModal()">+ Novo Tipo Documental</button>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Nome</th>
+                                    <th>Retenção (anos)</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-doc-types-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Modal Tipo Documental -->
+                <div class="modal-overlay" id="modal-doc-type">
+                    <div class="modal-content glass-panel" style="width: 500px; padding: 30px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2>Novo Tipo Documental</h2>
+                            <button class="btn-close" onclick="document.getElementById('modal-doc-type').classList.remove('active')">✖</button>
+                        </div>
+                        <form onsubmit="event.preventDefault(); saveDocType();">
+                            <div class="form-group">
+                                <label>Código (ex: HIST)</label>
+                                <input type="text" id="dt-code" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Nome da Categoria</label>
+                                <input type="text" id="dt-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Anos de Retenção (Guarda)</label>
+                                <input type="number" id="dt-retention" required>
+                            </div>
+                            <button type="submit" class="btn-primary w-100">Salvar</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- View: Ingestions -->
+                <section id="view-ingestions" class="view" style="display: none;">
+                    <div class="glass-panel" style="min-height: 400px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3>Fila de Ingestão (FileWatch)</h3>
+                            <div>
+                                <select id="ingestion-filter" class="form-control" style="width:auto; display:inline-block;" onchange="loadIngestions()">
+                                    <option value="">Todos</option>
+                                    <option value="PENDING">Pendentes</option>
+                                    <option value="COMPLETED">Concluídos</option>
+                                    <option value="QUARANTINE">Quarentena</option>
+                                    <option value="FAILED">Falha</option>
+                                </select>
+                                <button class="btn-secondary btn-small" onclick="loadIngestions()">Atualizar</button>
+                            </div>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Data</th>
+                                    <th>Arquivo</th>
+                                    <th>Status</th>
+                                    <th>Erro</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-ingestions-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- View: Índices (Metadados) -->
+                <section id="view-indices" class="view" style="display: none;">
+                    <div class="glass-panel" style="min-height: 400px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3>Cadastro de Índices (Metadados)</h3>
+                            <button class="btn-primary btn-small" onclick="openIndexModal()">+ Novo Índice</button>
+                        </div>
+                        <table class="styled-table mt-20">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Tipo de Dado</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-indices-body">
+                                <tr><td colspan="3" style="text-align:center">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- View: Tipos Documentais -->
+                <section id="view-doc-types" class="view" style="display: none;">
+                    <div class="glass-panel" style="min-height: 400px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3>Gestão de Tipos Documentais</h3>
+                            <button class="btn-primary btn-small" onclick="openDocTypeModal()">+ Novo Tipo Documental</button>
+                        </div>
+                        <table class="styled-table mt-20">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Área de Armazenamento</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-doc-types-body">
+                                <tr><td colspan="4" style="text-align:center">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
     <!-- Scripts -->
     <script>
         const API_URL = 'http://localhost:8000/api';
         function getAuthHeaders() {
             return { 'Authorization': 'Bearer ' + localStorage.getItem('ged_token') };
+        }
+
+        // Apply Role Filtering
+        if (payload && payload.role === 'admin_global') {
+            document.querySelectorAll('.role-gestor-clinica').forEach(el => el.style.display = 'none');
+        } else if (payload && payload.role === 'gestor_clinica') {
+            document.querySelectorAll('.role-admin-global').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.role-gestor-clinica').forEach(el => el.style.display = 'flex');
         }
 
         // Tab Navigation
@@ -290,6 +464,10 @@
 
                 if(target === 'storage') loadStorageAreas();
                 if(target === 'usuarios') loadUsers();
+                if(target === 'settings') loadClinicSettings();
+                if(target === 'doc-types') loadDocTypes();
+                if(target === 'indices') loadIndices();
+                if(target === 'ingestions') loadIngestions();
             });
         });
         
@@ -299,14 +477,8 @@
         }
     </script>
     <script src="js/storage.js"></script>
+    <script src="js/admin_users.js"></script>
+    <script src="js/admin_clinica.js"></script>
     <script src="js/admin_templates.js"></script>
-    <script src="js/admin_workflows.js"></script><script src="js/admin_users.js"></script>
+    <script src="js/admin_ged_config.js"></script>
 </body>
-</html>
-
-
-
-
-
-
-

@@ -1,4 +1,4 @@
-﻿import enum
+import enum
 import uuid
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum, Text
 from sqlalchemy.orm import relationship
@@ -84,6 +84,8 @@ class GEDDocument(Base):
     student_id = Column(String, index=True, nullable=True) # Could be CPF or a foreign key to a Student table in the future
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=True, index=True)
     modality = Column(String, nullable=True, index=True) # EAD, PRESENCIAL, SEMIPRESENCIAL
+    uploaded_by_user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+
     
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)

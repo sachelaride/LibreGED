@@ -25,6 +25,15 @@ def setup_db():
     existing_files = set(storage.STORAGE_ROOT.iterdir())
     models.Base.metadata.drop_all(bind=engine)
     models.Base.metadata.create_all(bind=engine)
+    
+    # Criar a tabela virtual FTS5 para o SQLite durante os testes
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS ged_documents_fts USING fts5(
+                document_id, title, content, indices_data
+            );
+        """))
     yield
     models.Base.metadata.drop_all(bind=engine)
     for created_file in set(storage.STORAGE_ROOT.iterdir()) - existing_files:

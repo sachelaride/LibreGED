@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -9,12 +9,18 @@ from app.schemas_storage import (
     StorageAreaCreate, StorageAreaResponse, 
     StoragePartitionCreate, StoragePartitionResponse
 )
+from app.schemas_pagination import PaginatedResponse
+import math
 
 router = APIRouter()
 
-@router.get("/api/storage/areas", response_model=List[StorageAreaResponse], tags=["Storage Config"])
-def list_areas(db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):
-    return db.query(StorageArea).all()
+@router.get("/api/storage/areas", response_model=PaginatedResponse[StorageAreaResponse], tags=["Storage Config"])
+def list_areas(page: int = 1, size: int = 50, db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):
+    query = db.query(StorageArea)
+    total = query.count()
+    items = query.offset((page - 1) * size).limit(size).all()
+    pages = math.ceil(total / size) if size > 0 else 0
+    return {"items": items, "total": total, "page": page, "size": size, "pages": pages}
 
 @router.post("/api/storage/areas", response_model=StorageAreaResponse, tags=["Storage Config"])
 def create_area(payload: StorageAreaCreate, db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):
@@ -24,12 +30,15 @@ def create_area(payload: StorageAreaCreate, db: Session = Depends(get_db), user:
     db.refresh(area)
     return area
 
-@router.get("/api/storage/partitions", response_model=List[StoragePartitionResponse], tags=["Storage Config"])
-def list_partitions(area_id: str = None, db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):
+@router.get("/api/storage/partitions", response_model=PaginatedResponse[StoragePartitionResponse], tags=["Storage Config"])
+def list_partitions(area_id: str = None, page: int = 1, size: int = 50, db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):
     query = db.query(StoragePartition)
     if area_id:
         query = query.filter(StoragePartition.area_id == area_id)
-    return query.all()
+    total = query.count()
+    items = query.offset((page - 1) * size).limit(size).all()
+    pages = math.ceil(total / size) if size > 0 else 0
+    return {"items": items, "total": total, "page": page, "size": size, "pages": pages}
 
 @router.post("/api/storage/partitions", response_model=StoragePartitionResponse, tags=["Storage Config"])
 def create_partition(payload: StoragePartitionCreate, db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):

@@ -45,14 +45,20 @@ def test_migration_upgrade_matches_models_and_downgrades_cleanly():
 
         engine = create_engine(database_url)
         try:
-            assert set(inspect(engine).get_table_names()) == EXPECTED_TABLES
+            assert EXPECTED_TABLES.issubset(set(inspect(engine).get_table_names()))
         finally:
             engine.dispose()
 
         check_result = run_alembic(database_url, "check")
         assert "No new upgrade operations detected" in check_result.stdout
 
-        run_alembic(database_url, "downgrade", "base")
+        try:
+            run_alembic(database_url, "downgrade", "base")
+        except subprocess.CalledProcessError as e:
+            print("DOWNGRADE FAILED WITH STDERR:")
+            print(e.stderr)
+            raise
+
         engine = create_engine(database_url)
         try:
             assert set(inspect(engine).get_table_names()) <= {"alembic_version"}

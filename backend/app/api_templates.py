@@ -6,12 +6,18 @@ from app.database import get_db
 from app import models, models_templates
 from app import auth
 from app.schemas_templates import GEDTemplateCreate, GEDTemplateUpdate, GEDTemplateResponse
+from app.schemas_pagination import PaginatedResponse
+import math
 
 router = APIRouter()
 
-@router.get("/templates", response_model=List[GEDTemplateResponse], tags=["Admin - Templates"])
-def get_templates(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
-    return db.query(models_templates.GEDTemplate).all()
+@router.get("/templates", response_model=PaginatedResponse[GEDTemplateResponse], tags=["Admin - Templates"])
+def get_templates(page: int = 1, size: int = 50, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    query = db.query(models_templates.GEDTemplate)
+    total = query.count()
+    items = query.offset((page - 1) * size).limit(size).all()
+    pages = math.ceil(total / size) if size > 0 else 0
+    return {"items": items, "total": total, "page": page, "size": size, "pages": pages}
 
 @router.post("/templates", response_model=GEDTemplateResponse, tags=["Admin - Templates"])
 def create_template(template_in: GEDTemplateCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):

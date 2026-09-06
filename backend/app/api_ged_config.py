@@ -11,14 +11,20 @@ from app.schemas_ged_config import (
     DocumentTypeCreate, DocumentTypeResponse,
     DocumentTypeIndexCreate, DocumentTypeIndexResponse
 )
+from app.schemas_pagination import PaginatedResponse
+import math
 
 router = APIRouter()
 
 # --- INDICES ---
 
-@router.get("/indices", response_model=List[GedIndexResponse], tags=["Admin - GED Config"])
-def get_indices(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
-    return db.query(models_ged_config.GedIndex).all()
+@router.get("/indices", response_model=PaginatedResponse[GedIndexResponse], tags=["Admin - GED Config"])
+def get_indices(page: int = 1, size: int = 50, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    query = db.query(models_ged_config.GedIndex)
+    total = query.count()
+    items = query.offset((page - 1) * size).limit(size).all()
+    pages = math.ceil(total / size) if size > 0 else 0
+    return {"items": items, "total": total, "page": page, "size": size, "pages": pages}
 
 @router.post("/indices", response_model=GedIndexResponse, tags=["Admin - GED Config"])
 def create_index(index_in: GedIndexCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
@@ -34,9 +40,13 @@ def create_index(index_in: GedIndexCreate, db: Session = Depends(get_db), curren
 
 # --- DOCUMENT TYPES ---
 
-@router.get("/document-types", response_model=List[DocumentTypeResponse], tags=["Admin - GED Config"])
-def get_document_types(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
-    return db.query(models_ged_config.DocumentType).all()
+@router.get("/document-types", response_model=PaginatedResponse[DocumentTypeResponse], tags=["Admin - GED Config"])
+def get_document_types(page: int = 1, size: int = 50, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    query = db.query(models_ged_config.DocumentType)
+    total = query.count()
+    items = query.offset((page - 1) * size).limit(size).all()
+    pages = math.ceil(total / size) if size > 0 else 0
+    return {"items": items, "total": total, "page": page, "size": size, "pages": pages}
 
 @router.post("/document-types", response_model=DocumentTypeResponse, tags=["Admin - GED Config"])
 def create_document_type(doc_type_in: DocumentTypeCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):

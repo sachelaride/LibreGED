@@ -10,13 +10,19 @@ from app.schemas_workflow import (
     WorkflowStateCreate, WorkflowStateResponse,
     WorkflowTransitionCreate, WorkflowTransitionResponse
 )
+from app.schemas_pagination import PaginatedResponse
+import math
 
 router = APIRouter()
 
 # --- WORKFLOWS ---
-@router.get("/workflows", response_model=List[WorkflowResponse], tags=["Admin - Workflows"])
-def get_workflows(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
-    return db.query(models_workflow.Workflow).all()
+@router.get("/workflows", response_model=PaginatedResponse[WorkflowResponse], tags=["Admin - Workflows"])
+def get_workflows(page: int = 1, size: int = 50, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    query = db.query(models_workflow.Workflow)
+    total = query.count()
+    items = query.offset((page - 1) * size).limit(size).all()
+    pages = math.ceil(total / size) if size > 0 else 0
+    return {"items": items, "total": total, "page": page, "size": size, "pages": pages}
 
 @router.post("/workflows", response_model=WorkflowResponse, tags=["Admin - Workflows"])
 def create_workflow(wkf_in: WorkflowCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):

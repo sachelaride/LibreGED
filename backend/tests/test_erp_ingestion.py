@@ -13,10 +13,12 @@ def test_erp_ingestion_idempotency():
             "curso": {
                 "codigo_mec": "12345",
                 "nome": "Direito",
-                "carga_horaria": 4000
+                "carga_horaria": 4000,
+                "modalidade": "EAD"
             }
         },
-        "data_conclusao": "2024-12-15"
+        "data_conclusao": "2024-12-15",
+        "institution_id": "inst-123"
     }
     
     headers = {

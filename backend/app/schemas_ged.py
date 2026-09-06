@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+﻿from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from app.models_ged import GEDDocumentStatus, GEDAcademicPhase
@@ -65,3 +65,12 @@ class DocumentTransitionResponse(BaseModel):
     comments: Optional[str]
     timestamp: datetime
     model_config = ConfigDict(from_attributes=True)
+
+class DocumentIndexValue(BaseModel):
+    index_id: str
+    value: str
+
+class DocumentUploadRequest(BaseModel):
+    title: str
+    document_type_id: str
+    indices: List[DocumentIndexValue] = []

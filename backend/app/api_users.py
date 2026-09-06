@@ -7,13 +7,18 @@ from app.database import get_db
 from app import models
 from app import auth
 from app.schemas_users import UserCreate, UserResponse
+from app.schemas_pagination import PaginatedResponse
+import math
 
 router = APIRouter()
 
-@router.get("/users", response_model=List[UserResponse], tags=["Admin - Users"])
-def get_users(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
-    users = db.query(models.User).all()
-    return users
+@router.get("/users", response_model=PaginatedResponse[UserResponse], tags=["Admin - Users"])
+def get_users(page: int = 1, size: int = 50, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    query = db.query(models.User)
+    total = query.count()
+    items = query.offset((page - 1) * size).limit(size).all()
+    pages = math.ceil(total / size) if size > 0 else 0
+    return {"items": items, "total": total, "page": page, "size": size, "pages": pages}
 
 @router.post("/users", response_model=UserResponse, tags=["Admin - Users"])
 def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):

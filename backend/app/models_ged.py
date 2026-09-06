@@ -118,3 +118,4 @@ class GEDDocumentIndexValue(Base):
     value = Column(String, nullable=False)
     
     document = relationship("GEDDocument")
+

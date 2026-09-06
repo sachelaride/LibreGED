@@ -1,4 +1,4 @@
-﻿from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal
@@ -406,18 +406,20 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db), user
     
     # Indexar para busca avanÃ§ada
     search_service.index_document(
-        doc_id=document.id,
-        document_data={
+        db=db,
+        document_id=document.id,
+        title=document.title,
+        content="",
+        indices_data=json.dumps({
             "id": document.id,
             "student_name": student.full_name if student else "",
             "student_cpf": student.cpf if student else "",
             "course_name": enrollment.course_name if enrollment else "",
             "document_type": document.document_type,
-            "title": document.title,
             "status": document.status,
             "institution_id": document.institution_id,
             "created_at": document.created_at.isoformat() if document.created_at else "",
-        },
+        })
     )
     
     return document
@@ -743,18 +745,38 @@ def list_documents(student_id: str | None = None, skip: int = 0, limit: int = 10
 
 @app.post("/api/documents/advanced-search")
 def advanced_search_documents(payload: AdvancedSearchRequest, db: Session = Depends(get_db)):
-    """Buscar documentos com filtros avanÃ§ados usando Elasticsearch (ou fallback em memÃ³ria)."""
-    results = search_service.search(
-        query=payload.query,
-        student_name=payload.student_name,
-        document_type=payload.document_type,
-        status=payload.status,
-        institution_id=payload.institution_id,
-        limit=payload.limit,
-    )
-    # The search_service might not support skip/offset directly if it's simple memory fallback, but we can truncate.
-    # We will just return the results as is for MVP, or apply skip manually.
-    return results[payload.skip:payload.skip+payload.limit] if hasattr(results, "__getitem__") else results
+    """Buscar documentos com filtros avançados."""
+    query_obj = db.query(models.Document).join(models.Student)
+    
+    if payload.student_name:
+        query_obj = query_obj.filter(models.Student.full_name.ilike(f"%{payload.student_name}%"))
+    if payload.document_type:
+        query_obj = query_obj.filter(models.Document.document_type == payload.document_type)
+    if payload.status:
+        query_obj = query_obj.filter(models.Document.status == payload.status)
+    if payload.institution_id:
+        query_obj = query_obj.filter(models.Document.institution_id == payload.institution_id)
+        
+    if payload.query:
+        from sqlalchemy import text
+        # Using IN clause for FTS search to avoid joining raw text
+        fts_query = text("SELECT document_id FROM ged_documents_fts WHERE ged_documents_fts MATCH :q")
+        doc_ids = db.scalars(fts_query, {"q": f"{payload.query}*"}).all()
+        query_obj = query_obj.filter(models.Document.id.in_(doc_ids))
+
+    docs = query_obj.offset(payload.skip).limit(payload.limit).all()
+    
+    results = []
+    for d in docs:
+        results.append({
+            "id": d.id,
+            "student_name": d.student.full_name if d.student else "",
+            "document_type": d.document_type,
+            "title": d.title,
+            "status": d.status,
+            "institution_id": d.institution_id,
+        })
+    return results
 
 
 @app.get("/api/documents/search")
@@ -933,6 +955,7 @@ def add_audit(db: Session, entity: str, entity_id: str, action: str, details: st
         hash_signature=signature,
     )
     db.add(audit_event)
+
 
 
 

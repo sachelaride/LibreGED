@@ -48,4 +48,4 @@ def test_ged_state_machine():
         "status": "ASSINADO"
     })
     assert t3_res.status_code == 400
-    assert "Não é possível transicionar" in t3_res.json()["detail"]
+    assert "transicionar de REJEITADO direto para ASSINADO" in t3_res.json()["detail"]

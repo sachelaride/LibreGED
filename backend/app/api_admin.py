@@ -15,13 +15,16 @@ from typing import Optional
 
 router = APIRouter(prefix="/api/admin", tags=["Administração"])
 
-AdminRole = Depends(role_checker(["gestor_clinica"]))
+AdminRole = Depends(role_checker(["admin_instituicao"]))
 
 # --- SCHEMAS ---
 
 class InstitutionSettingsBase(BaseModel):
-    max_upload_size_mb: int = 10
-    allowed_mime_types: str = "application/pdf,image/jpeg,image/png"
+    max_upload_size_mb: int = Field(default=10, ge=1, le=1024)
+    allowed_mime_types: str = Field(default="application/pdf,image/jpeg,image/png")
+    antimalware_enabled: bool = Field(default=True)
+    quarantine_enabled: bool = Field(default=True)
+    quarantine_policy: str = Field(default="manual")
 
 class InstitutionSettingsResponse(InstitutionSettingsBase):
     id: str
@@ -80,6 +83,9 @@ def update_settings(payload: InstitutionSettingsBase, db: Session = Depends(get_
         
     settings.max_upload_size_mb = payload.max_upload_size_mb
     settings.allowed_mime_types = payload.allowed_mime_types
+    settings.antimalware_enabled = payload.antimalware_enabled
+    settings.quarantine_enabled = payload.quarantine_enabled
+    settings.quarantine_policy = payload.quarantine_policy
     
     db.commit()
     db.refresh(settings)

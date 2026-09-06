@@ -110,10 +110,16 @@ app.add_middleware(
 
 # Role definitions for dependency injection
 AdminOnly = Depends(role_checker(["admin_global"]))
-ClinicRoles = Depends(role_checker(["admin_global", "gestor_clinica", "recepcao", "academico", "orientador"]))
+InstitutionRoles = Depends(role_checker(["admin_global", "admin_instituicao", "operador", "leitor", "auditor"]))
 
 from app.api_admin import router as admin_router
 app.include_router(admin_router)
+
+from app.api_institutions import router as institutions_router
+app.include_router(institutions_router)
+
+from app.api_users import router as users_router
+app.include_router(users_router)
 
 class InstitutionCreate(BaseModel):
     name: str = Field(..., min_length=2)
@@ -451,7 +457,19 @@ def upload_document(document_id: str, file: UploadFile = File(...), db: Session 
     if not original_name:
         raise HTTPException(status_code=422, detail="file name is required")
 
-    content = read_validated_upload(file, original_name)
+    settings = db.query(models.InstitutionSettings).filter(models.InstitutionSettings.institution_id == document.institution_id).first()
+    antimalware_enabled = settings.antimalware_enabled if settings else True
+    quarantine_enabled = settings.quarantine_enabled if settings else True
+
+    content, is_malware = read_validated_upload(file, original_name, antimalware_enabled)
+    
+    if is_malware:
+        if not quarantine_enabled:
+            raise HTTPException(status_code=400, detail="Malware detectado no arquivo. Arquivo rejeitado.")
+        else:
+            document.status = "rejected"
+            add_audit(db, "document", document_id, "quarantine", "Malware detectado. Arquivo enviado para quarentena.")
+            
     version_id = str(uuid4())
     stored_path = save_file(f"{document_id}-v{version_number}-{version_id}-{original_name}", content, db=db)
     checksum = sha256(content).hexdigest()

@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint, Boolean
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -34,6 +34,9 @@ class InstitutionSettings(Base):
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=False, unique=True, index=True)
     max_upload_size_mb = Column(Integer, default=10)
     allowed_mime_types = Column(String, default="application/pdf,image/jpeg,image/png")
+    antimalware_enabled = Column(Boolean, default=True)
+    quarantine_enabled = Column(Boolean, default=True)
+    quarantine_policy = Column(String, default="manual")
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
@@ -61,7 +64,7 @@ class User(Base):
     id = Column(String, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    role = Column(String, nullable=False)  # admin_global, gestor_clinica, recepcao, academico, orientador
+    role = Column(String, nullable=False)  # admin_global, admin_instituicao, operador, leitor, auditor
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=True, index=True)
     campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now)

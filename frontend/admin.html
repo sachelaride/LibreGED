@@ -15,7 +15,7 @@
         const token = localStorage.getItem('ged_token');
         if(!token) window.location.href = 'login.html';
         const payload = parseJwt(token);
-        if(!payload || (payload.role !== 'admin_global' && payload.role !== 'gestor_clinica')) {
+        if(!payload || (payload.role !== 'admin_global' && payload.role !== 'admin_instituicao')) {
             window.location.href = 'login.html';
         }
     </script>
@@ -34,6 +34,9 @@
                 </a>
                 
                 <!-- Admin Global Somente -->
+                <a href="#" class="menu-item role-admin-global" data-target="institutions">
+                    <span class="icon">🏢</span> Instituições
+                </a>
                 <a href="#" class="menu-item role-admin-global" data-target="usuarios">
                     <span class="icon">👥</span> Gestão de Usuários
                 </a>
@@ -132,6 +135,28 @@
                             </div>
                         </div>
 
+                    </div>
+                </section>
+
+                <!-- View: Instituições -->
+                <section id="view-institutions" class="view" style="display: none;">
+                    <div class="glass-panel" style="min-height: 400px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3>Instituições (Organizações)</h3>
+                            <button class="btn-primary btn-small" onclick="openInstitutionModal()">+ Nova Instituição</button>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome Fantasia</th>
+                                    <th>CNPJ</th>
+                                    <th>Razão Social</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-institutions-body">
+                            </tbody>
+                        </table>
                     </div>
                 </section>
 
@@ -293,6 +318,21 @@
                                 <label>Tipos MIME Permitidos (separados por vírgula)</label>
                                 <input type="text" id="set-mime-types" required>
                             </div>
+                            <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
+                                <input type="checkbox" id="set-antimalware" style="width: auto;">
+                                <label for="set-antimalware" style="margin-bottom: 0;">Habilitar Verificação Antimalware (EICAR)</label>
+                            </div>
+                            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="set-quarantine" style="width: auto;">
+                                <label for="set-quarantine" style="margin-bottom: 0;">Colocar arquivos suspeitos em Quarentena (invés de rejeitar upload)</label>
+                            </div>
+                            <div class="form-group">
+                                <label>Política de Liberação de Quarentena</label>
+                                <select id="set-quarantine-policy">
+                                    <option value="manual">Manual (Aprovação por Gestor)</option>
+                                    <option value="auto">Automática (Após re-scan limpo)</option>
+                                </select>
+                            </div>
                             <button type="submit" class="btn-primary w-100">Salvar Configurações</button>
                         </form>
                     </div>
@@ -437,7 +477,7 @@
         // Apply Role Filtering
         if (payload && payload.role === 'admin_global') {
             document.querySelectorAll('.role-gestor-clinica').forEach(el => el.style.display = 'none');
-        } else if (payload && payload.role === 'gestor_clinica') {
+        } else if (payload && payload.role === 'admin_instituicao') {
             document.querySelectorAll('.role-admin-global').forEach(el => el.style.display = 'none');
             document.querySelectorAll('.role-gestor-clinica').forEach(el => el.style.display = 'flex');
         }
@@ -463,6 +503,7 @@
                 document.getElementById('page-title').innerText = item.innerText.trim();
 
                 if(target === 'storage') loadStorageAreas();
+                if(target === 'institutions') loadInstitutions();
                 if(target === 'usuarios') loadUsers();
                 if(target === 'settings') loadClinicSettings();
                 if(target === 'doc-types') loadDocTypes();
@@ -470,15 +511,11 @@
                 if(target === 'ingestions') loadIngestions();
             });
         });
-        
-        async function loadUsers() {
-            // Placeholder para a próxima fase
-            document.getElementById('table-users-body').innerHTML = '<tr><td colspan="4" style="text-align:center">Carregando usuários...</td></tr>';
-        }
     </script>
     <script src="js/storage.js"></script>
+    <script src="js/admin_institutions.js"></script>
     <script src="js/admin_users.js"></script>
-    <script src="js/admin_clinica.js"></script>
+    <script src="js/admin_instituicao.js"></script>
     <script src="js/admin_templates.js"></script>
     <script src="js/admin_ged_config.js"></script>
 </body>

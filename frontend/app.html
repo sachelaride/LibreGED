@@ -37,7 +37,7 @@
         }
         
         // Prevent admin from using this panel
-        if(payload && (payload.role === 'admin_global' || payload.role === 'gestor_clinica')) {
+        if(payload && (payload.role === 'admin_global' || payload.role === 'admin_instituicao')) {
             window.location.href = 'admin.html';
         }
     </script>

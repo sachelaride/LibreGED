@@ -5,6 +5,7 @@ import datetime
 class UserBase(BaseModel):
     username: str
     role: str
+    institution_id: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str

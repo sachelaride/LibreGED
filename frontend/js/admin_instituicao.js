@@ -1,23 +1,29 @@
 // Scripts para o Gestor de Clínica
 
-// ---- Configurações da Clínica ----
-async function loadClinicSettings() {
+// ---- Configurações da Instituição ----
+async function loadInstitutionSettings() {
     try {
         const res = await fetch(`${API_URL}/admin/settings`, { headers: getAuthHeaders() });
         if(res.ok) {
             const settings = await res.json();
             document.getElementById('set-max-upload').value = settings.max_upload_size_mb;
             document.getElementById('set-mime-types').value = settings.allowed_mime_types;
+            document.getElementById('set-antimalware').checked = settings.antimalware_enabled;
+            document.getElementById('set-quarantine').checked = settings.quarantine_enabled;
+            document.getElementById('set-quarantine-policy').value = settings.quarantine_policy;
         }
     } catch(e) {
         console.error("Erro ao carregar configurações", e);
     }
 }
 
-async function saveClinicSettings() {
+async function saveInstitutionSettings() {
     const payload = {
         max_upload_size_mb: parseInt(document.getElementById('set-max-upload').value),
-        allowed_mime_types: document.getElementById('set-mime-types').value
+        allowed_mime_types: document.getElementById('set-mime-types').value,
+        antimalware_enabled: document.getElementById('set-antimalware').checked,
+        quarantine_enabled: document.getElementById('set-quarantine').checked,
+        quarantine_policy: document.getElementById('set-quarantine-policy').value
     };
 
     try {

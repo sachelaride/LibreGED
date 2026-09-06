@@ -98,7 +98,7 @@
 
         function redirectBasedOnRole(token) {
             const payload = parseJwt(token);
-            if(payload && (payload.role === 'admin_global' || payload.role === 'gestor_clinica')) {
+            if(payload && (payload.role === 'admin_global' || payload.role === 'admin_instituicao')) {
                 window.location.href = 'admin.html';
             } else {
                 window.location.href = 'app.html';

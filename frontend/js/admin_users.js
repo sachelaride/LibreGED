@@ -1,4 +1,30 @@
-function openUserModal() {
+async function openUserModal() {
+    let instSelectHtml = '';
+    const currentUser = JSON.parse(localStorage.getItem('user'));
+    
+    if (currentUser && currentUser.role === 'admin_global') {
+        try {
+            const res = await fetch(`${API_URL}/institutions`, { headers: getAuthHeaders() });
+            const data = await res.json();
+            
+            let options = '<option value="">-- Selecione uma Instituição --</option>';
+            data.items.forEach(inst => {
+                options += `<option value="${inst.id}">${inst.name} (${inst.cnpj})</option>`;
+            });
+            
+            instSelectHtml = `
+                <div class="form-group">
+                    <label>Instituição</label>
+                    <select id="new-institution">
+                        ${options}
+                    </select>
+                </div>
+            `;
+        } catch (e) {
+            console.error("Erro ao carregar instituições:", e);
+        }
+    }
+
     const html = `
         <div class="modal-overlay active" id="modal-user">
             <div class="modal-content glass-panel" style="width: 400px; padding: 30px;">
@@ -17,10 +43,14 @@ function openUserModal() {
                 <div class="form-group">
                     <label>Papel (Role)</label>
                     <select id="new-role">
-                        <option value="recepcao">Usuário Padrão (Secretaria)</option>
-                        <option value="admin_global">Administrador Global</option>
+                        <option value="recepcao">Recepção</option>
+                        <option value="academico">Acadêmico</option>
+                        <option value="orientador">Orientador</option>
+                        <option value="admin_instituicao">Gestor de Clínica</option>
+                        ${currentUser && currentUser.role === 'admin_global' ? '<option value="admin_global">Administrador Global</option>' : ''}
                     </select>
                 </div>
+                ${instSelectHtml}
                 <button class="btn-primary w-100" onclick="saveUser()">Salvar</button>
             </div>
         </div>
@@ -30,17 +60,25 @@ function openUserModal() {
 
 async function loadUsers() {
     const tbody = document.getElementById('table-users-body');
+    if (!tbody) return;
+    
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Carregando...</td></tr>';
     
     try {
         const response = await fetch(`${API_URL}/users`, { headers: getAuthHeaders() });
-        const users = await response.json();
+        const data = await response.json();
         tbody.innerHTML = '';
-        users.forEach(u => {
+        
+        if (data.items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Nenhum usuário encontrado.</td></tr>';
+            return;
+        }
+        
+        data.items.forEach(u => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${u.username}</td>
-                <td><span class="badge ${u.role === 'admin' ? 'badge-danger' : 'badge-primary'}">${u.role}</span></td>
+                <td><span class="badge ${u.role === 'admin_global' ? 'badge-danger' : 'badge-primary'}">${u.role}</span></td>
                 <td>Ativo</td>
                 <td>-</td>
             `;
@@ -56,6 +94,12 @@ async function saveUser() {
     const password = document.getElementById('new-password').value;
     const role = document.getElementById('new-role').value;
     
+    let institution_id = null;
+    const instSelect = document.getElementById('new-institution');
+    if (instSelect) {
+        institution_id = instSelect.value;
+    }
+    
     try {
         const response = await fetch(`${API_URL}/users`, {
             method: 'POST',
@@ -63,13 +107,14 @@ async function saveUser() {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ username, password, role })
+            body: JSON.stringify({ username, password, role, institution_id })
         });
         if(response.ok) {
             document.getElementById('modal-user').remove();
             loadUsers();
         } else {
-            alert("Erro ao salvar usuário");
+            const err = await response.json();
+            alert("Erro ao salvar usuário: " + (err.detail || ""));
         }
     } catch(e) {
         alert(e.message);

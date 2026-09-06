@@ -24,7 +24,7 @@ def get_max_upload_size() -> int:
     return settings.MAX_UPLOAD_SIZE_BYTES
 
 
-def read_validated_upload(file: UploadFile, file_name: str) -> bytes:
+def read_validated_upload(file: UploadFile, file_name: str, antimalware_enabled: bool = True) -> tuple[bytes, bool]:
     extension = Path(file_name).suffix.lower()
     allowed_media_types = ALLOWED_MEDIA_TYPES.get(extension)
     if allowed_media_types is None:
@@ -48,16 +48,20 @@ def read_validated_upload(file: UploadFile, file_name: str) -> bytes:
         raise HTTPException(status_code=422, detail="empty files are not allowed")
 
     payload = bytes(content)
-    scan_for_malware(payload)
+    is_malware = False
+    if antimalware_enabled:
+        is_malware = scan_for_malware(payload)
+    
     _validate_content(extension, payload)
-    return payload
+    return payload, is_malware
 
 
-def scan_for_malware(content: bytes) -> None:
+def scan_for_malware(content: bytes) -> bool:
     # MVP: EICAR test signature detection
     eicar_signature = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
     if eicar_signature in content:
-        raise HTTPException(status_code=400, detail="Malware detectado no arquivo")
+        return True
+    return False
 
 
 def _decode_text(content: bytes) -> str:

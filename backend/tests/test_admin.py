@@ -36,7 +36,7 @@ def setup_module():
         id="admin-inst",
         username="admin_inst",
         hashed_password=get_password_hash("test"),
-        role="gestor_clinica",
+        role="admin_instituicao",
         institution_id=inst_id
     ))
     
@@ -58,11 +58,11 @@ def override_admin_inst():
     return models.User(
         id="admin-inst",
         username="admin_inst",
-        role="gestor_clinica",
+        role="admin_instituicao",
         institution_id="test-admin-inst"
     )
 
-def test_gestor_clinica_can_access_admin_api():
+def test_admin_instituicao_can_access_admin_api():
     from app.auth import get_current_active_user
     app.dependency_overrides[get_current_active_user] = override_admin_inst
     

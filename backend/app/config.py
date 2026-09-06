@@ -13,7 +13,7 @@ class BaseConfig(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
 class DevelopmentConfig(BaseConfig):
-    DATABASE_URL: str = "sqlite:///./dev.db"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/libreged"
     ENVIRONMENT: str = "development"
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

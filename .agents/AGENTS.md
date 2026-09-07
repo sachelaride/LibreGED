@@ -8,3 +8,5 @@
 ## Idioma do Código e Documentação
 - **Português Obrigatório**: Toda a documentação (docstrings, README, etc.), mensagens de commit, mensagens de retorno de API, variáveis e **comentários** no código devem ser escritos em português do Brasil (pt-BR).
 - Exceção apenas para palavras-chave da linguagem de programação, bibliotecas de terceiros ou protocolos padrão que exigem o uso do inglês. Variáveis de negócio devem preferencialmente adotar nomenclatura em português (ex: `documento_id` ao invés de `document_id`, sempre que possível e não quebrar padrões já definidos).
+
+- **Seguran�a**: Nunca 'comitar' ou subir credenciais, senhas, chaves de API, ou arquivos .env para o controle de vers�o (Git). Garantir sempre que .env e similares estejam no .gitignore.

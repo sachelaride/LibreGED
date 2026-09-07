@@ -165,7 +165,7 @@ async function loadDocuments() {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">Carregando...</td></tr>';
     
     try {
-        const response = await fetch(`${API_URL}/ged/documents`, {
+        const response = await fetch(`${API_URL}/ecm/nodes`, {
             headers: getAuthHeaders()
         });
         
@@ -192,8 +192,8 @@ function renderDocumentsTable() {
     
     const filteredDocs = allDocuments.filter(doc => {
         if (filter === 'ALL') return true;
-        // Compare case insensitive if modality is set
-        return doc.modality && doc.modality.toUpperCase() === filter.toUpperCase();
+        // Compare by node_type for ECM
+        return doc.node_type && doc.node_type.toUpperCase() === filter.toUpperCase();
     });
 
     if (filteredDocs.length === 0) {
@@ -204,19 +204,18 @@ function renderDocumentsTable() {
     tbody.innerHTML = '';
     filteredDocs.forEach(doc => {
         const tr = document.createElement('tr');
-        let statusClass = 'badge';
-        if (doc.status === 'VALIDO') statusClass += ' success';
-        else if (doc.status === 'RASCUNHO') statusClass += ' warning';
         
-        const modalityBadge = doc.modality ? `<span class="badge" style="background: rgba(160, 174, 192, 0.2); color: #a0aec0;">${doc.modality}</span>` : '-';
-        
+        const phaseBadge = doc.properties && doc.properties['ies:codigo_serie'] 
+            ? `<span class="badge" style="background: rgba(160, 174, 192, 0.2); color: #a0aec0;">${doc.properties['ies:codigo_serie']}</span>` 
+            : `<span class="badge" style="background: rgba(160, 174, 192, 0.2); color: #a0aec0;">${doc.node_type}</span>`;
+            
         tr.innerHTML = `
             <td>${doc.id.substring(0,8)}...</td>
-            <td><strong>${doc.title}</strong></td>
-            <td>${modalityBadge}</td>
-            <td><span class="${statusClass}">${doc.status}</span></td>
+            <td><strong>${doc.name}</strong></td>
+            <td>${phaseBadge}</td>
+            <td><span class="badge" style="background:#3b82f6">ECM Node</span></td>
             <td>
-                <button class="btn-small" onclick="viewRVDD('${doc.id}')">👁️ RVDD</button>
+                <button class="btn-small" onclick="alert('Função em adaptação ECM!')">👁️ Ver</button>
             </td>
         `;
         tbody.appendChild(tr);

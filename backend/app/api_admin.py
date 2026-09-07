@@ -10,7 +10,7 @@ from pathlib import Path
 from app.database import get_db
 from app import models, models_ged
 from app.auth import get_current_active_user, role_checker
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 
 router = APIRouter(prefix="/api/admin", tags=["Administração"])
@@ -35,6 +35,10 @@ class DocumentCategoryBase(BaseModel):
     description: Optional[str] = None
     workflow_id: Optional[str] = None
     is_active: bool = True
+
+class DocumentCategoryCreate(DocumentCategoryBase):
+    code: Optional[str] = None
+    retention_years: Optional[int] = None
 
 class DocumentCategoryResponse(DocumentCategoryBase):
     id: str

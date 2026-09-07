@@ -1,4 +1,4 @@
-﻿import httpx
+import httpx
 import logging
 from app.database import SessionLocal
 from app.models_ged import GEDDocument, ExternalIngestionAudit

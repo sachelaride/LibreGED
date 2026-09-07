@@ -8,3 +8,4 @@ venv/
 .pytest-storage-*/
 /modelos/
 .agents/
+.env

@@ -57,30 +57,31 @@ async function uploadDocument() {
         return;
     }
     
-    // Coletar indices
-    const indices = [];
+    // Coletar propriedades para o ECM
+    const properties = {};
     document.querySelectorAll('.dynamic-index-input').forEach(input => {
-        indices.push({
-            index_id: input.dataset.indexId,
-            value: input.value
-        });
+        properties[input.dataset.indexId] = input.value;
     });
     
+    // Buscar o node_type correspondente (para manter o nome do tipo)
+    const docType = currentDocTypes.find(t => t.id === typeId);
+    const nodeTypeName = docType ? docType.name : "ies:documento";
+
     const formData = new FormData();
-    formData.append("title", title);
-    formData.append("document_type_id", typeId);
-    formData.append("indices_json", JSON.stringify(indices));
+    formData.append("name", title);
+    formData.append("node_type", nodeTypeName);
+    formData.append("properties", JSON.stringify(properties));
     formData.append("file", fileInput.files[0]);
     
     try {
-        const response = await fetch(`${DOCS_API}/upload`, {
+        const response = await fetch(`${API_URL}/ecm/nodes/upload`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('ged_token')}` },
             body: formData
         });
         
         if(response.ok) {
-            alert('Documento enviado e inserido no Workflow com sucesso!');
+            alert('Documento enviado ao ECM com sucesso!');
             // Reset
             document.getElementById('doc-title').value = '';
             document.getElementById('doc-file').value = '';
@@ -100,9 +101,7 @@ async function uploadDocument() {
 
 async function loadUserDocuments() {
     try {
-        // Para simplificar, vou bater na rota de upload existente na API antiga
-        // Em um cenario ideal, criaremos um GET /api/documents na nova esteira
-        const response = await fetch(`${API_URL}/ged/documents`, {
+        const response = await fetch(`${API_URL}/ecm/nodes`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('ged_token')}` }
         });
         const docs = await response.json();
@@ -117,14 +116,17 @@ async function loadUserDocuments() {
         
         docs.forEach(doc => {
             const tr = document.createElement('tr');
+            const created = new Date(doc.created_at).toLocaleDateString();
+            const phase = doc.properties['ies:codigo_serie'] || doc.node_type;
+            
             tr.innerHTML = `
-                <td>${doc.title}</td>
-                <td>--</td>
-                <td><span class="badge" style="background:#f59e0b">${doc.status}</span></td>
-                <td>${new Date(doc.created_at).toLocaleDateString()}</td>
+                <td>${doc.name}</td>
+                <td>${phase}</td>
+                <td><span class="badge" style="background:#3b82f6">ECM Node</span></td>
+                <td>${created}</td>
                 <td>
                     <button class="btn-secondary btn-small">Ver</button>
-                    <button class="btn-primary btn-small">Avançar Fluxo</button>
+                    <button class="btn-primary btn-small" onclick="alert('Funcionalidade sendo adaptada para o Workflow Engine!')">Avançar Fluxo</button>
                 </td>
             `;
             tbody.appendChild(tr);

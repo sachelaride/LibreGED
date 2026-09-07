@@ -39,28 +39,28 @@ from app.ocr_engine import DocumentAnalyzer
 
 tags_metadata = [
     {
-        "name": "GED - DocumentaÃ§Ã£o JurÃ­dica (IES)",
-        "description": "Fase 1: Gerenciamento dos dados e documentos legais da InstituiÃ§Ã£o de Ensino Superior.",
+        "name": "GED - Documentação Jurídica (IES)",
+        "description": "Fase 1: Gerenciamento dos dados e documentos legais da Instituição de Ensino Superior.",
     },
     {
-        "name": "GED - Vida AcadÃªmica (MatrÃ­cula)",
-        "description": "Fase 2: Ingresso do aluno, documentaÃ§Ã£o pessoal (RG, CPF) e contratos.",
+        "name": "GED - Vida Acadêmica (Matrícula)",
+        "description": "Fase 2: Ingresso do aluno, documentação pessoal (RG, CPF) e contratos.",
     },
     {
-        "name": "GED - Vida AcadÃªmica (Curso)",
-        "description": "Fase 3: Acompanhamento durante o curso. HistÃ³rico Escolar e CurrÃ­culo Escolar.",
+        "name": "GED - Vida Acadêmica (Curso)",
+        "description": "Fase 3: Acompanhamento durante o curso. Histórico Escolar e Currículo Escolar.",
     },
     {
-        "name": "GED - Vida AcadÃªmica (DiplomaÃ§Ã£o)",
-        "description": "Fase 4: ConclusÃ£o. EmissÃ£o do Diploma Digital e DocumentaÃ§Ã£o AcadÃªmica de Registro.",
+        "name": "GED - Vida Acadêmica (Diplomação)",
+        "description": "Fase 4: Conclusão. Emissão do Diploma Digital e Documentação Acadêmica de Registro.",
     },
     {
-        "name": "GED - ValidaÃ§Ãµes",
-        "description": "Auditoria, motor de consistÃªncia acadÃªmica inter-documentos e checagens anti-fraude.",
+        "name": "GED - Validações",
+        "description": "Auditoria, motor de consistência acadêmica inter-documentos e checagens anti-fraude.",
     },
     {
-        "name": "Sistema - SeguranÃ§a e Acessos",
-        "description": "AutenticaÃ§Ã£o, controle de usuÃ¡rios (Admin, Recepcionista, AcadÃªmico) e permissÃµes por clÃ­nica/unidade.",
+        "name": "Sistema - Segurança e Acessos",
+        "description": "Autenticação, controle de usuários (Admin, Recepcionista, Acadêmico) e permissões por campus/unidade.",
     }
 ]
 
@@ -112,14 +112,23 @@ app.add_middleware(
 AdminOnly = Depends(role_checker(["admin_global"]))
 InstitutionRoles = Depends(role_checker(["admin_global", "admin_instituicao", "operador", "leitor", "auditor"]))
 
-from app.api_admin import router as admin_router
-app.include_router(admin_router)
+from app import api_admin, api_users, api_institutions, api_ged_upload, api_ecm, api_sites
+from app import api_storage_config, api_ged_config, api_workflow, api_templates, api_search, api_erp_ingestion, api_digital_signature
 
-from app.api_institutions import router as institutions_router
-app.include_router(institutions_router)
+app.include_router(api_admin.router)
+app.include_router(api_users.router)
+app.include_router(api_institutions.router)
 
-from app.api_users import router as users_router
-app.include_router(users_router)
+app.include_router(api_ged_upload.router)
+app.include_router(api_ecm.router)
+app.include_router(api_sites.router)
+app.include_router(api_storage_config.router)
+app.include_router(api_ged_config.router)
+app.include_router(api_workflow.router)
+app.include_router(api_templates.router)
+app.include_router(api_search.router)
+app.include_router(api_erp_ingestion.router)
+app.include_router(api_digital_signature.router)
 
 class InstitutionCreate(BaseModel):
     name: str = Field(..., min_length=2)
@@ -320,7 +329,7 @@ def create_institution(payload: InstitutionCreate, db: Session = Depends(get_db)
 
 
 @app.post("/api/students", response_model=Student)
-def create_student(payload: StudentCreate, db: Session = Depends(get_db), user: models.User = ClinicRoles):
+def create_student(payload: StudentCreate, db: Session = Depends(get_db), user: models.User = InstitutionRoles):
     check_institution_access(user, payload.institution_id)
     institution = db.query(models.Institution).filter(models.Institution.id == payload.institution_id).first()
     if institution is None:
@@ -393,306 +402,13 @@ def create_enrollment(payload: EnrollmentCreate, db: Session = Depends(get_db)):
     return enrollment
 
 
-@app.post("/api/documents", response_model=Document)
-def create_document(payload: DocumentCreate, db: Session = Depends(get_db), user: models.User = ClinicRoles):
-    check_institution_access(user, payload.institution_id)
-    institution = db.query(models.Institution).filter(models.Institution.id == payload.institution_id).first()
-    if institution is None:
-        raise HTTPException(status_code=404, detail="institution not found")
-    student = db.query(models.Student).filter(models.Student.id == payload.student_id).first()
-    if student is None:
-        raise HTTPException(status_code=404, detail="student not found")
-    enrollment = db.query(models.Enrollment).filter(models.Enrollment.id == payload.enrollment_id).first()
-    if enrollment is None:
-        raise HTTPException(status_code=404, detail="enrollment not found")
-    if student.institution_id != institution.id:
-        raise HTTPException(status_code=409, detail="student does not belong to institution")
-    if enrollment.student_id != student.id or enrollment.institution_id != institution.id:
-        raise HTTPException(status_code=409, detail="enrollment does not match student and institution")
-
-    document = models.Document(
-        id=str(uuid4()),
-        institution_id=payload.institution_id,
-        student_id=payload.student_id,
-        enrollment_id=payload.enrollment_id,
-        document_type=payload.document_type,
-        title=payload.title,
-        status=payload.status,
-    )
-    db.add(document)
-    add_audit(db, "document", document.id, "created", f"Document created: {payload.title}")
-    db.commit()
-    db.refresh(document)
-    
-    # Indexar para busca avanÃ§ada
-    search_service.index_document(
-        db=db,
-        document_id=document.id,
-        title=document.title,
-        content="",
-        indices_data=json.dumps({
-            "id": document.id,
-            "student_name": student.full_name if student else "",
-            "student_cpf": student.cpf if student else "",
-            "course_name": enrollment.course_name if enrollment else "",
-            "document_type": document.document_type,
-            "status": document.status,
-            "institution_id": document.institution_id,
-            "created_at": document.created_at.isoformat() if document.created_at else "",
-        })
-    )
-    
-    return document
 
 
-@app.post("/api/documents/{document_id}/upload")
-def upload_document(document_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    document = db.query(models.Document).filter(models.Document.id == document_id).first()
-    if document is None:
-        raise HTTPException(status_code=404, detail="document not found")
-
-    version_count = len(db.query(models.DocumentVersion).filter(models.DocumentVersion.document_id == document_id).all())
-    version_number = version_count + 1
-    original_name = Path(file.filename or "").name
-    if not original_name:
-        raise HTTPException(status_code=422, detail="file name is required")
-
-    settings = db.query(models.InstitutionSettings).filter(models.InstitutionSettings.institution_id == document.institution_id).first()
-    antimalware_enabled = settings.antimalware_enabled if settings else True
-    quarantine_enabled = settings.quarantine_enabled if settings else True
-
-    content, is_malware = read_validated_upload(file, original_name, antimalware_enabled)
-    
-    if is_malware:
-        if not quarantine_enabled:
-            raise HTTPException(status_code=400, detail="Malware detectado no arquivo. Arquivo rejeitado.")
-        else:
-            document.status = "rejected"
-            add_audit(db, "document", document_id, "quarantine", "Malware detectado. Arquivo enviado para quarentena.")
-            
-    version_id = str(uuid4())
-    stored_path = save_file(f"{document_id}-v{version_number}-{version_id}-{original_name}", content, db=db)
-    checksum = sha256(content).hexdigest()
-    
-    version = models.DocumentVersion(
-        id=version_id,
-        document_id=document_id,
-        version_number=version_number,
-        file_name=original_name,
-        stored_path=stored_path,
-        checksum=checksum,
-    )
-    db.add(version)
-    add_audit(db, "document", document_id, "uploaded", f"File uploaded: {original_name}")
-    try:
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        delete_file(stored_path)
-        raise HTTPException(status_code=409, detail="document version already exists") from error
-    except Exception:
-        db.rollback()
-        delete_file(stored_path)
-        raise
-    db.refresh(version)
-    return {"document_id": document_id, "version": DocumentVersion.model_validate(version).model_dump()}
-
-
-@app.post("/api/documents/{document_id}/xml")
-def generate_document_xml(document_id: str, payload: XmlGenerationRequest, db: Session = Depends(get_db)):
-    document = db.query(models.Document).filter(models.Document.id == document_id).first()
-    if document is None:
-        raise HTTPException(status_code=404, detail="document not found")
-
-    def block(reason: str):
-        document.status = "rejected"
-        add_audit(db, "document", document_id, "xml_generation_blocked", reason)
-        db.commit()
-        raise HTTPException(status_code=409, detail=reason)
-
-    if not payload.schema_version:
-        block("schema version is required; version inference is forbidden")
-    if not payload.namespace:
-        block("schema namespace is required")
-    if payload.document_type != document.document_type:
-        block("requested document type does not match the document")
-
-    schema = db.query(models.SchemaVersion).filter(models.SchemaVersion.code == payload.schema_version).first()
-    if schema is None:
-        block("schema version is not registered")
-    if schema.status != "approved":
-        block("schema version is not approved for use")
-    if schema.document_type != document.document_type:
-        block("schema version is incompatible with the document type")
-    if schema.namespace != payload.namespace:
-        block("schema namespace does not match the registered schema")
-    if schema.environment != payload.environment:
-        block("schema version is not approved for this environment")
-
-    now = (
-        datetime.now(schema.valid_from.tzinfo)
-        if schema.valid_from.tzinfo
-        else datetime.now(UTC).replace(tzinfo=None)
-    )
-    if schema.valid_from > now or (schema.valid_until is not None and schema.valid_until < now):
-        block("schema version is outside its validity period")
-
-    xml = (
-        f"<documento xmlns={quoteattr(payload.namespace)} schemaVersion={quoteattr(schema.code)} xsdHash={quoteattr(schema.xsd_hash)}>"
-        f"<tipo>{escape(payload.document_type)}</tipo>"
-        f"<titulo>{escape(document.title)}</titulo>"
-        f"<aluno>{escape(payload.student_name)}</aluno>"
-        f"<curso>{escape(payload.course_name)}</curso>"
-        f"<status>{escape(payload.status)}</status>"
-        "</documento>"
-    )
-    add_audit(db, "document", document_id, "xml_generated", f"XML generated with schema {schema.code}")
-    db.commit()
-    return {"document_id": document_id, "schema_version": schema.code, "xml": xml}
-
-
-@app.post("/api/documents/historico/generate", tags=["GED - Vida AcadÃªmica (Curso)"])
-def generate_historico(payload: HistoricoPayload):
-    """Gera o XML do HistÃ³rico Escolar com formato MEC."""
-    try:
-        xml_output = generate_historico_xml(payload)
-        return {"xml": xml_output}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro na geraÃ§Ã£o do XML do HistÃ³rico: {str(e)}")
-
-
-@app.post("/api/documents/diploma/generate", tags=["GED - Vida AcadÃªmica (DiplomaÃ§Ã£o)"])
-def generate_diploma(payload: DiplomaPayload):
-    """Gera o XML do Diploma Digital com a formataÃ§Ã£o exigida pelo MEC."""
-    try:
-        xml_output = generate_diploma_xml(payload)
-        return {"xml": xml_output}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro na geraÃ§Ã£o do XML do Diploma: {str(e)}")
-
-
-@app.post("/api/documents/academico/generate", tags=["GED - Vida AcadÃªmica (DiplomaÃ§Ã£o)"])
-def generate_academica(payload: DiplomaPayload):
-    """Gera o XML Institucional de DocumentaÃ§Ã£o AcadÃªmica para Registro."""
-    try:
-        xml_output = generate_academica_xml(payload)
-        return {"xml": xml_output}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro na geraÃ§Ã£o do XML AcadÃªmico: {str(e)}")
-
-
-@app.post("/api/documents/curriculo/generate", tags=["GED - Vida AcadÃªmica (Curso)"])
-def generate_curriculo(payload: CurriculoPayload):
-    """Gera o XML do CurrÃ­culo Escolar com formato MEC."""
-    try:
-        xml_output = generate_curriculo_xml(payload)
-        return {"xml": xml_output}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro na geraÃ§Ã£o do XML do CurrÃ­culo: {str(e)}")
-
-
-@app.post("/api/documents/validate", tags=["GED - ValidaÃ§Ãµes"])
-def validate_academic_documents(req: ValidationRequest):
-    """Cruza dados entre Diploma, HistÃ³rico e CurrÃ­culo para identificar inconsistÃªncias (ex: CPF divergente, Carga horÃ¡ria insuficiente)."""
-    errors = validate_documents(req)
-    if errors:
-        return {"valid": False, "errors": errors}
-    return {"valid": True, "errors": []}
 
 
 # --- GED Lifecycle and State Machine Endpoints ---
 
-@app.post("/api/ged/categories", response_model=DocumentCategoryResponse, tags=["GED - Vida AcadÃªmica (MatrÃ­cula)"])
-def create_category(payload: DocumentCategoryCreate, db: Session = Depends(get_db)):
-    """Cria uma categoria de documento (ex: '0001 - Contratos', 'Comprovante de ResidÃªncia')."""
-    db_cat = DocumentCategory(
-        index_code=payload.index_code,
-        name=payload.name, 
-        description=payload.description,
-        is_active=payload.is_active
-    )
-    db.add(db_cat)
-    db.commit()
-    db.refresh(db_cat)
-    return db_cat
-
-@app.post("/api/ged/documents", response_model=GEDDocumentResponse, tags=["GED - Vida AcadÃªmica (MatrÃ­cula)"])
-def create_document(payload: GEDDocumentCreate, db: Session = Depends(get_db)):
-    """Faz o registro de um novo documento de aluno no GED, com status inicial RASCUNHO."""
-    db_doc = GEDDocument(
-        title=payload.title,
-        file_path="fake/path/for/now",
-        category_id=payload.category_id,
-        student_id=payload.student_id,
-        academic_phase=payload.academic_phase,
-        status=GEDDocumentStatus.RASCUNHO
-    )
-    db.add(db_doc)
-    db.commit()
-    db.refresh(db_doc)
-    return db_doc
-
-@app.patch("/api/ged/documents/{document_id}/status", response_model=DocumentTransitionResponse, tags=["GED - Vida AcadÃªmica (Curso)"])
-def update_document_status(
-    document_id: str, 
-    payload: DocumentStatusUpdate, 
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """Transiciona o documento de um estado para outro (MÃ¡quina de Estados)."""
-    db_doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
-    if not db_doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-        
-    from app.auth import verify_document_ownership
-    verify_document_ownership(current_user, db_doc)
-        
-    old_status = db_doc.status
-    
-    # State machine rules
-    if old_status == GEDDocumentStatus.REJEITADO and payload.status == GEDDocumentStatus.ASSINADO:
-        raise HTTPException(status_code=400, detail="NÃ£o Ã© possÃ­vel transicionar de REJEITADO direto para ASSINADO")
-        
-    # Segregation of Duties (SoD)
-    if payload.status in [GEDDocumentStatus.VALIDO, GEDDocumentStatus.ASSINADO, GEDDocumentStatus.REJEITADO]:
-        if db_doc.uploaded_by_user_id == current_user.id and current_user.role != "admin_global":
-            raise HTTPException(status_code=403, detail="Segregation of duties: You cannot validate/approve a document you uploaded")
-        
-    db_doc.status = payload.status
-    
-    transition = DocumentTransitionHistory(
-        document_id=db_doc.id,
-        from_status=old_status,
-        to_status=payload.status,
-        changed_by_user_id=current_user.id,
-        comments=payload.comments
-    )
-    db.add(transition)
-    db.commit()
-    db.refresh(transition)
-    
-    # Trigger webhook Se foi assinado ou mudou de status importante
-    from app.webhook_erp import notify_erp
-    background_tasks.add_task(notify_erp, document_id, payload.status.value)
-    
-    return transition
-
 # Include Upload Router
-from app.api_ged_upload import router as upload_router
-app.include_router(upload_router)
-
-# Include Signature Router
-from app.api_digital_signature import router as signature_router
-app.include_router(signature_router)
-
-from app.api_erp_ingestion import router as erp_router
-app.include_router(erp_router)
-
-# Include Storage Config Router
-from app.api_storage_config import router as storage_router
-app.include_router(storage_router)
-
 from app.xsd_validator import validate_xml_against_xsd
 from pydantic import BaseModel
 
@@ -700,175 +416,8 @@ class XSDValidationRequest(BaseModel):
     document_id: str
     xsd_filename: str = "mock_diploma.xsd"
 
-@app.post("/api/documents/validate-xsd", tags=["GED - ValidaÃ§Ãµes"])
-def validate_xsd_endpoint(payload: XSDValidationRequest, db: Session = Depends(get_db)):
-    """Valida um documento jÃ¡ gerado contra o Schema XSD do MEC."""
-    from app.models_ged import GEDDocument
-    from app.storage import load_file
-    
-    doc = db.query(GEDDocument).filter(GEDDocument.id == payload.document_id).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Documento nÃ£o encontrado no GED.")
-    
-    # Em produÃ§Ã£o, load_file(doc.file_path.split("/")[-1])
-    try:
-        xml_bytes = load_file(doc.file_path.split("/")[-1].split("\\")[-1])
-        xml_string = xml_bytes.decode('utf-8')
-    except Exception:
-        # Fallback de teste se o arquivo fÃ­sico nÃ£o for encontrado (porque mockamos no POST anterior)
-        # Cria um XML invÃ¡lido propositalmente para forÃ§ar erro se nÃ£o achar (ou um vÃ¡lido pra passar)
-        xml_string = f'''<?xml version="1.0" encoding="UTF-8"?>
-<infDiploma>
-  <DadosAluno>
-    <Nome>JoÃ£o</Nome>
-  </DadosAluno>
-</infDiploma>'''
-
-    is_valid, errors = validate_xml_against_xsd(xml_string, payload.xsd_filename)
-    
-    if not is_valid:
-        # HTTPException 400 is perfectly fine for returning bad requests/validation errors
-        return {"valid": False, "errors": errors}
-        
-    return {"valid": True, "errors": []}
-
 from app.rvdd_generator import generate_rvdd_html
 from fastapi.responses import HTMLResponse
-
-@app.get("/api/ged/documents", response_model=List[GEDDocumentResponse], tags=["GED - Vida AcadÃªmica (MatrÃ­cula)"])
-def list_documents(db: Session = Depends(get_db), user: models.User = ClinicRoles):
-    """Lista todos os documentos GED vinculados Ã  instituiÃ§Ã£o do usuÃ¡rio."""
-    query = db.query(GEDDocument)
-    if user.role != "admin_global":
-        query = query.filter(GEDDocument.institution_id == user.institution_id)
-    docs = query.all()
-    return docs
-
-@app.get("/api/documents/{document_id}/rvdd", response_class=HTMLResponse, tags=["GED - Vida AcadÃªmica (MatrÃ­cula)"])
-def get_document_rvdd(document_id: str, db: Session = Depends(get_db), user: models.User = ClinicRoles):
-    """Gera a RepresentaÃ§Ã£o Visual do Diploma Digital (RVDD) em HTML."""
-    from app.models_ged import GEDDocument
-    
-    doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Documento nÃ£o encontrado no GED.")
-    
-    # ValidaÃ§Ã£o Multitenant
-    if user.role != "admin_global" and doc.institution_id != user.institution_id:
-        raise HTTPException(status_code=403, detail="VocÃª nÃ£o tem permissÃ£o para visualizar um documento de outra clÃ­nica.")
-        
-    html = generate_rvdd_html(doc.id, doc.title, db=db)
-    return html
-
-@app.post("/api/schema-versions", response_model=SchemaVersion, status_code=201)
-def create_schema_version(payload: SchemaVersionCreate, db: Session = Depends(get_db)):
-    if payload.valid_until is not None and payload.valid_until <= payload.valid_from:
-        raise HTTPException(status_code=422, detail="valid_until must be after valid_from")
-    if db.query(models.SchemaVersion).filter(models.SchemaVersion.code == payload.code).first():
-        raise HTTPException(status_code=409, detail="schema version code already exists")
-    schema = models.SchemaVersion(
-        id=str(uuid4()),
-        **payload.model_dump(),
-    )
-    db.add(schema)
-    add_audit(db, "schema_version", schema.id, "created", f"Schema version registered: {schema.code}")
-    db.commit()
-    db.refresh(schema)
-    return schema
-
-
-@app.get("/api/documents")
-def list_documents(student_id: str | None = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    query = db.query(models.Document)
-    if student_id:
-        query = query.filter(models.Document.student_id == student_id)
-    return query.offset(skip).limit(limit).all()
-
-
-@app.post("/api/documents/advanced-search")
-def advanced_search_documents(payload: AdvancedSearchRequest, db: Session = Depends(get_db)):
-    """Buscar documentos com filtros avançados."""
-    query_obj = db.query(models.Document).join(models.Student)
-    
-    if payload.student_name:
-        query_obj = query_obj.filter(models.Student.full_name.ilike(f"%{payload.student_name}%"))
-    if payload.document_type:
-        query_obj = query_obj.filter(models.Document.document_type == payload.document_type)
-    if payload.status:
-        query_obj = query_obj.filter(models.Document.status == payload.status)
-    if payload.institution_id:
-        query_obj = query_obj.filter(models.Document.institution_id == payload.institution_id)
-        
-    if payload.query:
-        from sqlalchemy import text
-        # Using IN clause for FTS search to avoid joining raw text
-        fts_query = text("SELECT document_id FROM ged_documents_fts WHERE ged_documents_fts MATCH :q")
-        doc_ids = db.scalars(fts_query, {"q": f"{payload.query}*"}).all()
-        query_obj = query_obj.filter(models.Document.id.in_(doc_ids))
-
-    docs = query_obj.offset(payload.skip).limit(payload.limit).all()
-    
-    results = []
-    for d in docs:
-        results.append({
-            "id": d.id,
-            "student_name": d.student.full_name if d.student else "",
-            "document_type": d.document_type,
-            "title": d.title,
-            "status": d.status,
-            "institution_id": d.institution_id,
-        })
-    return results
-
-
-@app.get("/api/documents/search")
-def search_documents(
-    student_id: str | None = None,
-    document_type: str | None = None,
-    skip: int = 0, 
-    limit: int = 100,
-    db: Session = Depends(get_db)
-):
-    query = db.query(models.Document)
-    if student_id:
-        query = query.filter(models.Document.student_id == student_id)
-    if document_type:
-        query = query.filter(models.Document.document_type == document_type)
-    return query.offset(skip).limit(limit).all()
-
-
-@app.post("/api/documents/{document_id}/representation")
-def generate_document_representation(
-    document_id: str, 
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_active_user)
-):
-    document = db.query(models.Document).filter(models.Document.id == document_id).first()
-    if document is None:
-        return {"detail": "document not found"}
-        
-    from app.auth import verify_document_ownership
-    verify_document_ownership(current_user, document)
-
-    student = db.query(models.Student).filter(models.Student.id == document.student_id).first()
-    enrollment = db.query(models.Enrollment).filter(models.Enrollment.student_id == document.student_id).first()
-    student_name = student.full_name if student else "Aluno nÃ£o identificado"
-    course_name = enrollment.course_name if enrollment else "Curso nÃ£o informado"
-
-    summary = (
-        f"{document.title} - {student_name} - {course_name} - "
-        f"{document.document_type} - {document.status}"
-    )
-    representation = DocumentRepresentation(
-        document_id=document_id,
-        student_name=student_name,
-        course_name=course_name,
-        visual_type="academic-card",
-        summary=summary,
-    )
-    add_audit(db, "document", document_id, "representation_generated", "Academic visual representation generated", current_user.id)
-    db.commit()
-    return representation.model_dump()
 
 
 @app.get("/api/documents/{document_id}/retention")
@@ -903,7 +452,7 @@ def list_audit_events(skip: int = 0, limit: int = 100, db: Session = Depends(get
 
 @app.get("/api/audit/verify")
 def verify_audit_chain(db: Session = Depends(get_db)):
-    """Verifica a integridade criptogrÃ¡fica da cadeia de eventos de auditoria."""
+    """Verifica a integridade criptogrÃƒÂ¡fica da cadeia de eventos de auditoria."""
     from hashlib import sha256
     events = db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.asc()).all()
     last_hash = "genesis"
@@ -923,7 +472,7 @@ def verify_audit_chain(db: Session = Depends(get_db)):
 # ==================== Retention Management ====================
 @app.get("/api/documents/retention/check")
 def check_retention_violations(db: Session = Depends(get_db)):
-    """Verificar quais documentos violam a polÃ­tica de retenÃ§Ã£o."""
+    """Verificar quais documentos violam a polÃƒÂ­tica de retenÃƒÂ§ÃƒÂ£o."""
     violations = RetentionService.check_retention_compliance(db)
     return {
         "total_violations": len(violations),
@@ -951,7 +500,7 @@ def execute_retention_cleanup(payload: RetentionCleanupRequest, db: Session = De
 
 @app.get("/api/documents/retention/stats")
 def get_retention_statistics(db: Session = Depends(get_db)):
-    """Obter estatÃ­sticas sobre o ciclo de vida dos documentos."""
+    """Obter estatÃƒÂ­sticas sobre o ciclo de vida dos documentos."""
     stats = RetentionService.get_lifecycle_statistics(db)
     return {
         "timestamp": datetime.now(UTC).isoformat(),
@@ -965,7 +514,7 @@ def get_document_lifecycle(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
-    """Obter informaÃ§Ãµes de ciclo de vida de um documento especÃ­fico."""
+    """Obter informaÃƒÂ§ÃƒÂµes de ciclo de vida de um documento especÃƒÂ­fico."""
     document = db.query(models.Document).filter(models.Document.id == document_id).first()
     if document is None:
         return {"detail": "document not found"}

@@ -78,6 +78,8 @@ def role_checker(allowed_roles: list[str]):
         return user
     return check_roles
 
+get_current_admin = role_checker(["admin_instituicao"])
+
 def check_institution_access(user: models.User, target_institution_id: str):
     if user.role == "admin_global":
         return
@@ -125,3 +127,32 @@ def check_document_type_access(db: Session, user: models.User, document_type_id:
     
     if not access:
         raise HTTPException(status_code=403, detail="Document type access forbidden")
+
+def require_site_role(allowed_roles: list[str]):
+    """
+    Returns a dependency that verifies if the current user has the required role
+    within a specific Site (site_id from path params).
+    """
+    def check_site_role(
+        site_id: str,
+        db: Session = Depends(get_db),
+        user: models.User = Depends(get_current_active_user)
+    ):
+        if user.role == "admin_global":
+            return user
+            
+        from app.models_ecm import SiteMember
+        
+        member = db.query(SiteMember).filter(
+            SiteMember.site_id == site_id,
+            SiteMember.user_id == user.id
+        ).first()
+        
+        if not member:
+            raise HTTPException(status_code=403, detail="You are not a member of this Site")
+            
+        if member.role not in allowed_roles:
+            raise HTTPException(status_code=403, detail=f"Operation not permitted. Required roles: {allowed_roles}")
+            
+        return user
+    return check_site_role

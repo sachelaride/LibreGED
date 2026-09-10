@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List
+from pathlib import Path
 import json
 from uuid import uuid4
 from hashlib import sha256
@@ -85,6 +86,60 @@ def upload_nodes(
         db.refresh(node)
         
     return uploaded_nodes
+
+
+@router.post("/api/ecm/nodes/{node_id}/versions", response_model=NodeResponse, tags=["ECM"])
+def upload_node_version(
+    node_id: str,
+    file: UploadFile = File(...),
+    version_type: str = Form("minor"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user)
+):
+    if version_type not in {"major", "minor"}:
+        raise HTTPException(status_code=400, detail="version_type must be major or minor")
+
+    node = db.query(Node).filter(
+        Node.id == node_id,
+        Node.institution_id == user.institution_id
+    ).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Version file cannot be empty")
+
+    if version_type == "major":
+        next_major = node.major_version + 1
+        next_minor = 0
+    else:
+        next_major = node.major_version
+        next_minor = node.minor_version + 1
+
+    original_name = Path(file.filename or node.name).name
+    version_id = str(uuid4())
+    stored_path = save_file(
+        f"{node.id}-v{next_major}.{next_minor}-{version_id}-{original_name}",
+        content,
+        db=db
+    )
+
+    properties = dict(node.properties or {})
+    properties["cm:content"] = {
+        "stored_path": stored_path,
+        "file_name": original_name,
+        "size": len(content),
+        "mime_type": file.content_type,
+        "checksum": sha256(content).hexdigest()
+    }
+
+    node.major_version = next_major
+    node.minor_version = next_minor
+    node.properties = properties
+    db.commit()
+    db.refresh(node)
+    return node
 
 
 @router.post("/api/ecm/nodes", response_model=NodeResponse, tags=["ECM"])

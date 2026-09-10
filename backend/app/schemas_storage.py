@@ -1,38 +1,30 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 
-class StorageAreaBase(BaseModel):
+class StorageRuleBase(BaseModel):
     name: str
-    is_active: bool = True
-
-class StorageAreaCreate(StorageAreaBase):
-    pass
-
-class StorageAreaResponse(StorageAreaBase):
-    id: str
-    created_at: datetime
-    class Config:
-        from_attributes = True
-
-class StoragePartitionBase(BaseModel):
-    name: str
-    area_id: str
-    max_files: int
-    max_size_gb: float
+    document_type_id: Optional[str] = None
+    document_type_name: Optional[str] = None # Used for auto-creation
+    storage_type: str = "Local"
     base_path: str
+    max_files_per_folder: int = 10000
+    max_gb_per_folder: float = 100.0
+    enable_duplication: bool = False
+    secondary_storage_type: Optional[str] = None
+    secondary_base_path: Optional[str] = None
     network_domain: Optional[str] = None
     network_user: Optional[str] = None
     network_password: Optional[str] = None
+    is_active: bool = True
 
-class StoragePartitionCreate(StoragePartitionBase):
+class StorageRuleCreate(StorageRuleBase):
     pass
 
-class StoragePartitionResponse(StoragePartitionBase):
+class StorageRuleResponse(StorageRuleBase):
     id: str
     current_file_count: int
     current_size_bytes: int
-    is_active: bool
     created_at: datetime
     class Config:
         from_attributes = True

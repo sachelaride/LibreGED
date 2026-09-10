@@ -35,4 +35,4 @@ def test_get_rvdd_html():
     assert "República Federativa do Brasil" in html_content
     assert "João da Silva" in html_content # Injetado pelo rvdd_generator.py devido ao "João" no título
     assert "data:image/png;base64," in html_content # O QR Code foi gerado
-    assert f"https://libreged.edu.br/validar/{doc_id}" in html_content
+    assert f"https://eduged_libre.edu.br/validar/{doc_id}" in html_content

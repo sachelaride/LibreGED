@@ -140,3 +140,25 @@ class IngestionJob(Base):
 
 # Import ECM models so they are registered with Base metadata
 from app import models_ecm
+
+# Import Academic Dossier models
+from app import models_academic_dossier
+
+# Import Integration models
+from app import models_integration
+
+# Import Config models
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id = Column(String, primary_key=True, index=True)
+    document_id = Column(String, nullable=True, index=True)
+    entity = Column(String, nullable=True)
+    entity_id = Column(String, nullable=True)
+    action = Column(String, nullable=False)
+    details = Column(String, nullable=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    hash_signature = Column(String, nullable=False)
+    created_at = Column(DateTime, default=utc_now, index=True)
+
+from app import models_config

@@ -22,7 +22,7 @@ def search_documents(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Busca rápida (FTS5) em milhões de documentos cruzando Título, Metadados e OCR.
+    Busca rápida em PostgreSQL cruzando título e metadados extraídos.
     Restrita por campus e tipos documentais permitidos para o usuário atual.
     """
     

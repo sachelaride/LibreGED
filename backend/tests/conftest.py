@@ -20,20 +20,15 @@ app.dependency_overrides[get_current_active_user] = override_get_current_active_
 
 
 @pytest.fixture(autouse=True)
-def setup_db():
+def setup_db(request):
     """Clear all tables before each test."""
+    if request.module.__name__ in {"test_admin", "test_filewatch"}:
+        yield
+        return
+
     existing_files = set(storage.STORAGE_ROOT.iterdir())
     models.Base.metadata.drop_all(bind=engine)
     models.Base.metadata.create_all(bind=engine)
-    
-    # Criar a tabela virtual FTS5 para o SQLite durante os testes
-    from sqlalchemy import text
-    with engine.begin() as conn:
-        conn.execute(text("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS ged_documents_fts USING fts5(
-                document_id, title, content, indices_data
-            );
-        """))
     yield
     models.Base.metadata.drop_all(bind=engine)
     for created_file in set(storage.STORAGE_ROOT.iterdir()) - existing_files:

@@ -42,7 +42,7 @@ def generate_rvdd_html(document_id: str, document_title: str, db: Session = None
         template = env.get_template("rvdd.html")
     
     # URL de verificação simulada
-    url_validacao = f"https://libreged.edu.br/validar/{document_id}"
+    url_validacao = f"https://eduged_libre.edu.br/validar/{document_id}"
     qr_base64 = generate_qrcode_base64(url_validacao)
     
     nome_aluno = "Estudante Demonstração"

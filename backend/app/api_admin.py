@@ -11,11 +11,23 @@ from app.database import get_db
 from app import models, models_ged
 from app.auth import get_current_active_user, role_checker
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional
+from app.auth import get_current_admin, get_current_active_user, role_checker
+from typing import List
+from uuid import uuid4
+import json
 
 router = APIRouter(prefix="/api/admin", tags=["Administração"])
 
-AdminRole = Depends(role_checker(["admin_instituicao"]))
+AdminRole = Depends(role_checker(["admin_global", "admin_instituicao"]))
+OperadorRole = Depends(role_checker(["admin_global", "admin_instituicao", "operador"]))
+
+from app.models_config import ConfigProposal
+from app.schemas_config import ConfigProposalCreate, ConfigProposalResponse
+from app.config_manager import config_manager
+from datetime import datetime, UTC
+
+def utc_now():
+    return datetime.now(UTC).replace(tzinfo=None)
 
 # --- SCHEMAS ---
 
@@ -47,11 +59,10 @@ class DocumentCategoryResponse(DocumentCategoryBase):
 # --- ROTAS ---
 
 @router.get("/settings", response_model=InstitutionSettingsResponse)
-def get_settings(db: Session = Depends(get_db), user: models.User = AdminRole):
+def get_settings(db: Session = Depends(get_db), user: models.User = OperadorRole):
     """Obtém as configurações da instituição do admin atual"""
-    print(f"DEBUG: get_settings called with user={user.username}, role={user.role}")
-    if user.role == "admin_global":
-        raise HTTPException(status_code=400, detail="Admin global must specify institution_id (not implemented yet)")
+    if user.role == "admin_global" and not user.institution_id:
+        raise HTTPException(status_code=400, detail="Admin global must specify institution_id")
         
     settings = db.query(models.InstitutionSettings).filter(
         models.InstitutionSettings.institution_id == user.institution_id
@@ -69,11 +80,85 @@ def get_settings(db: Session = Depends(get_db), user: models.User = AdminRole):
     return settings
 
 @router.put("/settings", response_model=InstitutionSettingsResponse)
-def update_settings(payload: InstitutionSettingsBase, db: Session = Depends(get_db), user: models.User = AdminRole):
-    """Atualiza as configurações da instituição do admin atual"""
-    if user.role == "admin_global":
-        raise HTTPException(status_code=400, detail="Admin global must specify institution_id (not implemented yet)")
+def propose_settings_update(payload: InstitutionSettingsBase, db: Session = Depends(get_db), user: models.User = OperadorRole):
+    """Propõe uma atualização nas configurações da instituição. Auto-aprova se for gestor/admin."""
+    if user.role == "admin_global" and not user.institution_id:
+        raise HTTPException(status_code=400, detail="Admin global must specify institution_id")
         
+    settings = db.query(models.InstitutionSettings).filter(
+        models.InstitutionSettings.institution_id == user.institution_id
+    ).first()
+    
+    previous_json = None
+    if settings:
+        previous_json = json.dumps({
+            "max_upload_size_mb": settings.max_upload_size_mb,
+            "allowed_mime_types": settings.allowed_mime_types,
+            "antimalware_enabled": settings.antimalware_enabled,
+            "quarantine_enabled": settings.quarantine_enabled,
+            "quarantine_policy": settings.quarantine_policy
+        })
+        
+    payload_json = payload.model_dump_json()
+    
+    proposal = ConfigProposal(
+        id=str(uuid4()),
+        institution_id=user.institution_id,
+        proposed_by_id=user.id,
+        payload_json=payload_json,
+        previous_payload_json=previous_json,
+        status="PENDING"
+    )
+    
+    # Auto-aprovar se for admin/gestor
+    if user.role in ["admin_global", "admin_instituicao"]:
+        proposal.status = "APPROVED"
+        proposal.approved_by_id = user.id
+        proposal.approved_at = utc_now()
+        
+        if not settings:
+            settings = models.InstitutionSettings(
+                id=str(uuid4()),
+                institution_id=user.institution_id
+            )
+            db.add(settings)
+            
+        settings.max_upload_size_mb = payload.max_upload_size_mb
+        settings.allowed_mime_types = payload.allowed_mime_types
+        settings.antimalware_enabled = payload.antimalware_enabled
+        settings.quarantine_enabled = payload.quarantine_enabled
+        settings.quarantine_policy = payload.quarantine_policy
+        
+        # Invalida o cache (Hot Reload)
+        config_manager.invalidate(user.institution_id)
+        
+    db.add(proposal)
+    db.commit()
+    db.refresh(settings)
+
+    return settings
+
+@router.get("/settings/proposals", response_model=List[ConfigProposalResponse])
+def get_proposals(db: Session = Depends(get_db), user: models.User = OperadorRole):
+    return db.query(ConfigProposal).filter(
+        ConfigProposal.institution_id == user.institution_id
+    ).order_by(ConfigProposal.created_at.desc()).all()
+
+@router.post("/settings/proposals/{proposal_id}/approve", response_model=InstitutionSettingsResponse)
+def approve_proposal(proposal_id: str, db: Session = Depends(get_db), user: models.User = AdminRole):
+    """Aprova uma proposta pendente e aplica as configurações."""
+    proposal = db.query(ConfigProposal).filter(
+        ConfigProposal.id == proposal_id, 
+        ConfigProposal.institution_id == user.institution_id
+    ).first()
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+        
+    if proposal.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Only pending proposals can be approved")
+        
+    payload = json.loads(proposal.payload_json)
+    
     settings = db.query(models.InstitutionSettings).filter(
         models.InstitutionSettings.institution_id == user.institution_id
     ).first()
@@ -85,14 +170,78 @@ def update_settings(payload: InstitutionSettingsBase, db: Session = Depends(get_
         )
         db.add(settings)
         
-    settings.max_upload_size_mb = payload.max_upload_size_mb
-    settings.allowed_mime_types = payload.allowed_mime_types
-    settings.antimalware_enabled = payload.antimalware_enabled
-    settings.quarantine_enabled = payload.quarantine_enabled
-    settings.quarantine_policy = payload.quarantine_policy
+    settings.max_upload_size_mb = payload.get("max_upload_size_mb", 10)
+    settings.allowed_mime_types = payload.get("allowed_mime_types", "")
+    settings.antimalware_enabled = payload.get("antimalware_enabled", False)
+    settings.quarantine_enabled = payload.get("quarantine_enabled", False)
+    settings.quarantine_policy = payload.get("quarantine_policy", "manual")
+    
+    proposal.status = "APPROVED"
+    proposal.approved_by_id = user.id
+    proposal.approved_at = utc_now()
     
     db.commit()
     db.refresh(settings)
+    
+    # Hot Reload Invalidate
+    config_manager.invalidate(user.institution_id)
+    
+    return settings
+
+@router.post("/settings/proposals/{proposal_id}/reject", response_model=ConfigProposalResponse)
+def reject_proposal(proposal_id: str, db: Session = Depends(get_db), user: models.User = AdminRole):
+    """Rejeita uma proposta pendente."""
+    proposal = db.query(ConfigProposal).filter(
+        ConfigProposal.id == proposal_id, 
+        ConfigProposal.institution_id == user.institution_id
+    ).first()
+    
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+        
+    if proposal.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Only pending proposals can be rejected")
+        
+    proposal.status = "REJECTED"
+    db.commit()
+    db.refresh(proposal)
+    return proposal
+
+@router.post("/settings/proposals/{proposal_id}/revert", response_model=InstitutionSettingsResponse)
+def revert_proposal(proposal_id: str, db: Session = Depends(get_db), user: models.User = AdminRole):
+    """Reverte a configuração usando o previous_payload_json de uma proposta."""
+    proposal = db.query(ConfigProposal).filter(
+        ConfigProposal.id == proposal_id, 
+        ConfigProposal.institution_id == user.institution_id
+    ).first()
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+        
+    if proposal.status != "APPROVED":
+        raise HTTPException(status_code=400, detail="Cannot revert a non-approved proposal")
+        
+    if not proposal.previous_payload_json:
+        raise HTTPException(status_code=400, detail="No previous payload to revert to")
+        
+    prev_data = json.loads(proposal.previous_payload_json)
+    
+    settings = db.query(models.InstitutionSettings).filter(
+        models.InstitutionSettings.institution_id == user.institution_id
+    ).first()
+    
+    settings.max_upload_size_mb = prev_data.get("max_upload_size_mb", 10)
+    settings.allowed_mime_types = prev_data.get("allowed_mime_types", "")
+    settings.antimalware_enabled = prev_data.get("antimalware_enabled", False)
+    settings.quarantine_enabled = prev_data.get("quarantine_enabled", False)
+    settings.quarantine_policy = prev_data.get("quarantine_policy", "manual")
+    
+    proposal.status = "REVERTED"
+    
+    db.commit()
+    db.refresh(settings)
+    
+    # Hot Reload Invalidate
+    config_manager.invalidate(user.institution_id)
     
     return settings
 

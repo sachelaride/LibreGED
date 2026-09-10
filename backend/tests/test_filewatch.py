@@ -7,18 +7,16 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import asyncio
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.database import get_db
+from app.database import engine, get_db
 from app import models
 from app.models import Base
 from app.filewatch import DIR_INCOMING, DIR_PROCESSING, DIR_COMPLETED, DIR_QUARANTINE, process_ingestion_file
 
-# Setup testing DB
-engine = create_engine("sqlite:///./test_filewatch.db", connect_args={"check_same_thread": False})
+# Setup testing DB using the shared PostgreSQL test engine
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():

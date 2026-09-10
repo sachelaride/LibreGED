@@ -23,6 +23,7 @@ class WorkflowTransitionBase(BaseModel):
     origin_state_id: str
     destination_state_id: str
     label: str
+    allowed_roles: Optional[str] = None
 
 class WorkflowTransitionCreate(WorkflowTransitionBase):
     pass
@@ -68,3 +69,27 @@ class DocumentWorkflowInstanceResponse(DocumentWorkflowInstanceBase):
     
     class Config:
         from_attributes = True
+
+# --- Tasks ---
+class WorkflowTaskBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    assignee_id: str
+    due_date: Optional[datetime.datetime] = None
+
+class WorkflowTaskCreate(WorkflowTaskBase):
+    instance_id: str
+
+class WorkflowTaskResponse(WorkflowTaskBase):
+    id: str
+    instance_id: str
+    status: str
+    created_at: datetime.datetime
+    completed_at: Optional[datetime.datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class TaskCompletionRequest(BaseModel):
+    action: str  # ex: "APPROVE", "REJECT", "COMPLETE"
+    comment: Optional[str] = None

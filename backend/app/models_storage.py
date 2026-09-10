@@ -3,26 +3,22 @@ from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, Date
 from sqlalchemy.orm import relationship
 from app.models import Base, utc_now
 
-class StorageArea(Base):
-    __tablename__ = "ged_storage_areas"
+class StorageRule(Base):
+    __tablename__ = "ged_storage_rules"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String, nullable=False, unique=True, index=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=utc_now)
+    name = Column(String, nullable=False, index=True)
+    document_type_id = Column(String, nullable=True) # Optional link to a document type
     
-    partitions = relationship("StoragePartition", back_populates="area", cascade="all, delete-orphan")
-
-class StoragePartition(Base):
-    __tablename__ = "ged_storage_partitions"
-    
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    area_id = Column(String, ForeignKey("ged_storage_areas.id"), nullable=False)
-    name = Column(String, nullable=False)
-    
-    max_files = Column(Integer, nullable=False)
-    max_size_gb = Column(Float, nullable=False)
+    storage_type = Column(String, default="Local")
     base_path = Column(String, nullable=False)
+    
+    max_files_per_folder = Column(Integer, default=10000)
+    max_gb_per_folder = Column(Float, default=100.0)
+    
+    enable_duplication = Column(Boolean, default=False)
+    secondary_storage_type = Column(String, nullable=True)
+    secondary_base_path = Column(String, nullable=True)
     
     network_domain = Column(String, nullable=True)
     network_user = Column(String, nullable=True)
@@ -33,5 +29,3 @@ class StoragePartition(Base):
     
     is_active = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime, default=utc_now)
-    
-    area = relationship("StorageArea", back_populates="partitions")

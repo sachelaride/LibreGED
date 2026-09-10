@@ -1,4 +1,4 @@
-// Scripts para o Gestor de Clínica
+// Scripts para o Gestor de Instituição
 
 // ---- Configurações da Instituição ----
 async function loadInstitutionSettings() {
@@ -12,8 +12,107 @@ async function loadInstitutionSettings() {
             document.getElementById('set-quarantine').checked = settings.quarantine_enabled;
             document.getElementById('set-quarantine-policy').value = settings.quarantine_policy;
         }
+        
+        // Carrega propostas
+        loadProposals();
     } catch(e) {
         console.error("Erro ao carregar configurações", e);
+    }
+}
+
+async function loadProposals() {
+    try {
+        const res = await fetch(`${API_URL}/admin/settings/proposals`, { headers: getAuthHeaders() });
+        if(res.ok) {
+            const proposals = await res.json();
+            const tbody = document.getElementById('table-proposals-body');
+            tbody.innerHTML = '';
+            
+            proposals.forEach(p => {
+                const tr = document.createElement('tr');
+                const date = new Date(p.created_at).toLocaleString();
+                
+                let actions = '';
+                if (p.status === 'PENDING') {
+                    actions = `
+                        <button class="btn-primary btn-small" onclick="approveProposal('${p.id}')">Aprovar</button>
+                        <button class="btn-secondary btn-small" onclick="rejectProposal('${p.id}')">Rejeitar</button>
+                    `;
+                } else if (p.status === 'APPROVED' && p.previous_payload_json) {
+                    actions = `<button class="btn-secondary btn-small" onclick="revertProposal('${p.id}')">Reverter</button>`;
+                }
+                
+                let statusBadge = p.status;
+                if (p.status === 'APPROVED') statusBadge = '<span style="color: green; font-weight: bold;">APROVADA</span>';
+                if (p.status === 'REJECTED') statusBadge = '<span style="color: red; font-weight: bold;">REJEITADA</span>';
+                if (p.status === 'PENDING') statusBadge = '<span style="color: orange; font-weight: bold;">PENDENTE</span>';
+                if (p.status === 'REVERTED') statusBadge = '<span style="color: gray; font-weight: bold;">REVERTIDA</span>';
+                
+                tr.innerHTML = `
+                    <td>${date}</td>
+                    <td>${p.proposed_by_id.substring(0,8)}...</td>
+                    <td>${statusBadge}</td>
+                    <td>${actions}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    } catch(e) {
+        console.error("Erro ao carregar propostas", e);
+    }
+}
+
+async function approveProposal(id) {
+    if(!confirm("Tem certeza que deseja aprovar e aplicar essa configuração imediatamente?")) return;
+    try {
+        const res = await fetch(`${API_URL}/admin/settings/proposals/${id}/approve`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        if(res.ok) {
+            alert('Proposta aprovada! O Hot-Reload já aplicou as regras no servidor.');
+            loadInstitutionSettings();
+        } else {
+            alert('Erro ao aprovar.');
+        }
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+async function rejectProposal(id) {
+    if(!confirm("Tem certeza que deseja rejeitar essa proposta?")) return;
+    try {
+        const res = await fetch(`${API_URL}/admin/settings/proposals/${id}/reject`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        if(res.ok) {
+            alert('Proposta rejeitada.');
+            loadProposals();
+        } else {
+            alert('Erro ao rejeitar.');
+        }
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+async function revertProposal(id) {
+    if(!confirm("Atenção: Isso fará um Rollback imediato (Hot-Reload) para as configurações antes dessa proposta. Confirma?")) return;
+    try {
+        const res = await fetch(`${API_URL}/admin/settings/proposals/${id}/revert`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        if(res.ok) {
+            alert('Rollback executado com sucesso! A configuração antiga está valendo novamente.');
+            loadInstitutionSettings();
+        } else {
+            alert('Erro ao reverter.');
+        }
+    } catch(e) {
+        console.error(e);
     }
 }
 
@@ -36,14 +135,18 @@ async function saveInstitutionSettings() {
             body: JSON.stringify(payload)
         });
         if(res.ok) {
-            alert('Configurações salvas com sucesso!');
+            alert('Proposta de configuração enviada/salva com sucesso!');
+            loadProposals();
         } else {
-            alert('Erro ao salvar configurações.');
+            alert('Erro ao salvar/propor configurações.');
         }
     } catch(e) {
-        console.error("Erro ao salvar configurações", e);
+        console.error("Erro ao propor configurações", e);
     }
 }
+
+// Para manter compatibilidade com admin.html
+window.saveClinicSettings = saveInstitutionSettings;
 
 // ---- Tipos Documentais ----
 function openDocTypeModal() {

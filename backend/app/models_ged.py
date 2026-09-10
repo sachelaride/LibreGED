@@ -8,6 +8,7 @@ from app.models import Base, utc_now
 class GEDDocumentStatus(str, enum.Enum):
     RASCUNHO = "RASCUNHO"
     PENDENTE_VALIDACAO = "PENDENTE_VALIDACAO"
+    QUARENTENA = "QUARENTENA"
     REJEITADO = "REJEITADO"
     VALIDO = "VALIDO"
     ASSINADO = "ASSINADO"

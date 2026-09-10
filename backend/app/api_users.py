@@ -10,7 +10,7 @@ from app.schemas_users import UserCreate, UserResponse
 from app.schemas_pagination import PaginatedResponse
 import math
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 @router.get("/users", response_model=PaginatedResponse[UserResponse], tags=["Admin - Users"])
 def get_users(

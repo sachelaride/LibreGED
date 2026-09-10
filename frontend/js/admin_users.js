@@ -43,10 +43,10 @@ async function openUserModal() {
                 <div class="form-group">
                     <label>Papel (Role)</label>
                     <select id="new-role">
-                        <option value="recepcao">Recepção</option>
-                        <option value="academico">Acadêmico</option>
-                        <option value="orientador">Orientador</option>
-                        <option value="admin_instituicao">Gestor de Clínica</option>
+                        <option value="operador">Secretaria (Operador)</option>
+                        <option value="leitor">Auditor / Leitor</option>
+                        <option value="admin_global">Administrador Global</option>
+                        <option value="admin_instituicao">Gestor de Instituição</option>
                         ${currentUser && currentUser.role === 'admin_global' ? '<option value="admin_global">Administrador Global</option>' : ''}
                     </select>
                 </div>

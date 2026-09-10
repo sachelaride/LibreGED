@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LibreGED - Operacional</title>
+    <title>EduGED Libre - Operacional</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <script src="js/theme.js"></script>
     <!-- Icon set via CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -50,7 +51,19 @@
             </div>
             
             <div style="flex-grow: 1; padding: 20px 0;">
-                <a href="#search" class="menu-item active" data-target="search">
+                <a href="#dashboard" class="menu-item active" data-target="dashboard">
+                    <i class="fa-solid fa-chart-line" style="margin-right: 12px; font-size:18px;"></i>
+                    Meu Dashboard
+                </a>
+                <a href="#sites" class="menu-item" data-target="sites">
+                    <i class="fa-solid fa-users" style="margin-right: 12px; font-size:18px;"></i>
+                    Espaços Colaborativos
+                </a>
+                <a href="#library" class="menu-item" data-target="library">
+                    <i class="fa-solid fa-folder-tree" style="margin-right: 12px; font-size:18px;"></i>
+                    Biblioteca de Docs
+                </a>
+                <a href="#search" class="menu-item" data-target="search">
                     <i class="fa-solid fa-magnifying-glass" style="margin-right: 12px; font-size:18px;"></i>
                     Busca de Documentos
                 </a>
@@ -84,9 +97,166 @@
         <main class="main-content">
             <header class="topbar glass-panel">
                 <h1 id="page-title">Busca Global</h1>
+                <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">
+                    <i class="fa-solid fa-sun" aria-hidden="true"></i><span>Tema claro</span>
+                </button>
             </header>
 
             <div class="content-area">
+                
+                <!-- View: Dashboard -->
+                <section id="view-dashboard" class="view active">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <!-- Dashlet: Minhas Tarefas -->
+                        <div class="glass-panel" style="padding: 20px; min-height: 300px;">
+                            <h3><i class="fa-solid fa-list-check" style="color:var(--primary); margin-right:8px;"></i> Minhas Tarefas</h3>
+                            <div id="dashlet-tasks" style="margin-top: 15px;">
+                                <p class="text-muted" style="text-align:center; padding-top:20px;">Nenhuma tarefa pendente.</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Dashlet: Sites Recentes / Arquivos -->
+                        <div class="glass-panel" style="padding: 20px; min-height: 300px;">
+                            <h3><i class="fa-solid fa-clock-rotate-left" style="color:var(--primary); margin-right:8px;"></i> Atividades Recentes</h3>
+                            <div id="dashlet-recent" style="margin-top: 15px;">
+                                <p class="text-muted" style="text-align:center; padding-top:20px;">Nenhuma atividade recente.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- View: Sites -->
+                <section id="view-sites" class="view">
+                    <div class="glass-panel" style="padding: 30px; min-height: 400px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2>Espaços Colaborativos</h2>
+                            <button class="btn-primary" onclick="openCreateSiteModal()"><i class="fa-solid fa-plus"></i> Novo Espaço</button>
+                        </div>
+                        
+                        <!-- Create Site Form (Hidden by default) -->
+                        <div id="create-site-form" style="display:none; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                            <h3 style="margin-bottom: 15px;">Criar Novo Site</h3>
+                            <div style="display:flex; gap:10px; margin-bottom:15px;">
+                                <div style="flex:1;">
+                                    <label>Título do Site</label>
+                                    <input type="text" id="site-title" class="form-control" style="width:100%; padding:10px;" oninput="document.getElementById('site-name').value = this.value.toLowerCase().replace(/[^a-z0-9]/g, '-')">
+                                </div>
+                                <div style="flex:1;">
+                                    <label>URL (Slug)</label>
+                                    <input type="text" id="site-name" class="form-control" style="width:100%; padding:10px; opacity:0.7;">
+                                </div>
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label>Descrição</label>
+                                <textarea id="site-desc" class="form-control" style="width:100%; padding:10px;"></textarea>
+                            </div>
+                            <div style="text-align:right;">
+                                <button class="btn-secondary" onclick="document.getElementById('create-site-form').style.display='none'">Cancelar</button>
+                                <button class="btn-primary" onclick="submitCreateSite()">Criar</button>
+                            </div>
+                        </div>
+
+                        <!-- Sites Grid -->
+                        <div id="sites-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
+                            <p class="text-muted">Carregando espaços...</p>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- View: Biblioteca -->
+                <section id="view-library" class="view">
+                    <div class="glass-panel" style="padding: 30px; min-height: 400px; display:flex; flex-direction:column;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2 style="display:flex; align-items:center; gap:10px;">
+                                <button class="btn-secondary btn-small" onclick="navigateUp()" id="btn-nav-up" style="display:none;"><i class="fa-solid fa-arrow-up"></i></button>
+                                Biblioteca
+                                <span id="breadcrumb" style="font-size:16px; font-weight:normal; color:var(--text-muted); margin-left:10px;">/ Raiz</span>
+                            </h2>
+                            <div style="display:flex; gap:10px;">
+                                <button class="btn-secondary" onclick="promptCreateFolder()"><i class="fa-solid fa-folder-plus"></i> Nova Pasta</button>
+                                <button class="btn-primary" onclick="document.getElementById('library-upload-input').click()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload</button>
+                                <input type="file" id="library-upload-input" style="display:none;" multiple onchange="uploadToLibrary(this.files)">
+                            </div>
+                        </div>
+                        
+                        <div class="library-layout">
+                            <aside class="library-tree-panel" aria-label="Árvore de pastas">
+                                <div class="library-tree-heading">
+                                    <i class="fa-solid fa-folder-tree" aria-hidden="true"></i>
+                                    <span>Pastas</span>
+                                </div>
+                                <div id="library-tree" class="library-tree">
+                                    <p class="text-muted">Carregando pastas...</p>
+                                </div>
+                            </aside>
+                            <div id="library-grid" class="library-grid">
+                                <p class="text-muted">Carregando arquivos...</p>
+                            </div>
+                        </div>
+
+                        <!-- Document Details Modal -->
+                        <div id="document-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; justify-content:center; align-items:center;">
+                            <div class="glass-panel" style="width: 500px; max-width: 90%; max-height: 90vh; overflow-y:auto; padding:30px; position:relative;">
+                                <button onclick="document.getElementById('document-modal').style.display='none'" style="position:absolute; top:20px; right:20px; background:none; border:none; color:#fff; font-size:20px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+                                
+                                <h3 id="doc-modal-title" style="margin-bottom:20px; color:var(--primary); word-wrap:break-word;">Detalhes do Arquivo</h3>
+                                
+                                <div style="display:flex; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
+                                    <button id="tab-btn-meta" onclick="switchModalTab('meta')" style="background:none; border:none; color:#fff; padding:10px 20px; cursor:pointer; border-bottom: 2px solid var(--primary); font-weight:600;">Metadados</button>
+                                    <button id="tab-btn-flow" onclick="switchModalTab('flow')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Workflow</button>
+                                </div>
+                                
+                                <!-- Aba Metadados -->
+                                <div id="tab-meta" style="display:block;">
+                                    <input type="hidden" id="doc-modal-id">
+                                    <div class="form-group" style="margin-bottom:15px;">
+                                        <label>Título / Descrição (Propriedades)</label>
+                                        <textarea id="doc-modal-props" class="form-control" style="width:100%; height: 100px; padding:10px; font-family:monospace; font-size:12px;"></textarea>
+                                        <small class="text-muted">Formato JSON das propriedades dinâmicas.</small>
+                                    </div>
+                                    <button class="btn-primary w-100" onclick="saveMetadata()"><i class="fa-solid fa-floppy-disk"></i> Salvar Propriedades</button>
+
+                                        <div class="document-tags-section">
+                                            <h4><i class="fa-solid fa-tags" aria-hidden="true"></i> Etiquetas</h4>
+                                            <div id="doc-modal-tags" class="document-tags-list">
+                                                <span class="text-muted">Nenhuma etiqueta.</span>
+                                            </div>
+                                            <div class="document-tag-form">
+                                                <input type="text" id="doc-modal-tag-input" class="form-control" placeholder="Ex.: urgente" maxlength="80">
+                                                <button class="btn-secondary" type="button" onclick="addDocumentTag()">Adicionar</button>
+                                            </div>
+                                        </div>
+                                    
+                                    <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+                                    <h4>Controle de Versão</h4>
+                                    <p style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">Versão Atual: <span id="doc-modal-version">1.0</span></p>
+                                    <div class="document-version-form">
+                                        <select id="doc-modal-version-type" class="form-control" aria-label="Tipo da nova versão">
+                                            <option value="minor">Versão menor</option>
+                                            <option value="major">Versão maior</option>
+                                        </select>
+                                        <button class="btn-secondary" type="button" onclick="document.getElementById('doc-version-input').click()">
+                                            <i class="fa-solid fa-code-branch" aria-hidden="true"></i> Enviar versão
+                                        </button>
+                                        <input type="file" id="doc-version-input" hidden onchange="uploadDocumentVersion(this.files[0])">
+                                    </div>
+                                </div>
+                                
+                                <!-- Aba Workflow -->
+                                <div id="tab-flow" style="display:none; text-align:center; padding: 20px 0;">
+                                    <i class="fa-solid fa-code-merge" style="font-size:48px; color:var(--primary); margin-bottom:20px;"></i>
+                                    <h4 style="margin-bottom:10px;">Iniciar Processo de Aprovação</h4>
+                                    <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Envie este documento para revisão e aprovação pela chefia.</p>
+                                    <select id="doc-modal-workflow-select" class="form-control" style="width:100%; margin-bottom:20px; padding:10px;">
+                                        <option value="Review_Approve">Workflow Padrão: Revisar & Aprovar</option>
+                                    </select>
+                                    <button class="btn-primary w-100" onclick="startWorkflowForDocument()"><i class="fa-solid fa-play"></i> Disparar Workflow</button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
                 
                 <!-- View: Busca -->
                 <section id="view-search" class="view active">
@@ -181,7 +351,7 @@
 
         // Router (Hash Based)
         function handleRoute() {
-            const hash = window.location.hash.substring(1) || 'search';
+            const hash = window.location.hash.substring(1) || 'dashboard';
             
             // Update menu
             document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
@@ -204,6 +374,11 @@
                     activeView.classList.add('active');
                 }, 10);
             }
+            
+            // Trigger specific loaders
+            if(hash === 'dashboard' && typeof loadDashboard === 'function') loadDashboard();
+            if(hash === 'sites' && typeof loadSites === 'function') loadSites();
+            if(hash === 'library' && typeof loadLibrary === 'function') loadLibrary(currentFolderId);
         }
 
         window.addEventListener('hashchange', handleRoute);

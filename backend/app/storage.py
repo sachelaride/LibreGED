@@ -2,12 +2,12 @@ from pathlib import Path
 import os
 import uuid
 from sqlalchemy.orm import Session
-from app.models_storage import StoragePartition
+from app.models_storage import StorageRule
 
 STORAGE_ROOT = Path(__file__).resolve().parent.parent / "storage"
 STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 
-def save_file(file_name: str, content: bytes, db: Session = None, partition_name: str = None) -> str:
+def save_file(file_name: str, content: bytes, db: Session = None, rule_name: str = None) -> str:
     safe_name = Path(file_name).name
     if not safe_name or safe_name != file_name:
         raise ValueError("file_name must not contain path components")
@@ -15,55 +15,59 @@ def save_file(file_name: str, content: bytes, db: Session = None, partition_name
     target_dir = STORAGE_ROOT
     
     if db:
-        # Find active partition
-        query = db.query(StoragePartition).filter(StoragePartition.is_active == True)
-        if partition_name:
-            query = query.filter(StoragePartition.name == partition_name)
+        # Find active rule
+        query = db.query(StorageRule).filter(StorageRule.is_active == True)
+        if rule_name:
+            query = query.filter(StorageRule.name == rule_name)
         
-        partition = query.first()
+        rule = query.first()
         
-        if partition:
+        if rule:
             # Check limits
             content_size = len(content)
-            size_gb = (partition.current_size_bytes + content_size) / (1024**3)
+            size_gb = (rule.current_size_bytes + content_size) / (1024**3)
             
-            if (partition.current_file_count >= partition.max_files) or (size_gb >= partition.max_size_gb):
+            if (rule.current_file_count >= rule.max_files_per_folder) or (size_gb >= rule.max_gb_per_folder):
                 # Rollover needed
-                partition.is_active = False
+                rule.is_active = False
                 
                 # Extract number if exists, else append _02
-                parts = partition.base_path.rsplit("_", 1)
+                parts = rule.base_path.rsplit("_", 1)
                 if len(parts) == 2 and parts[1].isdigit():
                     next_num = int(parts[1]) + 1
                     new_base = f"{parts[0]}_{next_num:02d}"
                 else:
-                    new_base = f"{partition.base_path}_02"
+                    new_base = f"{rule.base_path}_02"
                 
-                new_partition = StoragePartition(
-                    area_id=partition.area_id,
-                    name=partition.name,
-                    max_files=partition.max_files,
-                    max_size_gb=partition.max_size_gb,
+                new_rule = StorageRule(
+                    name=rule.name,
+                    document_type_id=rule.document_type_id,
+                    storage_type=rule.storage_type,
                     base_path=new_base,
-                    network_domain=partition.network_domain,
-                    network_user=partition.network_user,
-                    network_password=partition.network_password,
+                    max_files_per_folder=rule.max_files_per_folder,
+                    max_gb_per_folder=rule.max_gb_per_folder,
+                    enable_duplication=rule.enable_duplication,
+                    secondary_storage_type=rule.secondary_storage_type,
+                    secondary_base_path=rule.secondary_base_path,
+                    network_domain=rule.network_domain,
+                    network_user=rule.network_user,
+                    network_password=rule.network_password,
                     current_file_count=1,
                     current_size_bytes=content_size,
                     is_active=True
                 )
-                db.add(new_partition)
+                db.add(new_rule)
                 db.commit()
-                db.refresh(new_partition)
+                db.refresh(new_rule)
                 
-                target_dir = STORAGE_ROOT / new_partition.base_path
+                target_dir = STORAGE_ROOT / new_rule.base_path
                 target_dir.mkdir(parents=True, exist_ok=True)
             else:
-                partition.current_file_count += 1
-                partition.current_size_bytes += content_size
+                rule.current_file_count += 1
+                rule.current_size_bytes += content_size
                 db.commit()
                 
-                target_dir = STORAGE_ROOT / partition.base_path
+                target_dir = STORAGE_ROOT / rule.base_path
                 target_dir.mkdir(parents=True, exist_ok=True)
 
     target = target_dir / safe_name

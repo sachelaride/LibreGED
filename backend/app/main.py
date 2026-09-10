@@ -5,8 +5,9 @@ from typing import Literal
 from uuid import uuid4
 from xml.sax.saxutils import escape, quoteattr
 
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, status, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, status, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -90,7 +91,7 @@ async def lifespan(app: FastAPI):
     yield
     stop_worker()
 
-app = FastAPI(title="LibreGED API", version="0.1.0", openapi_tags=tags_metadata, lifespan=lifespan)
+app = FastAPI(title="EduGED Libre API", version="0.1.0", openapi_tags=tags_metadata, lifespan=lifespan)
 
 @app.on_event("startup")
 @repeat_every(seconds=10)
@@ -108,27 +109,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.exception_handler(IntegrityError)
+async def sqlalchemy_integrity_error_handler(request: Request, exc: IntegrityError):
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": "Não é possível excluir ou modificar este registro pois ele possui dependências ou histórico vinculado (Proteção de Dados ativada)."},
+    )
+
 # Role definitions for dependency injection
 AdminOnly = Depends(role_checker(["admin_global"]))
 InstitutionRoles = Depends(role_checker(["admin_global", "admin_instituicao", "operador", "leitor", "auditor"]))
 
 from app import api_admin, api_users, api_institutions, api_ged_upload, api_ecm, api_sites
-from app import api_storage_config, api_ged_config, api_workflow, api_templates, api_search, api_erp_ingestion, api_digital_signature
+from app import api_storage_config, api_ged_config, api_workflow, api_templates, api_search, api_erp_ingestion, api_digital_signature, api_academic, api_xsd, api_academic_dossier, api_validator, api_quarantine, api_integration, api_dashboard
+from app import api_ecm_dictionary
 
 app.include_router(api_admin.router)
-app.include_router(api_users.router)
-app.include_router(api_institutions.router)
+app.include_router(api_users.router, prefix="/api")
+app.include_router(api_institutions.router, prefix="/api")
 
 app.include_router(api_ged_upload.router)
 app.include_router(api_ecm.router)
-app.include_router(api_sites.router)
+app.include_router(api_ecm_dictionary.router)
+app.include_router(api_sites.router, prefix="/api/ecm/sites")
 app.include_router(api_storage_config.router)
-app.include_router(api_ged_config.router)
-app.include_router(api_workflow.router)
-app.include_router(api_templates.router)
+app.include_router(api_ged_config.router, prefix="/api")
+app.include_router(api_workflow.router, prefix="/api")
+app.include_router(api_templates.router, prefix="/api")
 app.include_router(api_search.router)
 app.include_router(api_erp_ingestion.router)
 app.include_router(api_digital_signature.router)
+app.include_router(api_academic.router)
+app.include_router(api_xsd.router, prefix="/api")
+app.include_router(api_academic_dossier.router)
+app.include_router(api_validator.router)
+app.include_router(api_quarantine.router)
+app.include_router(api_integration.router)
+app.include_router(api_dashboard.router)
+
+@app.post("/api/documents/validate", tags=["GED - Validações"])
+def validate_academic_documents(payload: ValidationRequest):
+    errors = validate_documents(payload)
+    return {"valid": not errors, "errors": errors}
 
 class InstitutionCreate(BaseModel):
     name: str = Field(..., min_length=2)
@@ -291,6 +313,10 @@ class DocumentLifecycleInfo(BaseModel):
 def health_check():
     return {"status": "ok"}
 
+@app.post("/api/desktop/heartbeat")
+def desktop_heartbeat():
+    return {"status": "alive"}
+
 from fastapi.security import OAuth2PasswordRequestForm
 from app.auth import get_password_hash, create_access_token, verify_password
 
@@ -326,6 +352,12 @@ def create_institution(payload: InstitutionCreate, db: Session = Depends(get_db)
     db.commit()
     db.refresh(institution)
     return institution
+
+@app.get("/api/institutions", response_model=List[Institution])
+def list_institutions(db: Session = Depends(get_db), user: models.User = AdminOnly):
+    institutions = db.query(models.Institution).all()
+    return institutions
+
 
 
 @app.post("/api/students", response_model=Student)
@@ -446,13 +478,53 @@ def get_document_retention_policy(
 
 
 @app.get("/api/audit")
-def list_audit_events(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.desc()).offset(skip).limit(limit).all()
+def list_audit_events(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.User = InstitutionRoles):
+    query = db.query(models.AuditEvent)
+    if current_user.role != "admin_global":
+        # Filtra os eventos de auditoria para apenas exibir aqueles causados por usuários da mesma instituição
+        query = query.join(models.User, models.AuditEvent.user_id == models.User.id).filter(models.User.institution_id == current_user.institution_id)
+        
+    return query.order_by(models.AuditEvent.created_at.desc()).offset(skip).limit(limit).all()
+
+from fastapi.responses import StreamingResponse
+import io
+import csv
+
+@app.get("/api/audit/export/csv")
+def export_audit_events_csv(db: Session = Depends(get_db), current_user: models.User = InstitutionRoles):
+    query = db.query(models.AuditEvent)
+    if current_user.role != "admin_global":
+        query = query.join(models.User, models.AuditEvent.user_id == models.User.id).filter(models.User.institution_id == current_user.institution_id)
+        
+    events = query.order_by(models.AuditEvent.created_at.desc()).all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "DataHora", "UsuarioID", "Entidade", "EntidadeID", "Acao", "Detalhes", "HashSignature"])
+    
+    for event in events:
+        writer.writerow([
+            event.id,
+            event.created_at.isoformat(),
+            event.user_id or "Sistema",
+            event.entity,
+            event.entity_id,
+            event.action,
+            event.details,
+            event.hash_signature
+        ])
+        
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=auditoria.csv"}
+    )
 
 
 @app.get("/api/audit/verify")
-def verify_audit_chain(db: Session = Depends(get_db)):
-    """Verifica a integridade criptogrÃƒÂ¡fica da cadeia de eventos de auditoria."""
+def verify_audit_chain(db: Session = Depends(get_db), current_user: models.User = AdminOnly):
+    """Verifica a integridade criptográfica da cadeia de eventos de auditoria."""
     from hashlib import sha256
     events = db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.asc()).all()
     last_hash = "genesis"

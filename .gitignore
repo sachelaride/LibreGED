@@ -9,3 +9,6 @@ venv/
 /modelos/
 .agents/
 .env
+.env.*
+!.env.example
+!.env.test.example

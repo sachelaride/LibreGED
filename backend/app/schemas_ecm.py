@@ -94,3 +94,38 @@ class DashboardConfigResponse(DashboardConfigBase):
     
     class Config:
         from_attributes = True
+
+class DynamicPropertyBase(BaseModel):
+    name: str
+    title: str
+    data_type: str
+    required: bool = False
+    multiple: bool = False
+    options_json: Optional[Dict[str, Any]] = None
+
+class DynamicPropertyCreate(DynamicPropertyBase):
+    pass
+
+class DynamicPropertyResponse(DynamicPropertyBase):
+    id: str
+    aspect_id: str
+    
+    class Config:
+        from_attributes = True
+
+class DynamicAspectBase(BaseModel):
+    name: str
+    title: str
+    description: Optional[str] = None
+
+class DynamicAspectCreate(DynamicAspectBase):
+    is_global: bool = False
+
+class DynamicAspectResponse(DynamicAspectBase):
+    id: str
+    institution_id: Optional[str] = None
+    created_at: datetime
+    properties_def: List[DynamicPropertyResponse] = []
+    
+    class Config:
+        from_attributes = True

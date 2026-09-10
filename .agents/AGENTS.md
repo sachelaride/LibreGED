@@ -1,4 +1,4 @@
-# Regras de Negócio e Contexto do Projeto LibreGED
+# Regras de Negócio e Contexto do Projeto EduGED Libre
 
 ## Arquivos e Material Auxiliar
 - O diretório `modelos/` localizado na raiz do projeto (e suas subpastas) contém documentos, arquivos de exemplo, imagens e recursos auxiliares úteis para o desenvolvimento e entendimento dos requisitos. 

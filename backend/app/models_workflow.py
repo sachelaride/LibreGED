@@ -34,6 +34,7 @@ class WorkflowTransition(Base):
     origin_state_id = Column(String, ForeignKey("ged_workflow_states.id"), nullable=False)
     destination_state_id = Column(String, ForeignKey("ged_workflow_states.id"), nullable=False)
     label = Column(String, nullable=False)
+    allowed_roles = Column(String, nullable=True) # CSV format, e.g., "gestor_clinica,admin_global"
     
     workflow = relationship("Workflow", back_populates="transitions")
     origin_state = relationship("WorkflowState", foreign_keys=[origin_state_id])
@@ -51,3 +52,20 @@ class DocumentWorkflowInstance(Base):
     
     workflow = relationship("Workflow")
     current_state = relationship("WorkflowState")
+
+class WorkflowTask(Base):
+    __tablename__ = "ged_workflow_tasks"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    instance_id = Column(String, ForeignKey("ged_document_workflow_instances.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    status = Column(String, default="PENDING", index=True) # PENDING, COMPLETED, CANCELLED
+    assignee_id = Column(String, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    
+    due_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    completed_at = Column(DateTime, nullable=True)
+    
+    instance = relationship("DocumentWorkflowInstance")
+    assignee = relationship("User")

@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LibreGED - Acesso</title>
+    <title>EduGED Libre - Acesso</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <script src="js/theme.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
             display: flex;
@@ -15,15 +17,24 @@
             justify-content: center;
             height: 100vh;
             margin: 0;
-            background: linear-gradient(135deg, #0f172a, #060913);
+            background: var(--bg-gradient);
         }
         .login-card {
             width: 100%;
             max-width: 400px;
         }
+
+        .login-theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+        }
     </style>
 </head>
 <body>
+    <button class="theme-toggle login-theme-toggle" type="button" data-theme-toggle aria-pressed="false">
+        <i class="fa-solid fa-sun" aria-hidden="true"></i><span>Tema claro</span>
+    </button>
 
     <div class="login-card glass-panel">
         <div class="logo" style="text-align: center; margin-bottom: 2rem;">

@@ -11,6 +11,10 @@ from app import models_ged_config
 from app import models_workflow
 from app import models_templates
 from app import models_ecm
+from app import models_xsd
+from app import models_config
+from app import models_integration
+from app import models_academic_dossier
 
 
 config = context.config

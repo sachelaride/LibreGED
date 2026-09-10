@@ -1,1 +1,1 @@
-"""LibreGED backend package."""
+"""EduGED Libre backend package."""

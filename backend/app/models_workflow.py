@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Integer, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models import Base, utc_now
 
@@ -23,17 +23,29 @@ class WorkflowState(Base):
     label = Column(String, nullable=False)
     is_initial = Column(Boolean, default=False)
     is_completion = Column(Boolean, default=False)
+    node_type = Column(String, default="task")
+    
+    # Visual positioning
+    ui_pos_x = Column(Integer, nullable=True)
+    ui_pos_y = Column(Integer, nullable=True)
     
     workflow = relationship("Workflow", back_populates="states")
 
 class WorkflowTransition(Base):
     __tablename__ = "ged_workflow_transitions"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id", "origin_state_id", "destination_state_id",
+            name="uq_workflow_transition_route",
+        ),
+    )
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     workflow_id = Column(String, ForeignKey("ged_workflows.id"), nullable=False)
     origin_state_id = Column(String, ForeignKey("ged_workflow_states.id"), nullable=False)
     destination_state_id = Column(String, ForeignKey("ged_workflow_states.id"), nullable=False)
     label = Column(String, nullable=False)
+    action_code = Column(String, nullable=True)
     allowed_roles = Column(String, nullable=True) # CSV format, e.g., "gestor_clinica,admin_global"
     
     workflow = relationship("Workflow", back_populates="transitions")

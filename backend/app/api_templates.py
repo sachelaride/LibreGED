@@ -29,6 +29,10 @@ def create_template(template_in: GEDTemplateCreate, db: Session = Depends(get_db
     db.add(template)
     db.commit()
     db.refresh(template)
+    
+    from app.main import add_audit
+    add_audit(db, "template", template.id, "created", f"Template {template.name} created", current_user.id)
+    
     return template
 
 @router.put("/templates/{template_id}", response_model=GEDTemplateResponse, tags=["Admin - Templates"])
@@ -46,4 +50,21 @@ def update_template(template_id: str, template_in: GEDTemplateUpdate, db: Sessio
         
     db.commit()
     db.refresh(template)
+    
+    from app.main import add_audit
+    add_audit(db, "template", template.id, "updated", f"Template {template.name} updated", current_user.id)
+    
     return template
+
+@router.delete("/templates/{template_id}", status_code=204, tags=["Admin - Templates"])
+def delete_template(template_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    template = db.query(models_templates.GEDTemplate).filter(models_templates.GEDTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+        
+    from app.main import add_audit
+    add_audit(db, "template", template.id, "deleted", f"Template {template.name} deleted", current_user.id)
+    
+    db.delete(template)
+    db.commit()
+    return None

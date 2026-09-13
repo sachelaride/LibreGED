@@ -9,6 +9,8 @@ from app.auth import get_current_active_user, role_checker
 from app.models_ged import GEDDocument, GEDDocumentStatus, DocumentTransitionHistory
 from app.schemas_ged import GEDDocumentResponse
 
+from app.document_permissions import exigir_documento, tem_permissao
+
 router = APIRouter(tags=["Administração - Quarentena"])
 
 QuarantineRoles = Depends(role_checker(["admin_global", "admin_instituicao"]))
@@ -22,7 +24,12 @@ def list_quarantined_documents(
     if current_user.role != "admin_global":
         query = query.filter(GEDDocument.institution_id == current_user.institution_id)
         
-    return query.all()
+    documentos = query.all()
+    if current_user.role != "admin_global":
+        if not current_user.institution_id or current_user.campus_id:
+            return []
+        documentos = [d for d in documentos if tem_permissao(db, current_user, d.category_id, "consultar")]
+    return documentos
 
 @router.post("/api/quarantine/{document_id}/release", response_model=GEDDocumentResponse)
 def release_from_quarantine(
@@ -37,6 +44,7 @@ def release_from_quarantine(
     if current_user.role != "admin_global" and doc.institution_id != current_user.institution_id:
         raise HTTPException(status_code=403, detail="Acesso negado")
         
+    exigir_documento(db, current_user, doc, "liberar_quarentena")
     doc.status = GEDDocumentStatus.PENDENTE_VALIDACAO
     
     transition = DocumentTransitionHistory(
@@ -69,17 +77,5 @@ def delete_quarantined_document(
     if current_user.role != "admin_global" and doc.institution_id != current_user.institution_id:
         raise HTTPException(status_code=403, detail="Acesso negado")
         
-    # Delete physical file
-    if os.path.exists(doc.file_path):
-        try:
-            os.remove(doc.file_path)
-        except:
-            pass
-            
-    # Audit before deleting
-    from app.main import add_audit
-    add_audit(db, "document", doc.id, "quarantine_delete", "Administrator deleted quarantined document", current_user.id)
-    
-    db.delete(doc)
-    db.commit()
-    return None
+    from app.api_document_operations import excluir_documento
+    return excluir_documento(document_id, db, current_user)

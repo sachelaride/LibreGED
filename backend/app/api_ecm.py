@@ -14,6 +14,13 @@ from app.schemas_ecm import NodeCreate, NodeResponse, AspectAdd, TagCreate, TagR
 from app.auth import get_current_active_user
 from app.services.retention_service import apply_temporality_rule
 from app.storage import save_file
+from app.document_permissions import exigir_permissao
+from app.models_ged_config import DocumentType
+
+def check_node_permission(db, user, node_type, acao):
+    tipo = db.get(DocumentType, node_type)
+    if tipo:
+        exigir_permissao(db, user, node_type, acao)
 
 
 @router.post("/api/ecm/nodes/upload", response_model=List[NodeResponse], tags=["ECM"])
@@ -29,6 +36,8 @@ def upload_nodes(
         props_dict = json.loads(properties)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid properties JSON")
+
+    check_node_permission(db, user, node_type, 'cadastrar')
 
     uploaded_nodes = []
     
@@ -106,6 +115,8 @@ def upload_node_version(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
+    check_node_permission(db, user, node.node_type, 'editar')
+
     content = file.file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Version file cannot be empty")
@@ -149,6 +160,8 @@ def create_node(
     user: User = Depends(get_current_active_user)
 ):
     # Base ECM Node creation
+    check_node_permission(db, user, payload.node_type, 'cadastrar')
+    
     node = Node(
         node_type=payload.node_type,
         name=payload.name,
@@ -195,6 +208,8 @@ def add_aspect(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
         
+    check_node_permission(db, user, node.node_type, 'editar')
+
     aspect = db.query(NodeAspect).filter_by(node_id=node.id, aspect_name=payload.aspect_name).first()
     if not aspect:
         aspect = NodeAspect(node_id=node.id, aspect_name=payload.aspect_name)
@@ -214,6 +229,8 @@ def update_node_properties(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
         
+    check_node_permission(db, user, node.node_type, 'editar')
+
     # Update properties dict
     new_props = node.properties.copy()
     new_props.update(payload.properties)
@@ -248,6 +265,8 @@ def add_node_tag(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
         
+    check_node_permission(db, user, node.node_type, 'editar')
+
     # Get or create tag
     tag = db.query(Tag).filter(Tag.name == payload.name).first()
     if not tag:
@@ -276,6 +295,8 @@ def remove_node_tag(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
         
+    check_node_permission(db, user, node.node_type, 'editar')
+
     node_tag = db.query(NodeTag).filter_by(node_id=node.id, tag_id=tag_id).first()
     if node_tag:
         db.delete(node_tag)

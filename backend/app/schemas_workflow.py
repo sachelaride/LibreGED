@@ -7,9 +7,20 @@ class WorkflowStateBase(BaseModel):
     label: str
     is_initial: bool = False
     is_completion: bool = False
+    ui_pos_x: Optional[int] = None
+    ui_pos_y: Optional[int] = None
+    node_type: Optional[str] = "task"
 
 class WorkflowStateCreate(WorkflowStateBase):
     pass
+
+class WorkflowStateUpdate(BaseModel):
+    label: Optional[str] = None
+    is_initial: Optional[bool] = None
+    is_completion: Optional[bool] = None
+    ui_pos_x: Optional[int] = None
+    ui_pos_y: Optional[int] = None
+    node_type: Optional[str] = None
 
 class WorkflowStateResponse(WorkflowStateBase):
     id: str
@@ -23,6 +34,7 @@ class WorkflowTransitionBase(BaseModel):
     origin_state_id: str
     destination_state_id: str
     label: str
+    action_code: Optional[str] = None
     allowed_roles: Optional[str] = None
 
 class WorkflowTransitionCreate(WorkflowTransitionBase):

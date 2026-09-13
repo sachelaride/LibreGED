@@ -146,6 +146,8 @@ app.include_router(api_validator.router)
 app.include_router(api_quarantine.router)
 app.include_router(api_integration.router)
 app.include_router(api_dashboard.router)
+from app import api_document_operations
+app.include_router(api_document_operations.router)
 
 @app.post("/api/documents/validate", tags=["GED - Validações"])
 def validate_academic_documents(payload: ValidationRequest):

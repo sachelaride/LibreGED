@@ -23,13 +23,14 @@ async function performSearch() {
 
         const results = await response.json();
         
-        if(results.length === 0) {
+        const documentos = results.items || [];
+        if(documentos.length === 0) {
             resultsContainer.innerHTML = '<p class="text-muted" style="text-align:center;">Nenhum documento encontrado.</p>';
             return;
         }
 
         let html = '<div style="display:grid; gap:15px;">';
-        results.forEach(doc => {
+        documentos.forEach(doc => {
             html += `
                 <div class="glass-panel" style="padding: 20px; display:flex; justify-content:space-between; align-items:center;">
                     <div>
@@ -55,6 +56,60 @@ async function performSearch() {
 
 function viewDocument(docId) {
     alert(`Redirecionando para visualizador do documento: ${docId}\n(Recurso em desenvolvimento)`);
+}
+
+let tiposDocumentaisUpload = [];
+
+async function carregarTiposUpload() {
+    const resposta = await fetch(`${API_URL}/document-types?page=1&size=100`, {headers: getAuthHeaders()});
+    if (!resposta.ok) throw new Error('Não foi possível carregar os tipos documentais.');
+    const dados = await resposta.json();
+    tiposDocumentaisUpload = dados.items || [];
+    const seletor = document.getElementById('upload-document-type');
+    seletor.innerHTML = '<option value="">Selecione o tipo documental</option>';
+    tiposDocumentaisUpload.filter(tipo => tipo.is_active).forEach(tipo => {
+        const opcao = document.createElement('option');
+        opcao.value = tipo.id;
+        opcao.textContent = tipo.name;
+        seletor.append(opcao);
+    });
+}
+
+function carregarIndicesUpload() {
+    const tipo = tiposDocumentaisUpload.find(item => item.id === document.getElementById('upload-document-type').value);
+    const painel = document.getElementById('upload-indices');
+    painel.replaceChildren();
+    if (!tipo) return;
+    (tipo.indices || []).forEach(vinculo => {
+        const indice = vinculo.index;
+        const grupo = document.createElement('div');
+        grupo.className = 'form-group';
+        const rotulo = document.createElement('label');
+        rotulo.textContent = `${indice.name}${vinculo.is_required ? ' *' : ''}`;
+        let campo;
+        if (indice.auto_increment) {
+            campo = document.createElement('input');
+            campo.disabled = true;
+            campo.placeholder = 'Gerado automaticamente';
+        } else if (indice.type.toLocaleLowerCase() === 'lista') {
+            campo = document.createElement('select');
+            campo.append(new Option('Selecione', ''));
+            (indice.options || []).forEach(valor => campo.append(new Option(valor, valor)));
+        } else if (indice.type.toLocaleLowerCase() === 'booleano') {
+            campo = document.createElement('select');
+            campo.append(new Option('Selecione', ''), new Option('Sim', 'true'), new Option('Não', 'false'));
+        } else {
+            campo = document.createElement('input');
+            campo.type = indice.type.toLocaleLowerCase() === 'data' ? 'date' :
+                ['número', 'numero'].includes(indice.type.toLocaleLowerCase()) ? 'number' : 'text';
+            if (indice.mask) campo.pattern = indice.mask;
+        }
+        campo.dataset.indexId = indice.id;
+        campo.dataset.autoIncrement = indice.auto_increment ? 'true' : 'false';
+        campo.required = vinculo.is_required && !indice.auto_increment;
+        grupo.append(rotulo, campo);
+        painel.append(grupo);
+    });
 }
 
 let currentStudentId = null;
@@ -125,6 +180,12 @@ async function createDossier() {
     const uploadZone = document.getElementById('upload-zone');
     uploadZone.style.opacity = '1';
     uploadZone.style.pointerEvents = 'auto';
+    try {
+        await carregarTiposUpload();
+    } catch (erro) {
+        alert(erro.message);
+        return;
+    }
     
     // Adiciona listener pro clique na zona
     uploadZone.onclick = () => document.getElementById('file-input').click();
@@ -167,22 +228,18 @@ async function handleFiles(files) {
         return;
     }
 
-    // Precisamos de um document_type_id válido para o GED Upload.
-    // Vamos buscar os tipos e pegar o primeiro (ex: "RG", "Histórico")
-    let docTypeId = null;
-    try {
-        const typesResp = await fetch(`${API_URL}/document-types`, { headers: getAuthHeaders() });
-        const types = await typesResp.json();
-        if(types.length > 0) {
-            docTypeId = types[0].id;
-        } else {
-            alert("Nenhum Tipo Documental cadastrado pelo Admin.");
-            return;
-        }
-    } catch(e) {
-        alert("Erro ao buscar tipos documentais.");
+    const docTypeId = document.getElementById('upload-document-type').value;
+    if (!docTypeId) {
+        alert('Selecione o tipo documental antes de enviar.');
         return;
     }
+
+    const formularioValido = [...document.querySelectorAll('#upload-indices [data-index-id]')]
+        .every(campo => campo.disabled || campo.reportValidity());
+    if (!formularioValido) return;
+    const indices = [...document.querySelectorAll('#upload-indices [data-index-id]')]
+        .filter(campo => campo.dataset.autoIncrement !== 'true' && campo.value !== '')
+        .map(campo => ({index_id: campo.dataset.indexId, value: campo.value}));
 
     alert(`${files.length} arquivo(s) selecionado(s). Iniciando upload para o Dossiê...`);
     
@@ -190,7 +247,7 @@ async function handleFiles(files) {
         const formData = new FormData();
         formData.append("title", files[i].name);
         formData.append("document_type_id", docTypeId);
-        formData.append("indices_json", "[]");
+        formData.append("indices_json", JSON.stringify(indices));
         formData.append("file", files[i]);
         
         try {
@@ -201,7 +258,9 @@ async function handleFiles(files) {
             });
             
             if(!response.ok) {
-                console.error("Erro no upload do arquivo " + files[i].name);
+                const erro = await response.json().catch(() => ({}));
+                alert(`Erro em ${files[i].name}: ${erro.detail || 'upload recusado'}`);
+                return;
             }
         } catch(e) {
             console.error("Erro de rede no upload " + files[i].name);

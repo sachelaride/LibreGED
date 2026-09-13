@@ -20,6 +20,12 @@ class SchemaVersionCreate(BaseModel):
     xsd_hash: str
     environment: str = "homologation"
 
+class SchemaVersionUpdate(BaseModel):
+    code: Optional[str] = None
+    namespace: Optional[str] = None
+    xsd_hash: Optional[str] = None
+    environment: Optional[str] = None
+
 class SchemaVersionResponse(SchemaVersionCreate):
     id: str
     status: str
@@ -61,7 +67,50 @@ def create_schema(payload: SchemaVersionCreate, db: Session = Depends(get_db), c
     db.add(new_schema)
     db.commit()
     db.refresh(new_schema)
+    
+    from app.main import add_audit
+    add_audit(db, "xsd", new_schema.id, "created", f"Schema {new_schema.code} created", current_user.id)
+    
     return new_schema
+
+@router.put("/xsd/{schema_id}", response_model=SchemaVersionResponse, tags=["Admin - XSD"])
+def update_schema(schema_id: str, payload: SchemaVersionUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    schema = db.query(SchemaVersion).filter(SchemaVersion.id == schema_id).first()
+    if not schema:
+        raise HTTPException(status_code=404, detail="Schema not found")
+        
+    if payload.code is not None:
+        schema.code = payload.code
+    if payload.namespace is not None:
+        schema.namespace = payload.namespace
+    if payload.xsd_hash is not None:
+        schema.xsd_hash = payload.xsd_hash
+    if payload.environment is not None:
+        schema.environment = payload.environment
+        
+    db.commit()
+    db.refresh(schema)
+    
+    from app.main import add_audit
+    add_audit(db, "xsd", schema.id, "updated", f"Schema {schema.code} updated", current_user.id)
+    
+    return schema
+
+@router.delete("/xsd/{schema_id}", status_code=204, tags=["Admin - XSD"])
+def delete_schema(schema_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    schema = db.query(SchemaVersion).filter(SchemaVersion.id == schema_id).first()
+    if not schema:
+        raise HTTPException(status_code=404, detail="Schema not found")
+        
+    if schema.status == "approved":
+        raise HTTPException(status_code=409, detail="Não é possível excluir um schema aprovado.")
+        
+    from app.main import add_audit
+    add_audit(db, "xsd", schema.id, "deleted", f"Schema {schema.code} deleted", current_user.id)
+    
+    db.delete(schema)
+    db.commit()
+    return None
 
 @router.post("/xsd/{schema_id}/approve", response_model=SchemaVersionResponse, tags=["Admin - XSD"])
 def approve_schema(schema_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
@@ -84,4 +133,8 @@ def approve_schema(schema_id: str, db: Session = Depends(get_db), current_user: 
         
     db.commit()
     db.refresh(schema)
+    
+    from app.main import add_audit
+    add_audit(db, "xsd", schema.id, "approved", f"Schema {schema.code} approved", current_user.id)
+    
     return schema

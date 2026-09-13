@@ -42,4 +42,41 @@ def create_rule(payload: StorageRuleCreate, db: Session = Depends(get_db), user:
     db.add(rule)
     db.commit()
     db.refresh(rule)
+    
+    from app.main import add_audit
+    add_audit(db, "storage_rule", rule.id, "created", f"Storage rule {rule.name} created", user.id)
+    
     return rule
+
+@router.put("/api/storage-rules/{rule_id}", response_model=StorageRuleResponse, tags=["Storage Config"])
+def update_rule(rule_id: str, payload: StorageRuleCreate, db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):
+    rule = db.query(StorageRule).filter(StorageRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Regra de armazenamento não encontrada")
+    
+    dumped = payload.model_dump(exclude_unset=True)
+    _ = dumped.pop("document_type_name", None)
+    
+    for k, v in dumped.items():
+        setattr(rule, k, v)
+        
+    db.commit()
+    db.refresh(rule)
+    
+    from app.main import add_audit
+    add_audit(db, "storage_rule", rule.id, "updated", f"Storage rule {rule.name} updated", user.id)
+    
+    return rule
+
+@router.delete("/api/storage-rules/{rule_id}", status_code=204, tags=["Storage Config"])
+def delete_rule(rule_id: str, db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):
+    rule = db.query(StorageRule).filter(StorageRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Regra de armazenamento não encontrada")
+    
+    from app.main import add_audit
+    add_audit(db, "storage_rule", rule.id, "deleted", f"Storage rule {rule.name} deleted", user.id)
+    
+    db.delete(rule)
+    db.commit()
+    return None

@@ -4,6 +4,8 @@ import subprocess
 import sys
 from uuid import uuid4
 
+from app.config import settings
+
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import make_url
 import psycopg
@@ -39,7 +41,7 @@ def run_alembic(database_url: str, *arguments: str) -> subprocess.CompletedProce
 
 
 def test_migration_upgrade_matches_models_and_downgrades_cleanly():
-    base_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    base_url = settings.DATABASE_URL
     if not base_url or not base_url.startswith("postgresql"):
         raise RuntimeError("TEST_DATABASE_URL must point to PostgreSQL")
 

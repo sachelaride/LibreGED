@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app import models
 from app.storage import STORAGE_ROOT
+from app.schemas_filewatch import validar_manifesto
+from app.config import settings
+from app.models_ged import GEDDocument
 
 # Ingestion directories
 INGESTION_ROOT = STORAGE_ROOT / "ingestion"
@@ -79,31 +82,54 @@ async def process_ingestion_file(manifest_path: Path, db: Session):
         with open(processing_manifest, "r", encoding="utf-8") as f:
             manifest_data = json.load(f)
             
-        required_keys = ["institution_id", "document_type", "hash_sha256"]
-        for key in required_keys:
-            if key not in manifest_data:
-                raise ValueError(f"Missing required key in manifest: {key}")
+        manifesto = validar_manifesto(manifest_data, pdf_path.name)
+        ambiente = "homologation" if settings.ENVIRONMENT == "staging" else settings.ENVIRONMENT
+        if manifesto.environment != ambiente:
+            raise ValueError("O ambiente do manifesto difere do ambiente do worker.")
                 
         # Validate hash
         actual_hash = calculate_sha256(processing_pdf)
-        if actual_hash != manifest_data["hash_sha256"]:
-            raise ValueError(f"Hash mismatch. Expected {manifest_data['hash_sha256']}, got {actual_hash}")
+        if actual_hash != manifesto.sha256:
+            raise ValueError("O SHA-256 do PDF difere do informado no manifesto.")
             
         # Validate Institution
-        inst = db.query(models.Institution).filter(models.Institution.id == manifest_data["institution_id"]).first()
+        inst = db.get(models.Institution, str(manifesto.institution_id))
         if not inst:
-            raise ValueError(f"Institution {manifest_data['institution_id']} not found.")
+            raise ValueError("Instituição do manifesto não encontrada.")
+        documento = db.get(GEDDocument, str(manifesto.document_id))
+        if documento is None or documento.institution_id != inst.id:
+            raise ValueError("Documento não encontrado na instituição informada.")
+
+        existing_job = db.query(models.IngestionJob).filter(
+            models.IngestionJob.ingestion_id == str(manifesto.ingestion_id)
+        ).with_for_update().first()
+        if existing_job is not None:
+            same_payload = (
+                existing_job.file_hash == actual_hash
+                and existing_job.document_id == str(manifesto.document_id)
+                and existing_job.institution_id == inst.id
+            )
+            if same_payload and existing_job.status == "COMPLETED":
+                # A entrega já foi concluída; descartar apenas a cópia recebida.
+                processing_pdf.unlink()
+                processing_manifest.unlink()
+                print(f"[FileWatch] Duplicate already completed: {manifest_path.name}")
+                return
+            raise ValueError("O ingestion_id já foi processado com dados diferentes.")
             
         # Create IngestionJob
         job_id = str(uuid.uuid4())
         new_job = models.IngestionJob(
             id=job_id,
+            ingestion_id=str(manifesto.ingestion_id),
+            correlation_id=manifesto.correlation_id,
+            document_id=str(manifesto.document_id),
             institution_id=inst.id,
             status="COMPLETED",
             file_path=str(DIR_COMPLETED / pdf_path.name),
             manifest_path=str(DIR_COMPLETED / manifest_path.name),
             file_hash=actual_hash,
-            completed_at=datetime.utcnow()
+            completed_at=models.utc_now()
         )
         db.add(new_job)
         db.commit()
@@ -118,7 +144,10 @@ async def process_ingestion_file(manifest_path: Path, db: Session):
         # Log error in DB if possible, and move to quarantine
         job_id = str(uuid.uuid4())
         
-        inst_id = manifest_data.get("institution_id") if 'manifest_data' in locals() else None
+        db.rollback()
+        inst_id = manifest_data.get("institution_id") if isinstance(locals().get("manifest_data"), dict) else None
+        if not isinstance(inst_id, str):
+            inst_id = None
         inst = db.query(models.Institution).filter(models.Institution.id == inst_id).first() if inst_id else None
         
         if inst:
@@ -139,7 +168,7 @@ async def process_ingestion_file(manifest_path: Path, db: Session):
 
 async def run_filewatch_cycle():
     """Runs a single cycle of the filewatch directory polling."""
-    db = next(get_db_session())
+    db = SessionLocal()
     try:
         manifests = list(DIR_INCOMING.glob("*.json"))
         for manifest in manifests:

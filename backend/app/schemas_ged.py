@@ -35,6 +35,7 @@ class GEDDocumentBase(BaseModel):
     title: str
     category_id: str
     student_id: Optional[str] = None
+    campus_id: Optional[str] = None
     academic_phase: Optional[GEDAcademicPhase] = None
     modality: Optional[str] = None
 

@@ -7,7 +7,7 @@ from app import models, models_workflow
 from app import auth
 from app.schemas_workflow import (
     WorkflowCreate, WorkflowResponse,
-    WorkflowStateCreate, WorkflowStateResponse,
+    WorkflowStateCreate, WorkflowStateUpdate, WorkflowStateResponse,
     WorkflowTransitionCreate, WorkflowTransitionResponse,
     DocumentWorkflowInstanceCreate, DocumentWorkflowInstanceResponse,
     WorkflowTaskResponse, TaskCompletionRequest
@@ -37,36 +37,153 @@ def create_workflow(wkf_in: WorkflowCreate, db: Session = Depends(get_db), curre
     db.add(wkf)
     db.commit()
     db.refresh(wkf)
+    
+    from app.main import add_audit
+    add_audit(db, "workflow", wkf.id, "created", f"Workflow {wkf.name} created", current_user.id)
+    
     return wkf
+
+@router.put("/workflows/{workflow_id}", response_model=WorkflowResponse, tags=["Admin - Workflows"])
+def update_workflow(workflow_id: str, wkf_in: WorkflowCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    wkf = db.query(models_workflow.Workflow).filter_by(id=workflow_id).first()
+    if not wkf:
+        raise HTTPException(status_code=404, detail="Workflow não encontrado")
+    
+    wkf.name = wkf_in.name
+    wkf.internal_name = wkf_in.internal_name
+    wkf.is_active = wkf_in.is_active
+    
+    db.commit()
+    db.refresh(wkf)
+    
+    from app.main import add_audit
+    add_audit(db, "workflow", wkf.id, "updated", f"Workflow {wkf.name} updated", current_user.id)
+    
+    return wkf
+
+@router.delete("/workflows/{workflow_id}", status_code=204, tags=["Admin - Workflows"])
+def delete_workflow(workflow_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    wkf = db.query(models_workflow.Workflow).filter_by(id=workflow_id).first()
+    if not wkf:
+        raise HTTPException(status_code=404, detail="Workflow não encontrado")
+    
+    # Optional: block deletion if it has instances
+    has_instances = db.query(models_workflow.DocumentWorkflowInstance).filter_by(workflow_id=workflow_id).first()
+    if has_instances:
+        raise HTTPException(status_code=409, detail="Não é possível excluir um workflow que possui instâncias em execução. Desative-o em vez disso.")
+    
+    from app.main import add_audit
+    add_audit(db, "workflow", wkf.id, "deleted", f"Workflow {wkf.name} deleted", current_user.id)
+    
+    db.delete(wkf)
+    db.commit()
+    return None
 
 # --- STATES ---
 @router.post("/workflows/{workflow_id}/states", response_model=WorkflowStateResponse, tags=["Admin - Workflows"])
 def create_state(workflow_id: str, state_in: WorkflowStateCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    workflow = db.get(models_workflow.Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Workflow não encontrado")
+    if state_in.is_initial and db.query(models_workflow.WorkflowState).filter_by(
+        workflow_id=workflow_id, is_initial=True
+    ).first():
+        raise HTTPException(status_code=409, detail="O workflow já possui um estado inicial.")
     state = models_workflow.WorkflowState(
         workflow_id=workflow_id,
         label=state_in.label,
         is_initial=state_in.is_initial,
-        is_completion=state_in.is_completion
+        is_completion=state_in.is_completion,
+        ui_pos_x=state_in.ui_pos_x,
+        ui_pos_y=state_in.ui_pos_y,
+        node_type=state_in.node_type
     )
     db.add(state)
     db.commit()
     db.refresh(state)
     return state
 
+@router.put("/workflows/{workflow_id}/states/{state_id}", response_model=WorkflowStateResponse, tags=["Admin - Workflows"])
+def update_state(workflow_id: str, state_id: str, state_in: WorkflowStateUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    state = db.query(models_workflow.WorkflowState).filter_by(id=state_id, workflow_id=workflow_id).first()
+    if not state:
+        raise HTTPException(status_code=404, detail="Estado não encontrado")
+    if state_in.is_initial:
+        another_initial = db.query(models_workflow.WorkflowState).filter(
+            models_workflow.WorkflowState.workflow_id == workflow_id,
+            models_workflow.WorkflowState.is_initial.is_(True),
+            models_workflow.WorkflowState.id != state_id,
+        ).first()
+        if another_initial:
+            raise HTTPException(status_code=409, detail="O workflow já possui um estado inicial.")
+    if state_in.label is not None: state.label = state_in.label
+    if state_in.is_initial is not None: state.is_initial = state_in.is_initial
+    if state_in.is_completion is not None: state.is_completion = state_in.is_completion
+    if state_in.ui_pos_x is not None: state.ui_pos_x = state_in.ui_pos_x
+    if state_in.ui_pos_y is not None: state.ui_pos_y = state_in.ui_pos_y
+    if state_in.node_type is not None: state.node_type = state_in.node_type
+    db.commit()
+    db.refresh(state)
+    return state
+
+@router.delete("/workflows/{workflow_id}/states/{state_id}", status_code=204, tags=["Admin - Workflows"])
+def delete_state(workflow_id: str, state_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    state = db.query(models_workflow.WorkflowState).filter_by(id=state_id, workflow_id=workflow_id).first()
+    if not state:
+        raise HTTPException(status_code=404, detail="Estado não encontrado")
+    if db.query(models_workflow.WorkflowTransition).filter(
+        (models_workflow.WorkflowTransition.origin_state_id == state_id)
+        | (models_workflow.WorkflowTransition.destination_state_id == state_id)
+    ).first() or db.query(models_workflow.DocumentWorkflowInstance).filter_by(
+        current_state_id=state_id
+    ).first():
+        raise HTTPException(status_code=409, detail="Estado em uso; remova vínculos antes de excluir.")
+    db.delete(state)
+    db.commit()
+    return None
+
 # --- TRANSITIONS ---
 @router.post("/workflows/{workflow_id}/transitions", response_model=WorkflowTransitionResponse, tags=["Admin - Workflows"])
 def create_transition(workflow_id: str, transition_in: WorkflowTransitionCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    workflow = db.get(models_workflow.Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Workflow não encontrado")
+    states = db.query(models_workflow.WorkflowState).filter(
+        models_workflow.WorkflowState.workflow_id == workflow_id,
+        models_workflow.WorkflowState.id.in_(
+            [transition_in.origin_state_id, transition_in.destination_state_id]
+        ),
+    ).all()
+    if len(states) != 2 or transition_in.origin_state_id == transition_in.destination_state_id:
+        raise HTTPException(status_code=422, detail="Origem e destino devem ser estados distintos do workflow.")
+    duplicate = db.query(models_workflow.WorkflowTransition).filter_by(
+        workflow_id=workflow_id,
+        origin_state_id=transition_in.origin_state_id,
+        destination_state_id=transition_in.destination_state_id,
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=409, detail="A transição entre estes estados já existe.")
     transition = models_workflow.WorkflowTransition(
         workflow_id=workflow_id,
         origin_state_id=transition_in.origin_state_id,
         destination_state_id=transition_in.destination_state_id,
         label=transition_in.label,
+        action_code=transition_in.action_code,
         allowed_roles=transition_in.allowed_roles
     )
     db.add(transition)
     db.commit()
     db.refresh(transition)
     return transition
+
+@router.delete("/workflows/{workflow_id}/transitions/{transition_id}", status_code=204, tags=["Admin - Workflows"])
+def delete_transition(workflow_id: str, transition_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    transition = db.query(models_workflow.WorkflowTransition).filter_by(id=transition_id, workflow_id=workflow_id).first()
+    if not transition:
+        raise HTTPException(status_code=404, detail="Transição não encontrada")
+    db.delete(transition)
+    db.commit()
+    return None
 
 # --- EXECUTION & TASKS ---
 @router.post("/workflows/instances", response_model=DocumentWorkflowInstanceResponse, tags=["Workflows - Execution"])
@@ -75,6 +192,8 @@ def start_workflow_instance(
     db: Session = Depends(get_db),
     user: models.User = Depends(auth.get_current_active_user)
 ):
+    from app.api_document_operations import obter_documento
+    obter_documento(db, user, payload.document_id, "iniciar_fluxo")
     # Fetch workflow to get the initial state
     workflow = db.query(models_workflow.Workflow).filter_by(id=payload.workflow_id).first()
     if not workflow:
@@ -139,16 +258,52 @@ def complete_task(
     if task.status != "PENDING":
         raise HTTPException(status_code=400, detail="Task is already completed or cancelled")
         
+    from app.api_document_operations import obter_documento
+    obter_documento(db, user, task.instance.document_id, "executar_fluxo")
+    instance = task.instance
+    transitions = db.query(models_workflow.WorkflowTransition).filter_by(
+        workflow_id=instance.workflow_id,
+        origin_state_id=instance.current_state_id,
+    ).all()
+    action = payload.action.strip().casefold()
+    transition = next(
+        (
+            item for item in transitions
+            if action in {
+                (item.action_code or "").strip().casefold(),
+                item.label.strip().casefold(),
+            }
+        ),
+        None,
+    )
+    if transition is None:
+        raise HTTPException(
+            status_code=422,
+            detail="A ação informada não possui transição disponível no estado atual.",
+        )
+    if transition.allowed_roles:
+        roles = {role.strip() for role in transition.allowed_roles.split(",") if role.strip()}
+        if user.role not in roles and user.role != "admin_global":
+            raise HTTPException(status_code=403, detail="Seu papel não pode executar esta transição.")
+    new_state = db.get(models_workflow.WorkflowState, transition.destination_state_id)
+    if new_state is None:
+        raise HTTPException(status_code=409, detail="Estado de destino da transição não existe.")
     task.status = "COMPLETED"
-    task.completed_at = datetime.utcnow()
-    
-    # In a real workflow engine, we would parse `payload.action` (e.g. APPROVE)
-    # and find the WorkflowTransition matching it to advance the instance.current_state_id.
-    # For now, we will simply close the task.
-    
-    
+    task.completed_at = datetime.now()
+    instance.current_state_id = new_state.id
+    previous_status = documento_autorizado.status
+    if new_state.is_completion:
+        documento_autorizado.status = GEDDocumentStatus.VALIDO
+    from app.models_ged import DocumentTransitionHistory
+    db.add(DocumentTransitionHistory(
+        document_id=documento_autorizado.id,
+        from_status=previous_status,
+        to_status=documento_autorizado.status,
+        changed_by_user_id=user.id,
+        comments=f"Tarefa concluída: {payload.action}; transição: {transition.label}",
+    ))
     db.commit()
-    return {"message": "Task completed successfully"}
+    return {"message": "Task completed successfully", "transition_id": transition.id, "state_id": new_state.id}
 
 @router.post("/workflows/instances/{instance_id}/transition/{transition_id}", response_model=DocumentWorkflowInstanceResponse, tags=["Workflows - Execution"])
 def execute_transition(
@@ -177,6 +332,11 @@ def execute_transition(
         if user.role not in roles and user.role != "admin_global":
             raise HTTPException(status_code=403, detail="Acesso negado. Seu papel não tem permissão para realizar esta transição.")
             
+    from app.api_document_operations import obter_documento
+    documento_autorizado = obter_documento(db, user, instance.document_id, "executar_fluxo")
+    from app.models_ged import GEDDocumentStatus
+    if documento_autorizado.status in (GEDDocumentStatus.ASSINADO, GEDDocumentStatus.ARQUIVADO):
+        raise HTTPException(409, "Documento assinado ou arquivado não permite alteração pelo fluxo.")
     # Advance state
     instance.current_state_id = transition.destination_state_id
     

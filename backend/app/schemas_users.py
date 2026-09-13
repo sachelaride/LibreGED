@@ -6,9 +6,14 @@ class UserBase(BaseModel):
     username: str
     role: str
     institution_id: Optional[str] = None
+    is_active: bool = True
 
 class UserCreate(UserBase):
     password: str
+
+class UserUpdate(BaseModel):
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class UserResponse(UserBase):
     id: str

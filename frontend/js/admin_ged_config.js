@@ -43,12 +43,24 @@ function openIndexModal() {
                 </div>
                 <div class="form-group">
                     <label>Tipo de Dado</label>
-                    <select id="idx-type">
+                    <select id="idx-type" onchange="toggleIndexOptions()">
                         <option value="Texto">Texto</option>
                         <option value="Data">Data</option>
                         <option value="Número">Número</option>
                         <option value="Booleano">Booleano</option>
+                        <option value="Lista">Lista</option>
                     </select>
+                </div>
+                <div class="form-group" id="idx-options-group" style="display:none">
+                    <label>Opções da lista (uma por linha)</label>
+                    <textarea id="idx-options" rows="5"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Máscara de validação (expressão regular, opcional)</label>
+                    <input type="text" id="idx-mask" placeholder="Ex.: ^[0-9]{11}$">
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="idx-auto"> Gerar número automaticamente</label>
                 </div>
                 <button class="btn-primary w-100" onclick="saveIndex()">Salvar Índice</button>
             </div>
@@ -57,9 +69,17 @@ function openIndexModal() {
     document.body.insertAdjacentHTML('beforeend', html);
 }
 
+function toggleIndexOptions() {
+    const grupo = document.getElementById('idx-options-group');
+    grupo.style.display = document.getElementById('idx-type').value === 'Lista' ? 'block' : 'none';
+}
+
 async function saveIndex() {
     const name = document.getElementById('idx-name').value;
     const type = document.getElementById('idx-type').value;
+    const options = document.getElementById('idx-options').value.split('\n').map(v => v.trim()).filter(Boolean);
+    const mask = document.getElementById('idx-mask').value.trim() || null;
+    const auto_increment = document.getElementById('idx-auto').checked;
     
     try {
         const response = await fetch(`${API_URL}/indices`, {
@@ -68,7 +88,7 @@ async function saveIndex() {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ name, type, is_active: true })
+            body: JSON.stringify({ name, type, options, mask, auto_increment, is_active: true })
         });
         if(response.ok) {
             document.getElementById('modal-index').remove();
@@ -123,24 +143,20 @@ function selectDocType(id, name) {
 }
 
 async function openDocTypeModal() {
-    // Buscar areas para preencher os selects
+    document.getElementById('modal-doc-type').classList.add('active');
+    
+    // Load storage areas
     const areaSelect = document.getElementById('dt-area');
     areaSelect.innerHTML = '<option value="">Carregando...</option>';
-    
     try {
         const res = await fetch(`${API_URL}/storage/areas`, { headers: getAuthHeaders() });
         const areas = await res.json();
-        if(areas.length > 0) {
-            let areasHtml = '<option value="">Selecione a Área Base</option>';
-            areas.forEach(a => { areasHtml += `<option value="${a.id}">${a.name}</option>`; });
-            areaSelect.innerHTML = areasHtml;
-            areaSelect.onchange = (e) => loadPartitionsForArea(e.target.value);
-        } else {
-            areaSelect.innerHTML = '<option value="">Crie uma Área de Armazenamento primeiro</option>';
-        }
-    } catch(e) { }
-
-    document.getElementById('modal-doc-type').classList.add('active');
+        let html = '<option value="">-- Selecione (Opcional) --</option>';
+        areas.forEach(a => { html += `<option value="${a.id}">${a.name}</option>`; });
+        areaSelect.innerHTML = html;
+    } catch(e) {
+        areaSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+    }
 }
 
 async function loadPartitionsForArea(areaId) {
@@ -173,7 +189,9 @@ async function saveDocType() {
     const areaId = document.getElementById('dt-area').value;
     const partId = document.getElementById('dt-partition').value;
     
-    if(!name || !areaId || !partId) {
+    const workflowId = document.getElementById('dt-workflow').value.trim() || null;
+
+    if(!name || !group_id || Number.isNaN(retention) || retention < 0) {
         alert("Preencha todos os campos obrigatórios.");
         return;
     }
@@ -193,6 +211,7 @@ async function saveDocType() {
                 group_id: group_id,
                 retention_years: retention,
                 legal_hold: legalHold
+                ,workflow_id: workflowId
             })
         });
         if(response.ok) {
@@ -244,12 +263,25 @@ async function loadXsds(docTypeId) {
 
 function openXsdModal() {
     if(!currentDocTypeId) return;
+    document.getElementById('xsd-id').value = '';
+    document.getElementById('xsd-code').value = '';
+    document.getElementById('xsd-namespace').value = '';
+    document.getElementById('xsd-hash').value = '';
+    document.getElementById('modal-xsd').classList.add('active');
+}
+
+function editXsd(id, code, namespace, hash) {
+    document.getElementById('xsd-id').value = id;
+    document.getElementById('xsd-code').value = code;
+    document.getElementById('xsd-namespace').value = namespace;
+    document.getElementById('xsd-hash').value = hash;
     document.getElementById('modal-xsd').classList.add('active');
 }
 
 async function saveXsd() {
     if(!currentDocTypeId) return;
     
+    const xsdId = document.getElementById('xsd-id').value;
     const payload = {
         document_type_id: currentDocTypeId,
         code: document.getElementById('xsd-code').value,
@@ -258,9 +290,12 @@ async function saveXsd() {
         environment: 'homologation'
     };
     
+    const method = xsdId ? 'PUT' : 'POST';
+    const url = xsdId ? `${API_URL}/xsd/${xsdId}` : `${API_URL}/xsd`;
+    
     try {
-        const response = await fetch(`${API_URL}/xsd`, {
-            method: 'POST',
+        const response = await fetch(url, {
+            method: method,
             headers: {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
@@ -271,7 +306,26 @@ async function saveXsd() {
             document.getElementById('modal-xsd').classList.remove('active');
             loadXsds(currentDocTypeId);
         } else {
-            alert("Erro ao salvar XSD");
+            const err = await response.json();
+            alert("Erro ao salvar XSD: " + (err.detail || ""));
+        }
+    } catch(e) {
+        alert(e.message);
+    }
+}
+
+async function deleteXsd(id) {
+    if(!confirm("Tem certeza que deseja excluir este schema?")) return;
+    try {
+        const response = await fetch(`${API_URL}/xsd/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        if(response.ok || response.status === 204) {
+            loadXsds(currentDocTypeId);
+        } else {
+            const err = await response.json();
+            alert("Erro ao excluir XSD: " + (err.detail || ""));
         }
     } catch(e) {
         alert(e.message);
@@ -359,3 +413,4 @@ async function saveDocTypeIndex() {
         console.error(e);
     }
 }
+

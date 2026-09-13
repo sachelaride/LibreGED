@@ -65,6 +65,7 @@ class User(Base):
     role = Column(String, nullable=False)  # admin_global, admin_instituicao, operador, leitor, auditor
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=True, index=True)
     campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=utc_now)
 
     institution = relationship("Institution", back_populates="users")
@@ -125,6 +126,9 @@ class IngestionJob(Base):
     __tablename__ = "ingestion_jobs"
 
     id = Column(String, primary_key=True, index=True)
+    ingestion_id = Column(String, nullable=True, unique=True, index=True)
+    correlation_id = Column(String, nullable=True, index=True)
+    document_id = Column(String, ForeignKey("ged_documents.id"), nullable=True, index=True)
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=False, index=True)
     status = Column(String, nullable=False, index=True)  # PENDING, PROCESSING, QUARANTINE, COMPLETED, FAILED, INDEX_PENDING
     file_path = Column(String, nullable=False)

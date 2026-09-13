@@ -6,7 +6,8 @@ async function loadTemplates() {
         const response = await fetch(TEMPLATES_API, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('ged_token')}` }
         });
-        const templates = await response.json();
+        const rawData = await response.json();
+        const templates = rawData.items ? rawData.items : rawData;
         
         const tbody = document.getElementById('table-templates-body');
         tbody.innerHTML = '';
@@ -23,6 +24,7 @@ async function loadTemplates() {
                 <td><span class="badge" style="background: ${t.is_active ? '#4ade80' : '#ef4444'}">${t.is_active ? 'Ativo' : 'Inativo'}</span></td>
                 <td>
                     <button class="btn-secondary btn-small" onclick="editTemplate('${t.id}', '${t.name}', \`${btoa(t.html_content)}\`)">Editar</button>
+                    <button class="btn-secondary btn-small" onclick="deleteTemplate('${t.id}')" style="background:#ef4444;border-color:#ef4444;">Excluir</button>
                 </td>
             `;
             tbody.appendChild(tr);
@@ -79,6 +81,25 @@ async function saveTemplate() {
         }
     } catch (err) {
         alert('Erro de conexão.');
+    }
+}
+
+async function deleteTemplate(id) {
+    if(!confirm("Tem certeza que deseja excluir este template?")) return;
+    try {
+        const response = await fetch(`${TEMPLATES_API}/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('ged_token')}` }
+        });
+        
+        if (response.ok || response.status === 204) {
+            loadTemplates();
+        } else {
+            const err = await response.json();
+            alert("Erro ao excluir template: " + (err.detail || ""));
+        }
+    } catch (err) {
+        alert("Erro de conexão.");
     }
 }
 

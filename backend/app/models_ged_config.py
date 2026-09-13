@@ -10,6 +10,9 @@ class GedIndex(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False, unique=True, index=True)
     type = Column(String, nullable=False) # e.g., Caractere, Data, Lista, Booleano
+    options = Column(JSONB, nullable=False, default=list)
+    mask = Column(String, nullable=True)
+    auto_increment = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utc_now)
 
@@ -58,6 +61,9 @@ class DocumentTypeVersion(Base):
 
 class DocumentTypeIndex(Base):
     __tablename__ = "ged_document_type_indices"
+    __table_args__ = (
+        UniqueConstraint("document_type_id", "index_id", name="uq_document_type_index"),
+    )
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     document_type_id = Column(String, ForeignKey("ged_document_types.id"), nullable=False)
@@ -75,6 +81,7 @@ class UserDocumentType(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     document_type_id = Column(String, ForeignKey("ged_document_types.id"), nullable=False, index=True)
+    permissions = Column(JSONB, nullable=False, default=list, server_default='[]')
     created_at = Column(DateTime, default=utc_now)
     
     # We can add relationships here if needed, but normally we just query this table

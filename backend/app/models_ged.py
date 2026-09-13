@@ -84,6 +84,7 @@ class GEDDocument(Base):
     category_id = Column(String, ForeignKey("ged_document_categories.id"), nullable=False)
     student_id = Column(String, index=True, nullable=True) # Could be CPF or a foreign key to a Student table in the future
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=True, index=True)
+    campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
     modality = Column(String, nullable=True, index=True) # EAD, PRESENCIAL, SEMIPRESENCIAL
     uploaded_by_user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
 
@@ -122,3 +123,23 @@ class GEDDocumentIndexValue(Base):
     
     document = relationship("GEDDocument")
 
+class SignatureLog(Base):
+    __tablename__ = "ged_signature_logs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id = Column(String, ForeignKey("ged_documents.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    
+    signature_type = Column(String, nullable=False) # e.g., "PAdES", "XMLDSig"
+    original_file_hash = Column(String, nullable=False)
+    
+    certificate_subject = Column(String, nullable=True)
+    certificate_issuer = Column(String, nullable=True)
+    
+    tsa_timestamp = Column(DateTime, nullable=True)
+    status = Column(String, default="PENDING") # PENDING, SUCCESS, FAILED
+    error_message = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=utc_now)
+    
+    document = relationship("GEDDocument")

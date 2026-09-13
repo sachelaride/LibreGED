@@ -159,6 +159,27 @@ function createSidebarUserLabel() {
 }
 
 let allDocuments = []; // Store globally for client-side filtering
+let myGlobalPermissions = { is_admin_global: false, vinculos: [] };
+let cachedDocTypes = [];
+
+async function loadGlobalPermissionsAndTypes() {
+    try {
+        const [permRes, typeRes] = await Promise.all([
+            fetch(`${API_URL}/users/me/document-permissions`, { headers: getAuthHeaders() }),
+            fetch(`${API_URL}/ged-config/document-types`, { headers: getAuthHeaders() })
+        ]);
+        if (permRes.ok) myGlobalPermissions = await permRes.json();
+        if (typeRes.ok) cachedDocTypes = await typeRes.json();
+    } catch (e) {
+        console.error("Erro ao carregar permissões ou tipos:", e);
+    }
+}
+
+function hasGlobalPermission(typeId, action) {
+    if (myGlobalPermissions.is_admin_global) return true;
+    const vinculo = myGlobalPermissions.vinculos.find(v => v.document_type_id === typeId);
+    return vinculo && vinculo.permissions.includes(action);
+}
 
 async function loadDocuments() {
     const tbody = document.getElementById('table-docs-body');
@@ -177,6 +198,7 @@ async function loadDocuments() {
         
         if(!response.ok) throw new Error("Erro ao buscar documentos");
         
+        await loadGlobalPermissionsAndTypes();
         allDocuments = await response.json();
         renderDocumentsTable();
 
@@ -209,13 +231,19 @@ function renderDocumentsTable() {
             ? `<span class="badge" style="background: rgba(160, 174, 192, 0.2); color: #a0aec0;">${doc.properties['ies:codigo_serie']}</span>` 
             : `<span class="badge" style="background: rgba(160, 174, 192, 0.2); color: #a0aec0;">${doc.node_type}</span>`;
             
+        // Checar permissão
+        const docType = cachedDocTypes.find(t => t.name === doc.node_type || t.id === doc.node_type);
+        const typeId = docType ? docType.id : null;
+        const podeVer = typeId ? hasGlobalPermission(typeId, 'consultar') : true;
+        const btnVer = podeVer ? `<button class="btn-small" onclick="alert('Função em adaptação ECM!')">👁️ Ver</button>` : '';
+            
         tr.innerHTML = `
             <td>${doc.id.substring(0,8)}...</td>
             <td><strong>${doc.name}</strong></td>
             <td>${phaseBadge}</td>
             <td><span class="badge" style="background:#3b82f6">ECM Node</span></td>
             <td>
-                <button class="btn-small" onclick="alert('Função em adaptação ECM!')">👁️ Ver</button>
+                ${btnVer}
             </td>
         `;
         tbody.appendChild(tr);

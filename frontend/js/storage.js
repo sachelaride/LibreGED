@@ -9,8 +9,8 @@ async function loadStorageRules() {
         });
         if(!response.ok) throw new Error("Erro ao carregar regras de armazenamento");
         
-        const rawData = await response.json();
         const rules = rawData.items ? rawData.items : rawData;
+        window.storageRulesData = rules;
         tbody.innerHTML = '';
         
         if(!rules || rules.length === 0) {
@@ -31,6 +31,10 @@ async function loadStorageRules() {
                 <td>${rule.base_path}</td>
                 <td>${dupText}</td>
                 <td>${isActive}</td>
+                <td>
+                    <button class="btn-secondary btn-small" onclick="editStorageRule('${rule.id}')">Editar</button>
+                    <button class="btn-secondary btn-small" onclick="deleteStorageRule('${rule.id}')" style="background:#ef4444;border-color:#ef4444;">Excluir</button>
+                </td>
             `;
             tbody.appendChild(tr);
         });
@@ -40,6 +44,7 @@ async function loadStorageRules() {
 }
 
 async function openStorageRuleModal() {
+    document.getElementById('rule-id').value = '';
     document.getElementById('rule-name').value = '';
     document.getElementById('rule-document-type').value = '';
     document.getElementById('rule-storage-type').value = 'Local';
@@ -197,9 +202,13 @@ async function saveStorageRule() {
         return alert("Preencha o caminho secundário (backup).");
     }
     
+    const rule_id = document.getElementById('rule-id').value;
+    const method = rule_id ? 'PUT' : 'POST';
+    const url = rule_id ? `${API_URL}/storage-rules/${rule_id}` : `${API_URL}/storage-rules`;
+    
     try {
-        const response = await fetch(`${API_URL}/storage-rules`, {
-            method: 'POST',
+        const response = await fetch(url, {
+            method: method,
             headers: {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
@@ -231,5 +240,52 @@ async function saveStorageRule() {
         }
     } catch(e) {
         alert(e.message);
+    }
+}
+
+async function editStorageRule(idOrObj) {
+    const rule = typeof idOrObj === 'string' ? window.storageRulesData.find(r => r.id === idOrObj) : idOrObj;
+    if(!rule) return;
+    await openStorageRuleModal();
+    
+    document.getElementById('rule-id').value = rule.id;
+    document.getElementById('rule-name').value = rule.name;
+    document.getElementById('rule-storage-type').value = rule.storage_type;
+    document.getElementById('rule-base-path').value = rule.base_path;
+    
+    document.getElementById('rule-network-domain').value = rule.network_domain || '';
+    document.getElementById('rule-network-user').value = rule.network_user || '';
+    // do not populate password for security
+    
+    document.getElementById('rule-enable-duplication').checked = rule.enable_duplication;
+    if(rule.enable_duplication) {
+        document.getElementById('rule-secondary-type').value = rule.secondary_storage_type;
+        document.getElementById('rule-secondary-path').value = rule.secondary_base_path;
+    }
+    document.getElementById('rule-max-files').value = rule.max_files_per_folder || 10000;
+    document.getElementById('rule-max-gb').value = rule.max_gb_per_folder || 100.0;
+    
+    toggleDuplicationFields();
+    toggleCredentialFields();
+}
+
+async function deleteStorageRule(id) {
+    if(!confirm("Tem certeza que deseja excluir esta regra de armazenamento? Ela não poderá ser excluída se já houver documentos salvos nela.")) return;
+    
+    try {
+        const response = await fetch(`${API_URL}/storage-rules/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        
+        if(response.ok || response.status === 204) {
+            alert('Regra excluída com sucesso.');
+            loadStorageRules();
+        } else {
+            const err = await response.json();
+            alert("Erro ao excluir regra: " + (err.detail || ""));
+        }
+    } catch(e) {
+        alert("Erro de conexão.");
     }
 }

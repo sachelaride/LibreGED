@@ -122,3 +122,45 @@ A sua contribuição é totalmente voluntária. O uso livre e gratuito do **EduG
 - **E-mail de Contato:** [sachelaride@gmail.com](mailto:sachelaride@gmail.com)
 
 Agradecemos o seu apoio por tornar a educação e a tecnologia mais acessíveis a todos!
+
+### Manifestos do FileWatch
+
+O worker exige o contrato JSON `manifest_version: 1`, com `ingestion_id`,
+`correlation_id`, `document_id`, `institution_id`, `file_name`, `content_type`,
+`sha256`, `document_type`, `source_system`, `created_at` e `environment`.
+Os identificadores de ingest?o, documento e instituição devem ser UUIDs;
+`created_at` deve incluir fuso hor?rio. O nome deve coincidir com o PDF do par,
+o MIME deve ser `application/pdf` e o SHA-256 deve conter 64 caracteres
+hexadecimais min?sculos. Ambientes aceitos: `development`, `test`,
+`homologation` e `production`.
+
+`source_event`, `source_user` e o objeto `metadata` s?o opcionais. Campos
+extras e versões desconhecidas s?o recusados. Manifestos antigos com apenas
+`hash_sha256` precisam ser adaptados; pacotes inválidos seguem para quarentena.
+O worker também exige que o documento exista na instituição informada e que o
+ambiente coincida com o servidor (`staging` corresponde a `homologation`).
+A compatibilidade do tipo documental, a vinculação da nova versão ao documento
+e a indexação durável permanecem pendentes. O `ingestion_id` é idempotente:
+reentregas do mesmo pacote concluído não criam um novo `IngestionJob`; cargas
+com o mesmo identificador e conteúdo divergente seguem para quarentena.
+
+### CRUD e privilégios documentais no administrador
+
+Em **Usuários → Tipos e privilégios**, vincule cada tipo e marque as operações
+permitidas. Sem concessão explícita, a API bloqueia a ação. O administrador de
+instituição só pode administrar usuários da própria instituição e conceder ações
+que possui. Tipos e índices são compartilhados no modelo atual; sua alteração
+exige administrador global.
+
+A migração `a17c91b2d430` adiciona os privilégios e preserva somente consulta nos
+vínculos antigos. Execute `alembic upgrade head` antes de iniciar a API atualizada.
+Edição/exclusão de cadastros em uso é limitada para preservar vínculos; operações
+documentais continuam sujeitas ao estado, à retenção e ao legal hold.
+
+A cobertura atual inclui GED, busca, upload e verificações nas rotas de assinatura,
+quarentena e workflow. A interface ECM, as permissões funcionais e o CRUD dos
+outros módulos ainda precisam de integração. Documentos enviados por usuários
+preservam o `campus_id`; ingestões ERP sem campus continuam bloqueadas para
+usuários com escopo restrito, até que o campus seja informado pelo conector.
+O roteiro de continuidade e exemplos fictícios estão em
+`projeto - manual e dicas/PLANO_CRUD_E_PERMISSOES.md`.

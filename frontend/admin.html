@@ -7,6 +7,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
+    <style>
+        .drawflow .drawflow-node { background: var(--bg-card); border-color: var(--primary); color: var(--text-color); }
+        .drawflow .drawflow-node.selected { background: var(--primary); color: white; }
+        .drawflow .connection .main-path { stroke: var(--primary); stroke-width: 3px; }
+    </style>
     <link rel="stylesheet" href="css/style.css">
     <script src="js/theme.js"></script>
     <script>
@@ -60,6 +67,9 @@
                 </a>
                 <a href="#" class="menu-item role-admin-instituicao" data-target="integrations" style="display: none;">
                     <span class="icon">🔌</span> Integrações (API)
+                </a>
+                <a href="#" class="menu-item role-admin-global" data-target="signers">
+                    <span class="icon">🔏</span> Cofre de Assinaturas (ICP)
                 </a>
                 <a href="#" class="menu-item role-admin-instituicao" data-target="doc-types" style="display: none;">
                     <span class="icon">📁</span> Tipos Documentais
@@ -164,6 +174,7 @@
                                     <th>CNPJ</th>
                                     <th>Razão Social</th>
                                     <th>Status</th>
+                                    <th>Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="table-institutions-body">
@@ -210,6 +221,7 @@
                                     <th>Caminho Base</th>
                                     <th>Duplicação (Backup)</th>
                                     <th>Status</th>
+                                    <th>Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="table-rules-body">
@@ -221,41 +233,75 @@
 
                 <!-- View: Workflows -->
                 <section id="view-workflows" class="view" style="display: none;">
-                    <div style="display: flex; gap: 15px; height: 600px;">
+                    <div style="display: flex; gap: 15px; height: 700px;">
                         <!-- Coluna 1: Lista de Workflows -->
-                        <div class="glass-panel" style="flex: 1; padding: 15px; display: flex; flex-direction: column;">
+                        <div class="glass-panel" style="flex: 0 0 250px; padding: 15px; display: flex; flex-direction: column;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                                 <h4>Workflows</h4>
                                 <button class="btn-primary btn-small" onclick="openWorkflowModal()">+ Novo</button>
                             </div>
                             <div style="flex: 1; overflow-y: auto;">
                                 <table class="data-table">
-                                    <thead><tr><th>Nome</th><th>Status</th></tr></thead>
+                                    <thead><tr><th>Nome</th><th>Status</th><th>Ações</th></tr></thead>
                                     <tbody id="table-workflows-body"></tbody>
                                 </table>
                             </div>
                         </div>
-                        
-                        <!-- Coluna 2: Detalhes do Workflow (Estados e Transições) -->
-                        <div class="glass-panel" style="flex: 1.5; padding: 15px; display: flex; flex-direction: column;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-                                <h4>Detalhes: <span id="current-workflow-name" style="color:var(--primary);">Selecione um workflow</span></h4>
-                                <div>
-                                    <button class="btn-secondary btn-small" id="btn-add-state" disabled onclick="openStateModal()">+ Estado</button>
-                                    <button class="btn-primary btn-small" id="btn-add-transition" disabled onclick="openTransitionModal()">+ Transição</button>
+
+                        <!-- BPMN Toolbox Sidebar (Hidden until a workflow is selected) -->
+                        <div class="glass-panel" id="bpmn-toolbox" style="flex: 0 0 200px; display:none; flex-direction:column; padding: 15px; font-size:13px; overflow-y: auto;">
+                            <h4 style="margin-bottom:15px; text-align:center; color:var(--primary);">BPMN Tools</h4>
+                            
+                            <div style="margin-bottom:15px;">
+                                <strong style="color:var(--text-muted); display:block; margin-bottom:10px;">Eventos</strong>
+                                <div class="bpmn-drag-item" draggable="true" data-type="event_start" style="padding:8px; margin-bottom:5px; background:rgba(74,222,128,0.1); border:1px solid #4ade80; border-radius:4px; cursor:grab; text-align:center;">
+                                    <i class="fa-solid fa-play" style="color:#4ade80;"></i> Início
+                                </div>
+                                <div class="bpmn-drag-item" draggable="true" data-type="event_end" style="padding:8px; margin-bottom:5px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:4px; cursor:grab; text-align:center;">
+                                    <i class="fa-solid fa-stop" style="color:#ef4444;"></i> Fim
+                                </div>
+                                <div class="bpmn-drag-item" draggable="true" data-type="event_message" style="padding:8px; margin-bottom:5px; background:rgba(59,130,246,0.1); border:1px solid #3b82f6; border-radius:4px; cursor:grab; text-align:center;">
+                                    <i class="fa-regular fa-envelope" style="color:#3b82f6;"></i> Mensagem
                                 </div>
                             </div>
                             
-                            <div style="display:flex; gap:20px; flex:1; overflow:hidden;">
-                                <div style="flex:1; border-right: 1px solid rgba(255,255,255,0.1); padding-right:10px; overflow-y:auto;">
-                                    <h5>Estados</h5>
-                                    <ul id="list-states" style="list-style:none; padding:0; margin-top:10px;"></ul>
+                            <div style="margin-bottom:15px;">
+                                <strong style="color:var(--text-muted); display:block; margin-bottom:10px;">Tarefas</strong>
+                                <div class="bpmn-drag-item" draggable="true" data-type="task_user" style="padding:8px; margin-bottom:5px; background:transparent; border:1px solid #cbd5e1; border-radius:4px; cursor:grab; text-align:center;">
+                                    <i class="fa-solid fa-user"></i> Usuário
                                 </div>
-                                <div style="flex:1; padding-left:10px; overflow-y:auto;">
-                                    <h5>Transições</h5>
-                                    <ul id="list-transitions" style="list-style:none; padding:0; margin-top:10px;"></ul>
+                                <div class="bpmn-drag-item" draggable="true" data-type="task_service" style="padding:8px; margin-bottom:5px; background:transparent; border:1px solid #cbd5e1; border-radius:4px; cursor:grab; text-align:center;">
+                                    <i class="fa-solid fa-gear"></i> Serviço
+                                </div>
+                                <div class="bpmn-drag-item" draggable="true" data-type="task_script" style="padding:8px; margin-bottom:5px; background:transparent; border:1px solid #cbd5e1; border-radius:4px; cursor:grab; text-align:center;">
+                                    <i class="fa-solid fa-code"></i> Script
                                 </div>
                             </div>
+                            
+                            <div style="margin-bottom:15px;">
+                                <strong style="color:var(--text-muted); display:block; margin-bottom:10px;">Gateways</strong>
+                                <div class="bpmn-drag-item" draggable="true" data-type="gateway_exclusive" style="padding:8px; margin-bottom:5px; background:rgba(250,204,21,0.1); border:1px solid #facc15; border-radius:4px; cursor:grab; text-align:center;">
+                                    <i class="fa-solid fa-xmark"></i> Exclusivo
+                                </div>
+                                <div class="bpmn-drag-item" draggable="true" data-type="gateway_parallel" style="padding:8px; margin-bottom:5px; background:rgba(250,204,21,0.1); border:1px solid #facc15; border-radius:4px; cursor:grab; text-align:center;">
+                                    <i class="fa-solid fa-plus"></i> Paralelo
+                                </div>
+                            </div>
+                            <div style="margin-top:auto; font-size:11px; color:#94a3b8; text-align:center;">
+                                Arraste para o canvas
+                            </div>
+                        </div>
+                        
+                        <!-- Coluna 2: Detalhes do Workflow (Visual) -->
+                        <div class="glass-panel" style="flex: 3; padding: 15px; display: flex; flex-direction: column; position: relative;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                                <h4>Editor: <span id="current-workflow-name" style="color:var(--primary);">Selecione um workflow</span></h4>
+                                <div>
+                                    <button class="btn-secondary btn-small" id="btn-add-state" disabled onclick="openStateModal()" style="display:none;">+ Estado (Nó)</button>
+                                    <span id="editor-hint" style="font-size:12px; color:var(--text-muted);"></span>
+                                </div>
+                            </div>
+                            <div id="drawflow" style="flex: 1; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjEiIGZpbGw9IiMzMzMiLz48L3N2Zz4=');" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
                         </div>
                     </div>
                 </section>
@@ -274,6 +320,7 @@
                 <label>Nome da Regra</label>
                 <input type="text" id="rule-name" placeholder="Ex: Regra para Contratos">
             </div>
+            <input type="hidden" id="rule-id">
 
             <div class="form-group">
                 <label>Tipo de Documento Vinculado</label>
@@ -382,6 +429,7 @@
                                 <label>Nome Interno</label>
                                 <input type="text" id="wf-internal" required>
                             </div>
+                            <input type="hidden" id="wf-id">
                             <button type="submit" class="btn-primary w-100">Salvar</button>
                         </form>
                     </div>
@@ -431,6 +479,11 @@
                             <div class="form-group">
                                 <label>Rótulo da Ação (ex: Aprovar)</label>
                                 <input type="text" id="trans-label" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Código da Ação (opcional)</label>
+                                <input type="text" id="trans-action-code" placeholder="ex: APPROVE, REJECT, JSON_VALIDO">
+                                <small style="color:#aaa;">A tarefa pode concluir usando este código ou o rótulo.</small>
                             </div>
                             <div class="form-group">
                                 <label>Papéis Permitidos (separados por vírgula)</label>
@@ -595,19 +648,27 @@
                             </div>
                             <div class="form-group">
                                 <label>Anos de Retenção (Guarda)</label>
-                                <input type="number" id="dt-retention" value="5" required>
+                                <input type="number" id="dt-retention" value="5" min="0" max="1000" required>
+                            </div>
+                            <div class="form-group">
+                                <label>ID do fluxo (opcional)</label>
+                                <input type="text" id="dt-workflow">
                             </div>
                             <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
                                 <input type="checkbox" id="dt-legal-hold" style="width: auto;">
                                 <label for="dt-legal-hold" style="margin-bottom: 0;">Legal Hold (Congelamento Jurídico)</label>
                             </div>
                             <div class="form-group mt-20">
-                                <label>Área de Armazenamento</label>
-                                <select id="dt-area" required></select>
+                                <label>Área de Armazenamento (Regra de Storage)</label>
+                                <select id="dt-area" onchange="loadPartitionsForArea(this.value)">
+                                    <option value="">-- Selecione (Opcional) --</option>
+                                </select>
                             </div>
                             <div class="form-group">
-                                <label>Partição</label>
-                                <select id="dt-partition" required></select>
+                                <label>Partição Lógica</label>
+                                <select id="dt-partition">
+                                    <option value="">-- Selecione uma Área Primeiro --</option>
+                                </select>
                             </div>
                             <button type="submit" class="btn-primary w-100 mt-20">Salvar Tipo</button>
                         </form>
@@ -659,6 +720,7 @@
                                 <label>Hash do Arquivo Físico (SHA-256)</label>
                                 <input type="text" id="xsd-hash" required placeholder="Calculado ou extraído do XSD...">
                             </div>
+                            <input type="hidden" id="xsd-id">
                             <button type="submit" class="btn-primary w-100 mt-20">Salvar Schema</button>
                         </form>
                     </div>
@@ -835,6 +897,31 @@
                 </section>
 
             </div>
+        
+        <!-- View: Signers (Cofre) -->
+        <section id="view-signers" class="view" style="display: none;">
+            <div class="view-header">
+                <h2>Cofre de Assinaturas Digitais</h2>
+                <button class="btn-primary" onclick="openSignerModal()">+ Guardar Novo Certificado</button>
+            </div>
+            <div class="card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome do Titular</th>
+                            <th>Cargo/Papel</th>
+                            <th>CPF</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-signers-body">
+                        <!-- preenchido via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
         </main>
     </div>
 
@@ -883,6 +970,7 @@
                 if(target === 'doc-types') loadDocTypes();
                 if(target === 'indices') loadIndices();
                 if(target === 'integrations') loadIntegrations();
+            if(target === 'signers') loadSigners();
                 if(target === 'ingestions') loadIngestions();
                 if(target === 'quarantine') loadQuarantine();
                 if(target === 'audit') loadAuditEvents();
@@ -895,10 +983,41 @@
     <script src="js/admin_instituicao.js"></script>
     <script src="js/admin_templates.js"></script>
     <script src="js/admin_ged_config.js"></script>
+    <script src="js/admin_privilegios.js"></script>
     <script src="js/admin_workflows.js"></script>
     <script src="js/admin_ingestions.js"></script>
     <script src="js/admin_quarantine.js"></script>
     <script src="js/admin_integrations.js"></script>
     <script src="js/admin_dashboard.js"></script>
     <script src="js/admin_audit.js"></script>
+
+    <!-- Modal Signer -->
+    <div class="modal-overlay" id="modal-signer">
+        <div class="modal-content glass-panel" style="max-width: 500px; padding: 30px;">
+            <h3 id="signer-modal-title">Guardar Certificado no Cofre</h3>
+            <p style="font-size: 13px; color: #64748b; margin-bottom: 15px;">Os certificados A1 (.p12 ou .pfx) serão armazenados de forma segura. A senha não é gravada no banco de dados e só será requisitada no ato da assinatura.</p>
+            <div class="form-group">
+                <label>Nome do Titular</label>
+                <input type="text" id="sig-name" placeholder="Ex: João da Silva" />
+            </div>
+            <div class="form-group">
+                <label>Cargo / Papel</label>
+                <input type="text" id="sig-role" placeholder="Ex: Reitor" />
+            </div>
+            <div class="form-group">
+                <label>CPF do Titular</label>
+                <input type="text" id="sig-cpf" placeholder="000.000.000-00" />
+            </div>
+            <div class="form-group">
+                <label>Arquivo do Certificado (.p12 ou .pfx)</label>
+                <input type="file" id="sig-p12" accept=".p12,.pfx" />
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="document.getElementById('modal-signer').classList.remove('active')">Cancelar</button>
+                <button class="btn-primary" id="btn-save-signer" onclick="saveSigner()">Salvar e Guardar no Cofre Seguro</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/admin_signers.js"></script>
 </body>

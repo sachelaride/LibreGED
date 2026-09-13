@@ -1,6 +1,8 @@
 // JS para gestão de Workflows (Inspirado no Mayan EDMS / Alfresco)
 const WORKFLOWS_API = `${API_URL}/workflows`;
 let currentWorkflowId = null;
+let currentWorkflowData = null;
+let editor = null;
 
 async function loadWorkflows() {
     try {
@@ -9,6 +11,7 @@ async function loadWorkflows() {
         });
         const rawData = await response.json();
         const workflows = rawData.items ? rawData.items : rawData;
+        window.workflowsData = workflows;
         
         const tbody = document.getElementById('table-workflows-body');
         tbody.innerHTML = '';
@@ -21,10 +24,13 @@ async function loadWorkflows() {
         workflows.forEach(w => {
             const tr = document.createElement('tr');
             tr.style.cursor = 'pointer';
-            tr.onclick = () => selectWorkflow(w);
             tr.innerHTML = `
-                <td>${w.name}</td>
-                <td><span class="badge" style="background: ${w.is_active ? '#4ade80' : '#ef4444'}">${w.is_active ? 'Ativo' : 'Inativo'}</span></td>
+                <td onclick="selectWorkflow('${w.id}')">${w.name}</td>
+                <td onclick="selectWorkflow('${w.id}')"><span class="badge" style="background: ${w.is_active ? '#4ade80' : '#ef4444'}">${w.is_active ? 'Ativo' : 'Inativo'}</span></td>
+                <td>
+                    <button class="btn-secondary btn-small" onclick="editWorkflow('${w.id}'); event.stopPropagation();">Editar</button>
+                    <button class="btn-secondary btn-small" onclick="deleteWorkflow('${w.id}'); event.stopPropagation();" style="background:#ef4444;border-color:#ef4444;">Excluir</button>
+                </td>
             `;
             tbody.appendChild(tr);
         });
@@ -33,100 +39,253 @@ async function loadWorkflows() {
     }
 }
 
-function selectWorkflow(workflow) {
+function selectWorkflow(idOrObj) {
+    const workflow = typeof idOrObj === 'string' ? window.workflowsData.find(w => w.id === idOrObj) : idOrObj;
+    if (!workflow) return;
     currentWorkflowId = workflow.id;
+    currentWorkflowData = workflow;
     document.getElementById('current-workflow-name').innerText = workflow.name;
     document.getElementById('btn-add-state').disabled = false;
-    document.getElementById('btn-add-transition').disabled = false;
+    document.getElementById('bpmn-toolbox').style.display = 'flex';
+    document.getElementById('editor-hint').innerText = 'Arraste elementos do painel esquerdo';
     
-    renderStates(workflow.states || []);
-    renderTransitions(workflow.transitions || [], workflow.states || []);
+    initDrawflow();
+    renderDrawflow(workflow.states || [], workflow.transitions || []);
 }
 
-function renderStates(states) {
-    loadedStates = states;
-    const list = document.getElementById('list-states');
-    list.innerHTML = '';
+function initDrawflow() {
+    if (editor) return;
+    const container = document.getElementById("drawflow");
+    editor = new Drawflow(container);
+    editor.reroute = true;
+    editor.start();
     
-    if (states.length === 0) {
-        list.innerHTML = '<li style="text-align:center; color: #aaa; margin-top: 20px;">Nenhum estado cadastrado.</li>';
-        return;
+    // Events
+    editor.on('nodeMoved', async (id) => {
+        if(isRendering) return;
+        const node = editor.getNodeFromId(id);
+        const stateId = node.data.stateId;
+        const posX = node.pos_x;
+        const posY = node.pos_y;
+        
+        try {
+            await fetch(`${WORKFLOWS_API}/${currentWorkflowId}/states/${stateId}`, {
+                method: 'PUT',
+                headers: {
+                    ...getAuthHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ui_pos_x: posX, ui_pos_y: posY })
+            });
+        } catch(e) { console.error(e); }
+    });
+    
+    editor.on('connectionCreated', (info) => {
+        if(isRendering) return; // ignore events during render
+        const originNode = editor.getNodeFromId(info.output_id);
+        const destNode = editor.getNodeFromId(info.input_id);
+        openTransitionVisualModal(originNode.data.stateId, destNode.data.stateId);
+    });
+    
+    editor.on('connectionRemoved', async (info) => {
+        if(isRendering) return;
+        const originNode = editor.getNodeFromId(info.output_id);
+        const destNode = editor.getNodeFromId(info.input_id);
+        const originStateId = originNode.data.stateId;
+        const destStateId = destNode.data.stateId;
+        
+        const transition = currentWorkflowData.transitions.find(t => t.origin_state_id === originStateId && t.destination_state_id === destStateId);
+        
+        if (transition) {
+            try {
+                const resp = await fetch(`${WORKFLOWS_API}/${currentWorkflowId}/transitions/${transition.id}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+                if(resp.ok) {
+                    const wRes = await fetch(WORKFLOWS_API, { headers: getAuthHeaders() });
+                    const wData = await wRes.json();
+                    const workflows = wData.items ? wData.items : wData;
+                    const updated = workflows.find(w => w.id === currentWorkflowId);
+                    if(updated) { currentWorkflowData = updated; }
+                }
+            } catch(e) { console.error(e); }
+        }
+    });
+
+    editor.on('nodeRemoved', async (id) => {
+        if(isRendering) return;
+        const stateId = nodeStateMap_inv[id];
+        if(!stateId) return;
+        
+        try {
+            const resp = await fetch(`${WORKFLOWS_API}/${currentWorkflowId}/states/${stateId}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
+            if(resp.ok) {
+                const wRes = await fetch(WORKFLOWS_API, { headers: getAuthHeaders() });
+                const wData = await wRes.json();
+                const workflows = wData.items ? wData.items : wData;
+                const updated = workflows.find(w => w.id === currentWorkflowId);
+                if(updated) { currentWorkflowData = updated; }
+            } else {
+                alert("Erro ao remover o estado visualmente.");
+            }
+        } catch(e) { console.error(e); }
+    });
+}
+
+let isRendering = false;
+let nodeStateMap = {}; // stateId -> drawflowNodeId
+let nodeStateMap_inv = {}; // drawflowNodeId -> stateId
+
+function renderSingleNode(s) {
+    let nType = s.node_type || 'task_user';
+    let html_content = '';
+    
+    if (nType.startsWith('event_')) {
+        let color = '#3b82f6';
+        let icon = 'fa-envelope';
+        if(nType === 'event_start') { color = '#4ade80'; icon = 'fa-play'; }
+        if(nType === 'event_end') { color = '#ef4444'; icon = 'fa-stop'; }
+        
+        html_content = `
+        <div style="border-radius:50%; width:60px; height:60px; border:3px solid ${color}; display:flex; align-items:center; justify-content:center; background:#fff; flex-direction:column; margin:0 auto; user-select:none; pointer-events:none;">
+            <i class="fa-solid ${icon}" style="color:${color}; font-size:20px;"></i>
+        </div>
+        <div style="text-align:center; font-size:10px; margin-top:5px; color:#333; user-select:none;"><strong>${s.label}</strong></div>`;
+    } else if (nType.startsWith('gateway_')) {
+        let icon = nType === 'gateway_exclusive' ? 'fa-xmark' : 'fa-plus';
+        html_content = `
+        <div style="width:50px; height:50px; border:2px solid #facc15; background:#fef08a; transform: rotate(45deg); display:flex; align-items:center; justify-content:center; margin:10px auto; user-select:none; pointer-events:none;">
+            <i class="fa-solid ${icon}" style="transform: rotate(-45deg); color:#ca8a04;"></i>
+        </div>
+        <div style="text-align:center; font-size:10px; margin-top:15px; color:#333; user-select:none;"><strong>${s.label}</strong></div>`;
+    } else {
+        let icon = 'fa-user';
+        if(nType === 'task_service') icon = 'fa-gear';
+        if(nType === 'task_script') icon = 'fa-code';
+        
+        html_content = `
+        <div style="border:2px solid #cbd5e1; border-radius:8px; background:#fff; min-width:120px; padding:10px; box-shadow:0 2px 4px rgba(0,0,0,0.05); user-select:none;">
+            <div style="display:flex; align-items:center; margin-bottom:5px; pointer-events:none;">
+                <i class="fa-solid ${icon}" style="color:#64748b; font-size:12px; margin-right:5px;"></i>
+                <strong style="font-size:11px; color:#334155;">${nType === 'task_user' ? 'Usuário' : (nType === 'task_service' ? 'Serviço' : 'Script')}</strong>
+            </div>
+            <div style="font-size:12px; font-weight:600; text-align:center; pointer-events:none;">${s.label}</div>
+        </div>`;
     }
+
+    const posX = s.ui_pos_x || 100;
+    const posY = s.ui_pos_y || 100;
     
+    let in_con = 1;
+    let out_con = 1;
+    if(nType === 'event_start') in_con = 0;
+    if(nType === 'event_end') out_con = 0;
+    
+    const nodeId = editor.addNode('state', in_con, out_con, posX, posY, 'state', { stateId: s.id }, html_content);
+    nodeStateMap[s.id] = nodeId;
+    nodeStateMap_inv[nodeId] = s.id;
+}
+
+function renderDrawflow(states, transitions) {
+    if(!editor) return;
+    isRendering = true;
+    editor.clearModuleSelected();
+    nodeStateMap = {};
+    nodeStateMap_inv = {};
+    
+    // Create nodes
     states.forEach(s => {
-        const li = document.createElement('li');
-        li.style.padding = '8px';
-        li.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-        li.innerHTML = `
-            <strong>${s.label}</strong>
-            <div style="font-size: 11px; color: #aaa;">
-                ${s.is_initial ? '🟢 Inicial' : ''}
-                ${s.is_completion ? '🔴 Final' : ''}
-            </div>
-        `;
-        list.appendChild(li);
+        renderSingleNode(s);
     });
-}
-
-function renderTransitions(transitions, states) {
-    const list = document.getElementById('list-transitions');
-    list.innerHTML = '';
-    
-    if (transitions.length === 0) {
-        list.innerHTML = '<li style="text-align:center; color: #aaa; margin-top: 20px;">Nenhuma transição cadastrada.</li>';
-        return;
-    }
-    
-    const stateMap = {};
-    states.forEach(s => stateMap[s.id] = s.label);
-    
+    // Create connections
     transitions.forEach(t => {
-        const li = document.createElement('li');
-        li.style.padding = '8px';
-        li.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-        li.innerHTML = `
-            <div style="font-weight: bold; color: #60a5fa;">${t.label}</div>
-            <div style="font-size: 11px; color: #aaa;">
-                De: ${stateMap[t.origin_state_id] || 'Desconhecido'} ➔ 
-                Para: ${stateMap[t.destination_state_id] || 'Desconhecido'}
-                <br>
-                Roles: <span style="color:#fcd34d;">${t.allowed_roles || 'Todos'}</span>
-            </div>
-        `;
-        list.appendChild(li);
+        const originNodeId = nodeStateMap[t.origin_state_id];
+        const destNodeId = nodeStateMap[t.destination_state_id];
+        if(originNodeId && destNodeId) {
+            editor.addConnection(originNodeId, destNodeId, 'output_1', 'input_1');
+        }
     });
+    
+    isRendering = false;
 }
-
-let loadedStates = [];
 
 function openWorkflowModal() {
+    document.getElementById('wf-id').value = '';
     document.getElementById('wf-name').value = '';
     document.getElementById('wf-internal').value = '';
     document.getElementById('modal-workflow').classList.add('active');
 }
 
 async function saveWorkflow() {
-    const name = document.getElementById('wf-name').value;
-    const internal = document.getElementById('wf-internal').value;
+    const wfId = document.getElementById('wf-id').value;
+    const payload = {
+        name: document.getElementById('wf-name').value,
+        internal_name: document.getElementById('wf-internal').value,
+        is_active: true
+    };
     
+    const method = wfId ? 'PUT' : 'POST';
+    const url = wfId ? `${WORKFLOWS_API}/${wfId}` : WORKFLOWS_API;
+
     try {
-        const resp = await fetch(WORKFLOWS_API, {
-            method: 'POST',
+        const resp = await fetch(url, {
+            method: method,
             headers: {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ name: name, internal_name: internal, is_active: true })
+            body: JSON.stringify(payload)
         });
         
         if (resp.ok) {
             document.getElementById('modal-workflow').classList.remove('active');
             loadWorkflows();
         } else {
-            alert('Erro ao salvar workflow');
+            const err = await resp.json();
+            alert("Erro ao salvar: " + (err.detail || ''));
         }
     } catch(e) {
         alert('Erro de rede: ' + e);
+    }
+}
+
+function editWorkflow(idOrObj) {
+    const wkf = typeof idOrObj === 'string' ? window.workflowsData.find(w => w.id === idOrObj) : idOrObj;
+    if (!wkf) return;
+    document.getElementById('wf-id').value = wkf.id;
+    document.getElementById('wf-name').value = wkf.name;
+    document.getElementById('wf-internal').value = wkf.internal_name;
+    document.getElementById('modal-workflow').classList.add('active');
+}
+
+async function deleteWorkflow(id) {
+    if(!confirm("Tem certeza que deseja excluir este workflow?")) return;
+    
+    try {
+        const response = await fetch(`${WORKFLOWS_API}/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        
+        if(response.ok || response.status === 204) {
+            alert('Workflow excluído com sucesso.');
+            if (currentWorkflowId === id) {
+                currentWorkflowId = null;
+                document.getElementById('current-workflow-name').innerText = "Selecione um workflow";
+                document.getElementById('btn-add-state').disabled = true;
+                if(editor) editor.clearModuleSelected();
+            }
+            loadWorkflows();
+        } else {
+            const err = await response.json();
+            alert("Erro ao excluir workflow: " + (err.detail || ""));
+        }
+    } catch(e) {
+        alert("Erro de conexão.");
     }
 }
 
@@ -149,12 +308,18 @@ async function saveState() {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ label, is_initial, is_completion })
+            body: JSON.stringify({ label, is_initial, is_completion, ui_pos_x: 100, ui_pos_y: 100 })
         });
         
         if(resp.ok) {
             document.getElementById('modal-state').classList.remove('active');
-            loadWorkflows(); // Recarrega tudo para atualizar a lista
+            
+            // Reload just this workflow to get the new state
+            const wRes = await fetch(WORKFLOWS_API, { headers: getAuthHeaders() });
+            const wData = await wRes.json();
+            const workflows = wData.items ? wData.items : wData;
+            const updated = workflows.find(w => w.id === currentWorkflowId);
+            if(updated) selectWorkflow(updated);
         } else {
             alert('Erro ao salvar estado');
         }
@@ -163,13 +328,19 @@ async function saveState() {
     }
 }
 
-function openTransitionModal() {
+let pendingTransitionData = null;
+
+function openTransitionVisualModal(originId, destId) {
+    pendingTransitionData = { originId, destId };
+    
+    // We reuse the transition modal, but we lock the selects
     const origin = document.getElementById('trans-origin');
     const dest = document.getElementById('trans-dest');
     origin.innerHTML = '';
     dest.innerHTML = '';
     
-    loadedStates.forEach(s => {
+    const states = currentWorkflowData.states;
+    states.forEach(s => {
         const opt1 = document.createElement('option');
         opt1.value = s.id; opt1.innerText = s.label;
         origin.appendChild(opt1);
@@ -179,15 +350,37 @@ function openTransitionModal() {
         dest.appendChild(opt2);
     });
     
+    origin.value = originId;
+    origin.disabled = true;
+    dest.value = destId;
+    dest.disabled = true;
+    
     document.getElementById('trans-label').value = '';
+    document.getElementById('trans-action-code').value = '';
     document.getElementById('trans-roles').value = '';
     document.getElementById('modal-transition').classList.add('active');
 }
 
+function cancelTransition() {
+    document.getElementById('modal-transition').classList.remove('active');
+    if(pendingTransitionData && editor) {
+        // Find the connection and remove it since user cancelled
+        const outId = nodeStateMap[pendingTransitionData.originId];
+        const inId = nodeStateMap[pendingTransitionData.destId];
+        
+        isRendering = true;
+        editor.removeSingleConnection(outId, inId, 'output_1', 'input_1');
+        isRendering = false;
+        pendingTransitionData = null;
+    }
+}
+
+// Intercepting form submit inside modal-transition:
 async function saveTransition() {
     const originId = document.getElementById('trans-origin').value;
     const destId = document.getElementById('trans-dest').value;
     const label = document.getElementById('trans-label').value;
+    const action_code = document.getElementById('trans-action-code').value.trim() || null;
     const roles = document.getElementById('trans-roles').value;
     
     try {
@@ -197,22 +390,32 @@ async function saveTransition() {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ origin_state_id: originId, destination_state_id: destId, label, allowed_roles: roles || null })
+            body: JSON.stringify({ origin_state_id: originId, destination_state_id: destId, label, action_code, allowed_roles: roles || null })
         });
         
         if(resp.ok) {
             document.getElementById('modal-transition').classList.remove('active');
-            loadWorkflows();
+            pendingTransitionData = null;
+            
+            // Reload workflow
+            const wRes = await fetch(WORKFLOWS_API, { headers: getAuthHeaders() });
+            const wData = await wRes.json();
+            const workflows = wData.items ? wData.items : wData;
+            const updated = workflows.find(w => w.id === currentWorkflowId);
+            if(updated) selectWorkflow(updated);
         } else {
             alert('Erro ao salvar transição');
+            cancelTransition();
         }
     } catch(e) {
         alert('Erro de rede: ' + e);
+        cancelTransition();
     }
 }
 
-// Inicializar carregamento quando a view é mostrada
+// Override transition close button behavior
 document.addEventListener('DOMContentLoaded', () => {
+    // Escutar se o menu Templates foi clicado para carregar dados
     const menus = document.querySelectorAll('.sidebar-nav li, .menu-item');
     menus.forEach(menu => {
         menu.addEventListener('click', () => {
@@ -221,4 +424,84 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+    
+    // Bind close transition
+    const transCloseBtn = document.querySelector('#modal-transition .btn-close');
+    if(transCloseBtn) {
+        transCloseBtn.onclick = cancelTransition;
+    }
 });
+
+// --- BPMN Drag & Drop ---
+let dragType = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    const items = document.querySelectorAll('.bpmn-drag-item');
+    items.forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+            dragType = item.getAttribute('data-type');
+            e.dataTransfer.setData('text/plain', dragType);
+        });
+    });
+});
+
+function allowDrop(ev) {
+    ev.preventDefault();
+}
+
+async function drop(ev) {
+    ev.preventDefault();
+    if(!dragType || !currentWorkflowId) return;
+    
+    // Calculate drop position relative to drawflow container
+    const rect = document.getElementById('drawflow').getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const y = ev.clientY - rect.top;
+    
+    // Zoom and pan adjustments (Drawflow specific)
+    const posX = x * (editor.precanvas.clientWidth / (editor.precanvas.clientWidth * editor.zoom)) - (editor.precanvas.getBoundingClientRect().x * (editor.precanvas.clientWidth / (editor.precanvas.clientWidth * editor.zoom)));
+    const posY = y * (editor.precanvas.clientHeight / (editor.precanvas.clientHeight * editor.zoom)) - (editor.precanvas.getBoundingClientRect().y * (editor.precanvas.clientHeight / (editor.precanvas.clientHeight * editor.zoom)));
+    
+    // Defaults based on type
+    let label = 'Nova Tarefa';
+    let is_initial = false;
+    let is_completion = false;
+    
+    if(dragType === 'event_start') { label = 'Início'; is_initial = true; }
+    if(dragType === 'event_end') { label = 'Fim'; is_completion = true; }
+    if(dragType === 'event_message') { label = 'Recebe Mensagem'; }
+    if(dragType === 'gateway_exclusive') { label = 'Decisão Exclusiva'; }
+    if(dragType === 'gateway_parallel') { label = 'Divisão Paralela'; }
+    if(dragType === 'task_service') { label = 'Serviço Automático'; }
+    
+    try {
+        const resp = await fetch(`${WORKFLOWS_API}/${currentWorkflowId}/states`, {
+            method: 'POST',
+            headers: {
+                ...getAuthHeaders(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                label, 
+                is_initial, 
+                is_completion, 
+                ui_pos_x: Math.round(posX), 
+                ui_pos_y: Math.round(posY),
+                node_type: dragType
+            })
+        });
+        
+        if(resp.ok) {
+            const newState = await resp.json();
+            if(!currentWorkflowData.states) currentWorkflowData.states = [];
+            currentWorkflowData.states.push(newState);
+            isRendering = true;
+            renderSingleNode(newState);
+            isRendering = false;
+        } else {
+            alert('Erro ao criar nó BPMN');
+        }
+    } catch(e) { console.error(e); }
+    
+    dragType = null;
+}

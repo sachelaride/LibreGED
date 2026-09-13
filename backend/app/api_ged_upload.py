@@ -9,6 +9,7 @@ from app.schemas_ged import GEDDocumentResponse
 from app.search import SearchService
 import uuid
 import json
+from pathlib import Path
 
 from app.auth import get_current_active_user, check_document_type_access
 from app.models import User, InstitutionSettings
@@ -30,14 +31,32 @@ async def upload_document(
         raise HTTPException(status_code=400, detail="Tipo de Documento inválido.")
         
     check_document_type_access(db, current_user, document_type_id)
+    from app.document_permissions import exigir_permissao
+    exigir_permissao(db, current_user, document_type_id, "cadastrar")
+    if not doc_type.is_active:
+        raise HTTPException(409, "Tipo documental inativo.")
+
+    if not current_user.institution_id:
+        raise HTTPException(422, "Selecione uma instituição para cadastrar documentos.")
+
+    try:
+        indices_recebidos = json.loads(indices_json)
+    except json.JSONDecodeError as erro:
+        raise HTTPException(422, "indices_json deve conter JSON válido.") from erro
+    from app.index_validation import validar_valores_indices
+    indices = validar_valores_indices(
+        db, document_type_id, current_user.institution_id, indices_recebidos)
     
     settings = config_manager.get_settings(db, current_user.institution_id)
     antimalware_enabled = settings.get("antimalware_enabled", True)
     quarantine_enabled = settings.get("quarantine_enabled", True)
         
-    from app.upload_validation import scan_for_malware
-    content = await file.read()
-    is_malware = scan_for_malware(content) if antimalware_enabled else False
+    from app.upload_validation import read_validated_upload
+    nome_arquivo = Path(file.filename or "").name
+    if not nome_arquivo or nome_arquivo != file.filename:
+        raise HTTPException(422, "Nome de arquivo inválido.")
+    content, is_malware = read_validated_upload(
+        file, nome_arquivo, antimalware_enabled=antimalware_enabled)
     
     initial_doc_status = GEDDocumentStatus.PENDENTE_VALIDACAO
     if is_malware:
@@ -67,22 +86,18 @@ async def upload_document(
         category_id=doc_type.id, # Backward compatibility for existing schemas
         status=initial_doc_status,
         institution_id=current_user.institution_id,
+        campus_id=current_user.campus_id,
         uploaded_by_user_id=persisted_user_id
     )
     db.add(db_doc)
     db.flush() # Get the document ID
     
-    try:
-        indices = json.loads(indices_json)
-        for idx in indices:
-            val = GEDDocumentIndexValue(
-                document_id=db_doc.id,
-                index_id=idx["index_id"],
-                value=idx["value"]
-            )
-            db.add(val)
-    except Exception as e:
-        pass # Ignore JSON parsing error for now
+    for indice, valor in indices:
+        db.add(GEDDocumentIndexValue(
+            document_id=db_doc.id,
+            index_id=indice.id,
+            value=valor,
+        ))
         
     # Inicializar o Workflow se não estiver na quarentena
     if doc_type.workflow_id and initial_doc_status != GEDDocumentStatus.QUARENTENA:
@@ -128,8 +143,10 @@ async def upload_document(
         document_id=db_doc.id,
         title=db_doc.title,
         content="Conteúdo OCR mockado", # Aqui no futuro conectamos o PyTesseract
-        indices_data=indices_json
+        indices_data=json.dumps(
+            [{"index_id": indice.id, "value": valor} for indice, valor in indices],
+            ensure_ascii=False,
+        )
     )
     
     return db_doc
-

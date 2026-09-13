@@ -204,6 +204,8 @@
                                 <div style="display:flex; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
                                     <button id="tab-btn-meta" onclick="switchModalTab('meta')" style="background:none; border:none; color:#fff; padding:10px 20px; cursor:pointer; border-bottom: 2px solid var(--primary); font-weight:600;">Metadados</button>
                                     <button id="tab-btn-flow" onclick="switchModalTab('flow')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Workflow</button>
+                                    <button id="tab-btn-sig" onclick="switchModalTab('sig')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Assinatura (ICP)</button>
+                                    <!-- REPLACE_MARKER --> onclick="switchModalTab('flow')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Workflow</button>
                                 </div>
                                 
                                 <!-- Aba Metadados -->
@@ -252,6 +254,50 @@
                                     </select>
                                     <button class="btn-primary w-100" onclick="startWorkflowForDocument()"><i class="fa-solid fa-play"></i> Disparar Workflow</button>
                                 </div>
+
+                                <!-- Aba Assinatura Híbrida -->
+                                <div id="tab-sig" style="display:none; padding: 10px 0;">
+                                    <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:8px; margin-bottom:20px;">
+                                        <h4 style="margin-bottom:10px; color:var(--primary);"><i class="fa-solid fa-file-signature"></i> Executar Assinatura Digital</h4>
+                                        
+                                        <div class="form-group" style="margin-bottom:10px;">
+                                            <label>Signatário (Cofre)</label>
+                                            <select id="doc-modal-signer-select" class="form-control" style="width:100%; padding:8px;">
+                                                <option value="">Carregando...</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <div class="form-group" style="margin-bottom:10px;">
+                                            <label>Senha do Certificado A1</label>
+                                            <input type="password" id="doc-modal-signer-pass" class="form-control" placeholder="Senha do .p12" style="width:100%; padding:8px;">
+                                        </div>
+                                        
+                                        <div class="form-group" style="margin-bottom:15px;">
+                                            <label>Motivo / Comentário (Opcional)</label>
+                                            <input type="text" id="doc-modal-signer-comments" class="form-control" placeholder="Ex: Assinatura de Diploma" style="width:100%; padding:8px;">
+                                        </div>
+                                        
+                                        <button class="btn-primary w-100" id="btn-sign-document" onclick="signDocument()"><i class="fa-solid fa-file-signature"></i> Assinar ICP-Brasil</button>
+                                    </div>
+                                    
+                                    <h4 style="margin-bottom:10px;"><i class="fa-solid fa-list-check"></i> Auditoria de Assinaturas (Recibos)</h4>
+                                    <div style="max-height:150px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:4px; padding:10px;">
+                                        <table class="data-table" style="width:100%; text-align:left;">
+                                            <thead>
+                                                <tr>
+                                                    <th>Data (TSA)</th>
+                                                    <th>Tipo</th>
+                                                    <th>Titular</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="table-signature-logs">
+                                                <!-- preenchido via js -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+    
                             </div>
                         </div>
 
@@ -297,6 +343,13 @@
                             </div>
                             <!-- Área de Upload (Iniciamente opaca/desabilitada) -->
                             <div id="upload-zone" style="opacity: 0.5; pointer-events:none;">
+                                <div class="form-group" style="margin-bottom:15px" onclick="event.stopPropagation()">
+                                    <label for="upload-document-type">Tipo documental</label>
+                                    <select id="upload-document-type" onchange="carregarIndicesUpload()">
+                                        <option value="">Selecione o tipo documental</option>
+                                    </select>
+                                </div>
+                                <div id="upload-indices" onclick="event.stopPropagation()"></div>
                                 <div style="border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 40px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease;">
                                     <i class="fa-solid fa-file-arrow-up" style="font-size: 48px; color: var(--primary); margin-bottom:20px;"></i>
                                     <h3>Arraste documentos aqui</h3>
@@ -385,5 +438,6 @@
         window.addEventListener('DOMContentLoaded', handleRoute);
     </script>
     <script src="js/app_operations.js"></script>
+    <script src="js/app_signature.js"></script>
 </body>
 </html>

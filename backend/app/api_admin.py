@@ -59,19 +59,28 @@ class DocumentCategoryResponse(DocumentCategoryBase):
 # --- ROTAS ---
 
 @router.get("/settings", response_model=InstitutionSettingsResponse)
-def get_settings(db: Session = Depends(get_db), user: models.User = OperadorRole):
+def get_settings(
+    institution_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: models.User = OperadorRole
+):
     """Obtém as configurações da instituição do admin atual"""
-    if user.role == "admin_global" and not user.institution_id:
-        raise HTTPException(status_code=400, detail="Admin global must specify institution_id")
+    target_inst_id = institution_id or user.institution_id
+    if user.role == "admin_global" and not target_inst_id:
+        # Default to first institution for global admin to avoid crash in UI if none specified
+        first_inst = db.query(models.Institution).first()
+        if not first_inst:
+            raise HTTPException(status_code=400, detail="Nenhuma instituição cadastrada no sistema.")
+        target_inst_id = first_inst.id
         
     settings = db.query(models.InstitutionSettings).filter(
-        models.InstitutionSettings.institution_id == user.institution_id
+        models.InstitutionSettings.institution_id == target_inst_id
     ).first()
     
     if not settings:
         settings = models.InstitutionSettings(
             id=str(uuid4()),
-            institution_id=user.institution_id
+            institution_id=target_inst_id
         )
         db.add(settings)
         db.commit()
@@ -80,13 +89,22 @@ def get_settings(db: Session = Depends(get_db), user: models.User = OperadorRole
     return settings
 
 @router.put("/settings", response_model=InstitutionSettingsResponse)
-def propose_settings_update(payload: InstitutionSettingsBase, db: Session = Depends(get_db), user: models.User = OperadorRole):
+def propose_settings_update(
+    payload: InstitutionSettingsBase,
+    institution_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: models.User = OperadorRole
+):
     """Propõe uma atualização nas configurações da instituição. Auto-aprova se for gestor/admin."""
-    if user.role == "admin_global" and not user.institution_id:
-        raise HTTPException(status_code=400, detail="Admin global must specify institution_id")
+    target_inst_id = institution_id or user.institution_id
+    if user.role == "admin_global" and not target_inst_id:
+        first_inst = db.query(models.Institution).first()
+        if not first_inst:
+            raise HTTPException(status_code=400, detail="Nenhuma instituição cadastrada no sistema.")
+        target_inst_id = first_inst.id
         
     settings = db.query(models.InstitutionSettings).filter(
-        models.InstitutionSettings.institution_id == user.institution_id
+        models.InstitutionSettings.institution_id == target_inst_id
     ).first()
     
     previous_json = None
@@ -103,7 +121,7 @@ def propose_settings_update(payload: InstitutionSettingsBase, db: Session = Depe
     
     proposal = ConfigProposal(
         id=str(uuid4()),
-        institution_id=user.institution_id,
+        institution_id=target_inst_id,
         proposed_by_id=user.id,
         payload_json=payload_json,
         previous_payload_json=previous_json,
@@ -119,7 +137,7 @@ def propose_settings_update(payload: InstitutionSettingsBase, db: Session = Depe
         if not settings:
             settings = models.InstitutionSettings(
                 id=str(uuid4()),
-                institution_id=user.institution_id
+                institution_id=target_inst_id
             )
             db.add(settings)
             
@@ -288,26 +306,44 @@ class IngestionJobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 @router.get("/ingestions", response_model=list[IngestionJobResponse])
-def get_ingestions(status: Optional[str] = None, db: Session = Depends(get_db), user: models.User = AdminRole):
+def get_ingestions(
+    status: Optional[str] = None, 
+    institution_id: Optional[str] = None,
+    db: Session = Depends(get_db), 
+    user: models.User = AdminRole
+):
     """Lista as ingestões da instituição, filtrando opcionalmente por status"""
-    if user.role == "admin_global":
-        raise HTTPException(status_code=400, detail="Admin global must specify institution_id")
+    target_inst_id = institution_id or user.institution_id
+    if user.role == "admin_global" and not target_inst_id:
+        first_inst = db.query(models.Institution).first()
+        if not first_inst:
+            raise HTTPException(status_code=400, detail="Nenhuma instituição cadastrada no sistema.")
+        target_inst_id = first_inst.id
         
-    query = db.query(models.IngestionJob).filter(models.IngestionJob.institution_id == user.institution_id)
+    query = db.query(models.IngestionJob).filter(models.IngestionJob.institution_id == target_inst_id)
     if status:
         query = query.filter(models.IngestionJob.status == status.upper())
         
     return query.order_by(models.IngestionJob.created_at.desc()).limit(100).all()
 
 @router.post("/ingestions/{job_id}/retry")
-def retry_ingestion(job_id: str, db: Session = Depends(get_db), user: models.User = AdminRole):
+def retry_ingestion(
+    job_id: str, 
+    institution_id: Optional[str] = None,
+    db: Session = Depends(get_db), 
+    user: models.User = AdminRole
+):
     """Manda um job falho/quarentena de volta para incoming (retry)"""
-    if user.role == "admin_global":
-        raise HTTPException(status_code=400, detail="Admin global must specify institution_id")
+    target_inst_id = institution_id or user.institution_id
+    if user.role == "admin_global" and not target_inst_id:
+        first_inst = db.query(models.Institution).first()
+        if not first_inst:
+            raise HTTPException(status_code=400, detail="Nenhuma instituição cadastrada no sistema.")
+        target_inst_id = first_inst.id
         
     job = db.query(models.IngestionJob).filter(
         models.IngestionJob.id == job_id,
-        models.IngestionJob.institution_id == user.institution_id
+        models.IngestionJob.institution_id == target_inst_id
     ).first()
     
     if not job:

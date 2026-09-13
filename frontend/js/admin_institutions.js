@@ -18,6 +18,7 @@ function openInstitutionModal() {
                     <label>CNPJ</label>
                     <input type="text" id="inst-cnpj" required>
                 </div>
+                <input type="hidden" id="inst-id">
                 <button class="btn-primary w-100" onclick="saveInstitution()">Salvar</button>
             </div>
         </div>
@@ -43,11 +44,17 @@ async function loadInstitutions() {
         
         data.items.forEach(inst => {
             const tr = document.createElement('tr');
+            // Safe JSON stringify for the button onclick
+            const instJson = JSON.stringify(inst).replace(/"/g, '&quot;');
             tr.innerHTML = `
                 <td>${inst.name}</td>
                 <td>${inst.cnpj}</td>
                 <td>${inst.legal_name}</td>
                 <td><span class="badge badge-success">Ativa</span></td>
+                <td>
+                    <button class="btn-secondary btn-small" onclick="editInstitution('${instJson}')">Editar</button>
+                    <button class="btn-secondary btn-small" onclick="deleteInstitution('${inst.id}')" style="background:#ef4444;border-color:#ef4444;">Excluir</button>
+                </td>
             `;
             tbody.appendChild(tr);
         });
@@ -60,15 +67,20 @@ async function saveInstitution() {
     const name = document.getElementById('inst-name').value;
     const legal_name = document.getElementById('inst-legal-name').value;
     const cnpj = document.getElementById('inst-cnpj').value;
+    const instId = document.getElementById('inst-id').value;
     
     try {
-        const response = await fetch(`${API_URL}/institutions`, {
-            method: 'POST',
+        const method = instId ? 'PUT' : 'POST';
+        const url = instId ? `${API_URL}/institutions/${instId}` : `${API_URL}/institutions`;
+        const payload = instId ? { name, legal_name } : { name, legal_name, cnpj };
+        
+        const response = await fetch(url, {
+            method: method,
             headers: {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ name, legal_name, cnpj })
+            body: JSON.stringify(payload)
         });
         
         if(response.ok) {
@@ -80,5 +92,36 @@ async function saveInstitution() {
         }
     } catch(e) {
         alert(e.message);
+    }
+}
+
+function editInstitution(instStr) {
+    const inst = JSON.parse(instStr);
+    openInstitutionModal();
+    document.getElementById('inst-name').value = inst.name;
+    document.getElementById('inst-legal-name').value = inst.legal_name;
+    document.getElementById('inst-cnpj').value = inst.cnpj;
+    document.getElementById('inst-cnpj').disabled = true; // CNPJ não pode ser editado
+    document.getElementById('inst-id').value = inst.id;
+}
+
+async function deleteInstitution(id) {
+    if(!confirm("Tem certeza que deseja excluir esta instituição? Apenas será possível se não houver vínculos.")) return;
+    
+    try {
+        const response = await fetch(`${API_URL}/institutions/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        
+        if(response.ok || response.status === 204) {
+            alert('Instituição excluída com sucesso.');
+            loadInstitutions();
+        } else {
+            const err = await response.json();
+            alert("Erro ao excluir: " + (err.detail || ""));
+        }
+    } catch(e) {
+        alert("Erro de conexão.");
     }
 }

@@ -82,7 +82,42 @@ class UserDocumentType(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     document_type_id = Column(String, ForeignKey("ged_document_types.id"), nullable=False, index=True)
     permissions = Column(JSONB, nullable=False, default=list, server_default='[]')
+    denied_permissions = Column(JSONB, nullable=False, default=list, server_default='[]')
     created_at = Column(DateTime, default=utc_now)
     
     # We can add relationships here if needed, but normally we just query this table
     # or add a relationship on User (via models.py string ref) or DocumentType.
+
+
+class PermissionGroup(Base):
+    __tablename__ = "ged_permission_groups"
+    __table_args__ = (UniqueConstraint("institution_id", "name", name="uq_permission_group_institution_name"),)
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False)
+    institution_id = Column(String, ForeignKey("institutions.id"), nullable=False, index=True)
+    parent_group_id = Column(String, ForeignKey("ged_permission_groups.id", ondelete="RESTRICT"), nullable=True, index=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=utc_now)
+
+
+class PermissionGroupMember(Base):
+    __tablename__ = "ged_permission_group_members"
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_permission_group_member"),)
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    group_id = Column(String, ForeignKey("ged_permission_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now)
+
+
+class PermissionGroupDocumentType(Base):
+    __tablename__ = "ged_permission_group_document_types"
+    __table_args__ = (UniqueConstraint("group_id", "document_type_id", name="uq_permission_group_document_type"),)
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    group_id = Column(String, ForeignKey("ged_permission_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_type_id = Column(String, ForeignKey("ged_document_types.id", ondelete="CASCADE"), nullable=False, index=True)
+    permissions = Column(JSONB, nullable=False, default=list, server_default='[]')
+    denied_permissions = Column(JSONB, nullable=False, default=list, server_default='[]')
+    created_at = Column(DateTime, default=utc_now)

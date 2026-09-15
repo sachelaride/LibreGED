@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import datetime
 
@@ -35,10 +35,25 @@ class WorkflowTransitionBase(BaseModel):
     destination_state_id: str
     label: str
     action_code: Optional[str] = None
+    condition_key: Optional[str] = None
+    condition_value: Optional[str] = None
+    priority: int = 0
+    is_default: bool = False
     allowed_roles: Optional[str] = None
 
 class WorkflowTransitionCreate(WorkflowTransitionBase):
     pass
+
+class WorkflowTransitionUpdate(BaseModel):
+    origin_state_id: Optional[str] = None
+    destination_state_id: Optional[str] = None
+    label: Optional[str] = None
+    action_code: Optional[str] = None
+    condition_key: Optional[str] = None
+    condition_value: Optional[str] = None
+    priority: Optional[int] = None
+    is_default: Optional[bool] = None
+    allowed_roles: Optional[str] = None
 
 class WorkflowTransitionResponse(WorkflowTransitionBase):
     id: str
@@ -105,3 +120,4 @@ class WorkflowTaskResponse(WorkflowTaskBase):
 class TaskCompletionRequest(BaseModel):
     action: str  # ex: "APPROVE", "REJECT", "COMPLETE"
     comment: Optional[str] = None
+    variables: dict[str, object] = Field(default_factory=dict)

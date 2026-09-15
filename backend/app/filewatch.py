@@ -4,8 +4,10 @@ import shutil
 import hashlib
 import asyncio
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
+import unicodedata
+from difflib import SequenceMatcher
 
 from sqlalchemy.orm import Session
 
@@ -14,7 +16,8 @@ from app import models
 from app.storage import STORAGE_ROOT
 from app.schemas_filewatch import validar_manifesto
 from app.config import settings
-from app.models_ged import GEDDocument
+from app.models_ged import GEDDocument, DocumentCategory
+from app.models_ged_config import DocumentType
 
 # Ingestion directories
 INGESTION_ROOT = STORAGE_ROOT / "ingestion"
@@ -49,6 +52,49 @@ def calculate_sha256(file_path: Path) -> str:
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
+
+
+def _normalizar_tipo(valor: str) -> str:
+    return "".join(
+        caractere for caractere in unicodedata.normalize("NFKD", valor).lower()
+        if not unicodedata.combining(caractere)
+    ).strip()
+
+
+def validar_tipo_documental(db: Session, documento: GEDDocument, nome_manifesto: str) -> None:
+    """Ensure the manifest type matches the active configured document type."""
+    configurados = db.query(DocumentType).all()
+    nome = _normalizar_tipo(nome_manifesto)
+    if configurados:
+        tipo = next((item for item in configurados if _normalizar_tipo(item.name) == nome), None)
+        if tipo is None or not tipo.is_active:
+            raise ValueError("Tipo documental inexistente ou inativo.")
+        if documento.category_id != tipo.id:
+            raise ValueError("Tipo documental incompatível com o documento de destino.")
+        return
+
+    # Compatibility with legacy installations that still use DocumentCategory.
+    categoria = db.get(DocumentCategory, documento.category_id)
+    if categoria is None:
+        raise ValueError("Tipo documental incompatível com o documento de destino.")
+    categoria_nome = _normalizar_tipo(categoria.name)
+    if categoria_nome != nome and SequenceMatcher(None, categoria_nome, nome).ratio() < 0.85:
+        raise ValueError("Tipo documental incompatível com o documento de destino.")
+
+
+def publish_ingestion_pair(pdf_content: bytes, manifest_content: bytes, base_name: str) -> tuple[Path, Path]:
+    """Publish a package atomically: payload first, manifest last."""
+    if Path(base_name).name != base_name or not base_name:
+        raise ValueError("Nome de pacote inválido.")
+    pdf_path = DIR_INCOMING / f"{base_name}.pdf"
+    manifest_path = DIR_INCOMING / f"{base_name}.json"
+    pdf_part = DIR_INCOMING / f"{base_name}.pdf.part"
+    manifest_part = DIR_INCOMING / f"{base_name}.json.part"
+    pdf_part.write_bytes(pdf_content)
+    os.replace(pdf_part, pdf_path)
+    manifest_part.write_bytes(manifest_content)
+    os.replace(manifest_part, manifest_path)
+    return pdf_path, manifest_path
 
 async def process_ingestion_file(manifest_path: Path, db: Session):
     """Processes a single ingestion manifest and its associated PDF."""
@@ -99,39 +145,50 @@ async def process_ingestion_file(manifest_path: Path, db: Session):
         documento = db.get(GEDDocument, str(manifesto.document_id))
         if documento is None or documento.institution_id != inst.id:
             raise ValueError("Documento não encontrado na instituição informada.")
+        validar_tipo_documental(db, documento, manifesto.document_type)
 
         existing_job = db.query(models.IngestionJob).filter(
             models.IngestionJob.ingestion_id == str(manifesto.ingestion_id)
         ).with_for_update().first()
+        retry_job = None
         if existing_job is not None:
             same_payload = (
                 existing_job.file_hash == actual_hash
                 and existing_job.document_id == str(manifesto.document_id)
                 and existing_job.institution_id == inst.id
             )
-            if same_payload and existing_job.status == "COMPLETED":
-                # A entrega já foi concluída; descartar apenas a cópia recebida.
-                processing_pdf.unlink()
-                processing_manifest.unlink()
-                print(f"[FileWatch] Duplicate already completed: {manifest_path.name}")
-                return
-            raise ValueError("O ingestion_id já foi processado com dados diferentes.")
+            if same_payload:
+                if existing_job.status in {"PENDING", "FAILED", "RETRY"}:
+                    retry_job = existing_job
+                    retry_job.status = "PROCESSING"
+                    retry_job.next_attempt_at = None
+                else:
+                    # A mesma entrega nunca deve criar um segundo processamento.
+                    processing_pdf.unlink()
+                    processing_manifest.unlink()
+                    print(f"[FileWatch] Duplicate delivery ignored: {manifest_path.name}")
+                    return
+            raise ValueError(
+                "Conflito de idempotência: o ingestion_id já existe com outro "
+                "documento, instituição ou SHA-256."
+            )
             
-        # Create IngestionJob
-        job_id = str(uuid.uuid4())
-        new_job = models.IngestionJob(
-            id=job_id,
+        new_job = retry_job or models.IngestionJob(
+            id=str(uuid.uuid4()),
             ingestion_id=str(manifesto.ingestion_id),
             correlation_id=manifesto.correlation_id,
             document_id=str(manifesto.document_id),
             institution_id=inst.id,
-            status="COMPLETED",
             file_path=str(DIR_COMPLETED / pdf_path.name),
             manifest_path=str(DIR_COMPLETED / manifest_path.name),
             file_hash=actual_hash,
-            completed_at=models.utc_now()
         )
-        db.add(new_job)
+        new_job.status = "COMPLETED"
+        new_job.file_path = str(DIR_COMPLETED / pdf_path.name)
+        new_job.manifest_path = str(DIR_COMPLETED / manifest_path.name)
+        new_job.file_hash = actual_hash
+        new_job.completed_at = models.utc_now()
+        db.add(new_job) if retry_job is None else None
         db.commit()
         
         # Move to completed
@@ -149,27 +206,72 @@ async def process_ingestion_file(manifest_path: Path, db: Session):
         if not isinstance(inst_id, str):
             inst_id = None
         inst = db.query(models.Institution).filter(models.Institution.id == inst_id).first() if inst_id else None
+        permanent = True
+        target_dir = DIR_QUARANTINE
         
         if inst:
-            new_job = models.IngestionJob(
+            is_conflict = "Conflito de idempotência" in str(e)
+            current_retries = 1
+            if isinstance(manifest_data, dict) and manifest_data.get("ingestion_id"):
+                previous = db.query(models.IngestionJob).filter_by(
+                    ingestion_id=str(manifest_data["ingestion_id"])
+                ).first()
+                current_retries = (previous.retries + 1) if previous else 1
+            retryable = not isinstance(e, ValueError)
+            permanent = is_conflict or not retryable or current_retries >= settings.FILEWATCH_MAX_RETRIES
+            retry_at = None if permanent else models.utc_now() + timedelta(
+                seconds=settings.FILEWATCH_RETRY_BASE_SECONDS * (2 ** (current_retries - 1))
+            )
+            target_dir = DIR_QUARANTINE if permanent else DIR_RETRY
+            new_job = previous or models.IngestionJob(
                 id=job_id,
                 institution_id=inst.id,
-                status="QUARANTINE",
-                file_path=str(DIR_QUARANTINE / pdf_path.name),
-                manifest_path=str(DIR_QUARANTINE / manifest_path.name),
-                error_message=str(e),
-                file_hash=actual_hash if 'actual_hash' in locals() else None,
+                ingestion_id=None if is_conflict else (
+                    str(manifest_data.get("ingestion_id")) if isinstance(manifest_data, dict) else None
+                ),
             )
+            new_job.status = (
+                "CONFLICT" if is_conflict
+                else ("QUARANTINE" if not retryable else ("FAILED" if permanent else "RETRY"))
+            )
+            new_job.file_path = str(target_dir / pdf_path.name)
+            new_job.manifest_path = str(target_dir / manifest_path.name)
+            new_job.error_message = str(e)
+            new_job.file_hash = actual_hash if 'actual_hash' in locals() else None
+            new_job.retries = current_retries
+            new_job.next_attempt_at = retry_at
+            new_job.correlation_id = str(manifest_data.get("correlation_id")) if isinstance(manifest_data, dict) \
+                and manifest_data.get("correlation_id") else None
             db.add(new_job)
             db.commit()
              
-        shutil.move(str(processing_pdf), str(DIR_QUARANTINE / pdf_path.name))
-        shutil.move(str(processing_manifest), str(DIR_QUARANTINE / manifest_path.name))
+        shutil.move(str(processing_pdf), str(target_dir / pdf_path.name))
+        shutil.move(str(processing_manifest), str(target_dir / manifest_path.name))
+
+
+def promote_due_retries(db: Session):
+    now = models.utc_now()
+    jobs = db.query(models.IngestionJob).filter(
+        models.IngestionJob.status == "RETRY",
+        models.IngestionJob.next_attempt_at <= now,
+    ).all()
+    for job in jobs:
+        pdf = Path(job.file_path)
+        manifest = Path(job.manifest_path)
+        if pdf.is_file() and manifest.is_file():
+            target_pdf = DIR_INCOMING / pdf.name
+            target_manifest = DIR_INCOMING / manifest.name
+            shutil.move(str(pdf), str(target_pdf))
+            shutil.move(str(manifest), str(target_manifest))
+            job.status = "PENDING"
+            job.next_attempt_at = None
+    db.commit()
 
 async def run_filewatch_cycle():
     """Runs a single cycle of the filewatch directory polling."""
     db = SessionLocal()
     try:
+        promote_due_retries(db)
         manifests = list(DIR_INCOMING.glob("*.json"))
         for manifest in manifests:
             await process_ingestion_file(manifest, db)

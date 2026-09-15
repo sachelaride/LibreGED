@@ -24,6 +24,10 @@ async function loadIngestions() {
             if (ing.status === 'FAILED' || ing.status === 'QUARANTINE') {
                 actions = `<button class="btn-primary btn-small" onclick="retryIngestion('${ing.id}')">Tentar Novamente</button>`;
             }
+            if (ing.status === 'CONFLICT') {
+                actions = `<button class="btn-secondary btn-small" onclick="inspectConflict('${ing.id}')">Detalhes</button>
+                    <button class="btn-primary btn-small" onclick="resolveConflict('${ing.id}')">Encerrar conflito</button>`;
+            }
 
             tr.innerHTML = `
                 <td>${ing.id.substring(0, 8)}...</td>
@@ -64,5 +68,33 @@ function getStatusColor(status) {
     if (status === 'COMPLETED') return '#4ade80';
     if (status === 'FAILED') return '#ef4444';
     if (status === 'QUARANTINE') return '#f59e0b';
+    if (status === 'CONFLICT') return '#dc2626';
+    if (status === 'CONFLICT_RESOLVED') return '#6b7280';
+    if (status === 'RETRY') return '#a78bfa';
     return '#60a5fa'; // PENDING
+}
+
+async function inspectConflict(jobId) {
+    const resp = await fetch(`${INGESTIONS_API}/${jobId}/conflict`, { headers: getAuthHeaders() });
+    const data = await resp.json();
+    if (!resp.ok) {
+        alert(data.detail || 'Não foi possível consultar o conflito.');
+        return;
+    }
+    alert(`Conflito ${data.id}\nHash: ${data.file_hash || '-'}\nErro: ${data.error_message || '-'}`);
+}
+
+async function resolveConflict(jobId) {
+    if (!confirm('Encerrar este conflito sem sobrescrever a entrega original?')) return;
+    const resp = await fetch(`${INGESTIONS_API}/${jobId}/resolve-conflict`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+        alert(data.detail || 'Não foi possível encerrar o conflito.');
+        return;
+    }
+    alert('Conflito encerrado e preservado para auditoria.');
+    loadIngestions();
 }

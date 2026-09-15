@@ -104,7 +104,7 @@ def excluir_documento(documento_id: str, db: Session = Depends(get_db), usuario:
     documento = obter_documento(db, usuario, documento_id, "excluir")
     validar_exclusao(db, documento)
     caminho = caminho_seguro(documento)
-    temporario = caminho.with_name(f".exclusao-{uuid4().hex}.pending")
+    temporario = caminho.with_name(f".exclusao-{documento_id}-{uuid4().hex}.pending")
     auditar(db, usuario, "document", documento_id, "excluir", "Exclusão autorizada após retenção.")
     db.delete(documento)
     try:
@@ -121,7 +121,4 @@ def excluir_documento(documento_id: str, db: Session = Depends(get_db), usuario:
             temporario.rename(caminho)
         raise
     # Após o commit, falhas de limpeza preservam o arquivo pendente para operação.
-    try:
-        temporario.unlink()
-    except OSError:
-        pass
+    temporario.unlink(missing_ok=True)

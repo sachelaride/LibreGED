@@ -54,6 +54,8 @@ class FilaProcessamento(Base):
     status = Column(String, nullable=False, default="PENDENTE") # PENDENTE, PROCESSANDO, CONCLUIDO, FALHA
     tentativas = Column(Integer, default=0)
     erro_mensagem = Column(Text, nullable=True)
+    index_payload = Column(Text, nullable=True)
+    indexed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 

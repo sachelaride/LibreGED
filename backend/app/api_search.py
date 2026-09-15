@@ -30,7 +30,7 @@ def search_documents(
     if current_user.role != "admin_global":
         allowed_records = db.query(UserDocumentType).filter(UserDocumentType.user_id == current_user.id).all()
         allowed_types = [r.document_type_id for r in allowed_records if "consultar" in (r.permissions or [])]
-        if not current_user.institution_id or current_user.campus_id:
+        if not current_user.institution_id:
             allowed_types = []
         
     return search_service.search(

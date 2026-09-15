@@ -7,8 +7,11 @@ let editor = null;
 async function loadWorkflows() {
     try {
         const response = await fetch(WORKFLOWS_API, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('ged_token')}` }
+            headers: getAuthHeaders()
         });
+        if (!response.ok) {
+            throw new Error((await response.json()).detail || `HTTP ${response.status}`);
+        }
         const rawData = await response.json();
         const workflows = rawData.items ? rawData.items : rawData;
         window.workflowsData = workflows;
@@ -36,6 +39,10 @@ async function loadWorkflows() {
         });
     } catch (err) {
         console.error('Erro ao carregar workflows', err);
+        const tbody = document.getElementById('table-workflows-body');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#ef4444">Erro ao carregar: ${err.message}</td></tr>`;
+        }
     }
 }
 
@@ -47,7 +54,7 @@ function selectWorkflow(idOrObj) {
     document.getElementById('current-workflow-name').innerText = workflow.name;
     document.getElementById('btn-add-state').disabled = false;
     document.getElementById('bpmn-toolbox').style.display = 'flex';
-    document.getElementById('editor-hint').innerText = 'Arraste elementos do painel esquerdo';
+    document.getElementById('editor-hint').innerText = 'Arraste ou clique em um elemento do painel esquerdo para criar um nó';
     
     initDrawflow();
     renderDrawflow(workflow.states || [], workflow.transitions || []);
@@ -140,7 +147,7 @@ let isRendering = false;
 let nodeStateMap = {}; // stateId -> drawflowNodeId
 let nodeStateMap_inv = {}; // drawflowNodeId -> stateId
 
-function renderSingleNode(s) {
+function renderSingleNode(s, fallbackIndex = 0) {
     let nType = s.node_type || 'task_user';
     let html_content = '';
     
@@ -177,8 +184,12 @@ function renderSingleNode(s) {
         </div>`;
     }
 
-    const posX = s.ui_pos_x || 100;
-    const posY = s.ui_pos_y || 100;
+    const storedX = Number(s.ui_pos_x);
+    const storedY = Number(s.ui_pos_y);
+    const hasUsablePosition = Number.isFinite(storedX) && Number.isFinite(storedY)
+        && storedX >= 20 && storedY >= 20 && storedX < 3000 && storedY < 3000;
+    const posX = hasUsablePosition ? storedX : 80 + (fallbackIndex % 3) * 220;
+    const posY = hasUsablePosition ? storedY : 80 + Math.floor(fallbackIndex / 3) * 150;
     
     let in_con = 1;
     let out_con = 1;
@@ -193,13 +204,14 @@ function renderSingleNode(s) {
 function renderDrawflow(states, transitions) {
     if(!editor) return;
     isRendering = true;
+    editor.clear();
     editor.clearModuleSelected();
     nodeStateMap = {};
     nodeStateMap_inv = {};
     
     // Create nodes
-    states.forEach(s => {
-        renderSingleNode(s);
+    states.forEach((s, index) => {
+        renderSingleNode(s, index);
     });
     // Create connections
     transitions.forEach(t => {
@@ -357,6 +369,10 @@ function openTransitionVisualModal(originId, destId) {
     
     document.getElementById('trans-label').value = '';
     document.getElementById('trans-action-code').value = '';
+    document.getElementById('trans-condition-key').value = '';
+    document.getElementById('trans-condition-value').value = '';
+    document.getElementById('trans-priority').value = 0;
+    document.getElementById('trans-default').checked = false;
     document.getElementById('trans-roles').value = '';
     document.getElementById('modal-transition').classList.add('active');
 }
@@ -381,6 +397,10 @@ async function saveTransition() {
     const destId = document.getElementById('trans-dest').value;
     const label = document.getElementById('trans-label').value;
     const action_code = document.getElementById('trans-action-code').value.trim() || null;
+    const condition_key = document.getElementById('trans-condition-key').value.trim() || null;
+    const condition_value = document.getElementById('trans-condition-value').value.trim() || null;
+    const priority = Number.parseInt(document.getElementById('trans-priority').value, 10) || 0;
+    const is_default = document.getElementById('trans-default').checked;
     const roles = document.getElementById('trans-roles').value;
     
     try {
@@ -390,7 +410,7 @@ async function saveTransition() {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ origin_state_id: originId, destination_state_id: destId, label, action_code, allowed_roles: roles || null })
+            body: JSON.stringify({ origin_state_id: originId, destination_state_id: destId, label, action_code, condition_key, condition_value, priority, is_default, allowed_roles: roles || null })
         });
         
         if(resp.ok) {
@@ -442,6 +462,11 @@ document.addEventListener('DOMContentLoaded', () => {
             dragType = item.getAttribute('data-type');
             e.dataTransfer.setData('text/plain', dragType);
         });
+        item.addEventListener('click', () => {
+            const canvas = document.getElementById('drawflow');
+            const rect = canvas.getBoundingClientRect();
+            createNodeAt(item.getAttribute('data-type'), rect.left + rect.width / 2, rect.top + rect.height / 2);
+        });
     });
 });
 
@@ -453,26 +478,33 @@ async function drop(ev) {
     ev.preventDefault();
     if(!dragType || !currentWorkflowId) return;
     
+    await createNodeAt(dragType, ev.clientX, ev.clientY);
+    dragType = null;
+}
+
+async function createNodeAt(type, clientX, clientY) {
+    if (!type || !currentWorkflowId) return;
+
     // Calculate drop position relative to drawflow container
     const rect = document.getElementById('drawflow').getBoundingClientRect();
-    const x = ev.clientX - rect.left;
-    const y = ev.clientY - rect.top;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     
     // Zoom and pan adjustments (Drawflow specific)
-    const posX = x * (editor.precanvas.clientWidth / (editor.precanvas.clientWidth * editor.zoom)) - (editor.precanvas.getBoundingClientRect().x * (editor.precanvas.clientWidth / (editor.precanvas.clientWidth * editor.zoom)));
-    const posY = y * (editor.precanvas.clientHeight / (editor.precanvas.clientHeight * editor.zoom)) - (editor.precanvas.getBoundingClientRect().y * (editor.precanvas.clientHeight / (editor.precanvas.clientHeight * editor.zoom)));
+    const posX = Math.max(20, Math.round(x / Math.max(editor.zoom, 0.1)));
+    const posY = Math.max(20, Math.round(y / Math.max(editor.zoom, 0.1)));
     
     // Defaults based on type
     let label = 'Nova Tarefa';
     let is_initial = false;
     let is_completion = false;
     
-    if(dragType === 'event_start') { label = 'Início'; is_initial = true; }
-    if(dragType === 'event_end') { label = 'Fim'; is_completion = true; }
-    if(dragType === 'event_message') { label = 'Recebe Mensagem'; }
-    if(dragType === 'gateway_exclusive') { label = 'Decisão Exclusiva'; }
-    if(dragType === 'gateway_parallel') { label = 'Divisão Paralela'; }
-    if(dragType === 'task_service') { label = 'Serviço Automático'; }
+    if(type === 'event_start') { label = 'Início'; is_initial = true; }
+    if(type === 'event_end') { label = 'Fim'; is_completion = true; }
+    if(type === 'event_message') { label = 'Recebe Mensagem'; }
+    if(type === 'gateway_exclusive') { label = 'Decisão Exclusiva'; }
+    if(type === 'gateway_parallel') { label = 'Divisão Paralela'; }
+    if(type === 'task_service') { label = 'Serviço Automático'; }
     
     try {
         const resp = await fetch(`${WORKFLOWS_API}/${currentWorkflowId}/states`, {
@@ -487,7 +519,7 @@ async function drop(ev) {
                 is_completion, 
                 ui_pos_x: Math.round(posX), 
                 ui_pos_y: Math.round(posY),
-                node_type: dragType
+                node_type: type
             })
         });
         
@@ -496,12 +528,12 @@ async function drop(ev) {
             if(!currentWorkflowData.states) currentWorkflowData.states = [];
             currentWorkflowData.states.push(newState);
             isRendering = true;
-            renderSingleNode(newState);
+            renderSingleNode(newState, Object.keys(nodeStateMap).length);
             isRendering = false;
         } else {
-            alert('Erro ao criar nó BPMN');
+            const error = await resp.json().catch(() => ({}));
+            alert(`Erro ao criar nó BPMN: ${error.detail || `HTTP ${resp.status}`}`);
         }
     } catch(e) { console.error(e); }
     
-    dragType = null;
 }

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 import os
 import uuid
 from sqlalchemy.orm import Session
@@ -82,3 +83,67 @@ def load_file(stored_path: str) -> bytes:
 def delete_file(stored_path: str) -> None:
     target = Path(stored_path).resolve()
     target.unlink(missing_ok=True)
+
+
+def cleanup_pending_deletions(root: Path = STORAGE_ROOT, db: Any = None) -> dict[str, int]:
+    """Remove files left after a committed document deletion.
+
+    The deletion endpoint renames the payload before committing the database
+    transaction. A process interruption after commit leaves a uniquely named
+    pending file, which is safe to remove on the next cleanup pass.
+    """
+    removed = 0
+    failed = 0
+    for pending in root.resolve().rglob(".exclusao-*.pending"):
+        if not pending.is_file():
+            continue
+        try:
+            pending.unlink()
+            removed += 1
+        except OSError:
+            failed += 1
+    if db is not None and removed:
+        from app.main import add_audit
+        add_audit(db, "storage", str(root.resolve()), "pending_deletions_cleaned",
+                  f"{removed} arquivo(s) pendente(s) removido(s); {failed} falha(s).")
+        db.commit()
+    return {"removed": removed, "failed": failed}
+
+
+def reconcile_document_storage(db: Any, root: Path = STORAGE_ROOT) -> dict[str, Any]:
+    """Report mismatches between GED records and the database-backed index."""
+    from app.models_ged import GEDDocument
+
+    root = root.resolve()
+    documents = db.query(GEDDocument).all()
+    referenced_paths = set()
+    missing_documents = []
+    for document in documents:
+        path = Path(document.file_path).resolve()
+        if path.is_relative_to(root):
+            referenced_paths.add(path)
+        if not path.is_file():
+            missing_documents.append({
+                "document_id": document.id,
+                "file_path": document.file_path,
+            })
+
+    pending = [
+        str(path) for path in root.rglob(".exclusao-*.pending")
+        if path.is_file()
+    ]
+    orphan_files = [
+        str(path) for path in root.rglob("*")
+        if path.is_file()
+        and not path.name.startswith(".exclusao-")
+        and path.resolve() not in referenced_paths
+    ]
+    return {
+        "index_mode": "postgresql_document_fields",
+        "index_consistent": True,
+        "documents_checked": len(documents),
+        "missing_documents": missing_documents,
+        "orphan_files": orphan_files,
+        "pending_deletions": pending,
+        "consistent": not missing_documents and not orphan_files and not pending,
+    }

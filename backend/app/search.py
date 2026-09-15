@@ -54,6 +54,8 @@ class SearchService:
         if user and user.role != "admin_global":
             if user.institution_id:
                 query = query.filter(GEDDocument.institution_id == user.institution_id)
+            if user.campus_id:
+                query = query.filter(GEDDocument.campus_id == user.campus_id)
             if allowed_document_type_ids is not None:
                 query = query.filter(GEDDocument.category_id.in_(allowed_document_type_ids))
 

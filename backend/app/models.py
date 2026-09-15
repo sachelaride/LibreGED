@@ -136,6 +136,7 @@ class IngestionJob(Base):
     file_hash = Column(String, nullable=True)
     error_message = Column(String, nullable=True)
     retries = Column(Integer, default=0, nullable=False)
+    next_attempt_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now, index=True)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     completed_at = Column(DateTime, nullable=True)

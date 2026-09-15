@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models_ged import FilaProcessamento, GEDDocument, GEDDocumentStatus
 from app.models import utc_now
+from app.search import search_service
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ def _process_fila_loop():
         try:
             # Busca tarefas pendentes (tentativas < 3)
             tarefa = db.query(FilaProcessamento).filter(
-                FilaProcessamento.status == "PENDENTE",
+                FilaProcessamento.status.in_(["PENDENTE", "INDEX_PENDING"]),
                 FilaProcessamento.tentativas < 3
             ).first()
             
@@ -49,7 +50,7 @@ def _process_fila_loop():
                 # ========================================================
                 
                 doc = db.query(GEDDocument).filter(GEDDocument.id == tarefa.documento_id).first()
-                if doc:
+                if doc and tarefa.status == "PENDENTE":
                     # Simulação do tempo de processamento pesado
                     time.sleep(2.0) 
                     
@@ -57,12 +58,27 @@ def _process_fila_loop():
                     # Exemplo: VALIDANDO -> ASSINANDO -> ARQUIVADO
                     # Aqui apenas marcamos como VALIDO para simulação de sucesso no background.
                     doc.status = GEDDocumentStatus.VALIDO
+                    tarefa.status = "INDEX_PENDING"
+                    tarefa.index_payload = (doc.extracted_metadata or doc.title)
                     db.commit()
+
+                if doc and tarefa.status == "INDEX_PENDING":
+                    indexed = search_service.index_document(
+                        db,
+                        doc.id,
+                        doc.title,
+                        tarefa.index_payload or "",
+                        "",
+                    )
+                    if not indexed:
+                        raise RuntimeError("Indexador não aceitou o documento.")
+                    tarefa.indexed_at = utc_now()
+                    tarefa.status = "CONCLUIDO"
+                    tarefa.updated_at = utc_now()
+                    db.commit()
+                elif not doc:
+                    raise RuntimeError("Documento da fila não encontrado.")
                 
-                # Sucesso
-                tarefa.status = "CONCLUIDO"
-                tarefa.updated_at = utc_now()
-                db.commit()
                 logger.info(f"Job {tarefa.job_id} concluído com sucesso!")
                 
             except Exception as e:

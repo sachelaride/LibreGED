@@ -8,7 +8,10 @@ from app.auth import get_current_active_user
 from app.database import SessionLocal
 from app.models import Institution, User, AuditEvent, utc_now
 from app.models_ged import DocumentCategory, GEDDocument, GEDDocumentStatus
-from app.models_ged_config import DocumentType, UserDocumentType
+from app.models_ged_config import (
+    DocumentType, UserDocumentType, PermissionGroup, PermissionGroupMember,
+    PermissionGroupDocumentType,
+)
 
 cliente = TestClient(app)
 
@@ -276,3 +279,56 @@ def test_upload_valida_indices_obrigatorios_tipos_mascara_e_unicidade(cenario, a
 ])
 def test_configuracao_invalida_de_indice_e_recusada(dados):
     assert cliente.post('/api/indices', json=dados).status_code == 422
+
+
+def test_limpeza_de_exclusao_pendente_e_auditada(tmp_path):
+    from app.storage import cleanup_pending_deletions
+    pendente = tmp_path / ".exclusao-documento-teste-abc.pending"
+    pendente.write_bytes(b"arquivo excluido")
+    resultado = cleanup_pending_deletions(tmp_path)
+    assert resultado == {"removed": 1, "failed": 0}
+    assert not pendente.exists()
+
+
+def test_reconciliacao_detecta_arquivo_orfao_e_documento_sem_arquivo(tmp_path):
+    from app.storage import reconcile_document_storage
+    orphan = tmp_path / "orfao.pdf"
+    orphan.write_bytes(b"arquivo sem registro")
+    with SessionLocal() as db:
+        relatorio = reconcile_document_storage(db, tmp_path)
+    assert relatorio["index_mode"] == "postgresql_document_fields"
+    assert relatorio["index_consistent"] is True
+    assert str(orphan.resolve()) in relatorio["orphan_files"]
+
+
+def test_grupo_herda_permissao_e_bloqueio_direto_prevalece(cenario):
+    from app.document_permissions import tem_permissao
+    with SessionLocal() as db:
+        usuario = db.get(User, cenario['usuario'])
+        pai = PermissionGroup(id=str(uuid4()), name='Pai', institution_id=cenario['instituicao'])
+        filho = PermissionGroup(id=str(uuid4()), name='Filho', institution_id=cenario['instituicao'],
+                                parent_group_id=pai.id)
+        db.add_all([pai, filho])
+        db.flush()
+        db.add_all([
+            PermissionGroupMember(group_id=filho.id, user_id=usuario.id),
+            PermissionGroupDocumentType(group_id=pai.id, document_type_id=cenario['tipo'],
+                                        permissions=['consultar']),
+            UserDocumentType(user_id=usuario.id, document_type_id=cenario['tipo'],
+                             permissions=[], denied_permissions=['consultar']),
+        ])
+        db.commit()
+        assert tem_permissao(db, usuario, cenario['tipo'], 'consultar') is False
+        db.query(UserDocumentType).filter_by(user_id=usuario.id).delete()
+        db.commit()
+        assert tem_permissao(db, usuario, cenario['tipo'], 'consultar') is True
+        db.query(PermissionGroupMember).filter_by(user_id=usuario.id).delete()
+        db.commit()
+        assert tem_permissao(db, usuario, cenario['tipo'], 'consultar') is False
+        db.query(PermissionGroupDocumentType).filter_by(group_id=pai.id).delete()
+        filho_db = db.get(PermissionGroup, filho.id)
+        filho_db.parent_group_id = None
+        db.flush()
+        db.delete(filho_db)
+        db.delete(db.get(PermissionGroup, pai.id))
+        db.commit()

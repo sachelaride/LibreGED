@@ -46,6 +46,10 @@ class WorkflowTransition(Base):
     destination_state_id = Column(String, ForeignKey("ged_workflow_states.id"), nullable=False)
     label = Column(String, nullable=False)
     action_code = Column(String, nullable=True)
+    condition_key = Column(String, nullable=True)
+    condition_value = Column(String, nullable=True)
+    priority = Column(Integer, nullable=False, default=0)
+    is_default = Column(Boolean, nullable=False, default=False)
     allowed_roles = Column(String, nullable=True) # CSV format, e.g., "gestor_clinica,admin_global"
     
     workflow = relationship("Workflow", back_populates="transitions")

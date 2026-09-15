@@ -6,6 +6,8 @@ class BaseConfig(BaseSettings):
     DATABASE_URL: str
     ENVIRONMENT: str = "development"
     MAX_UPLOAD_SIZE_BYTES: int = 10485760
+    FILEWATCH_MAX_RETRIES: int = 5
+    FILEWATCH_RETRY_BASE_SECONDS: int = 60
     
     # JWT Auth
     SECRET_KEY: str = "YOUR_SUPER_SECRET_KEY_HERE_FOR_MVP"

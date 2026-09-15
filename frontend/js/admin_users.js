@@ -1,6 +1,7 @@
 async function openUserModal() {
     let instSelectHtml = '';
-    const currentUser = JSON.parse(localStorage.getItem('user'));
+    let campusSelectHtml = '';
+    const currentUser = obterUsuarioAtual();
     
     if (currentUser && currentUser.role === 'admin_global') {
         try {
@@ -23,7 +24,26 @@ async function openUserModal() {
         } catch (e) {
             console.error("Erro ao carregar instituições:", e);
         }
+
+        function obterUsuarioAtual() {
+            try {
+                const token = localStorage.getItem('ged_token');
+                return token && typeof parseJwt === 'function' ? parseJwt(token) : null;
+            } catch (erro) {
+                console.error('Não foi possível ler o usuário atual.', erro);
+                return null;
+            }
+        }
     }
+
+    campusSelectHtml = `
+        <div class="form-group">
+            <label>Campus (opcional)</label>
+            <select id="new-campus" disabled>
+                <option value="">Selecione a instituição primeiro</option>
+            </select>
+        </div>
+    `;
 
     const html = `
         <div class="modal-overlay active" id="modal-user">
@@ -45,17 +65,50 @@ async function openUserModal() {
                     <select id="new-role">
                         <option value="operador">Secretaria (Operador)</option>
                         <option value="leitor">Auditor / Leitor</option>
-                        <option value="admin_global">Administrador Global</option>
                         <option value="admin_instituicao">Gestor de Instituição</option>
                         ${currentUser && currentUser.role === 'admin_global' ? '<option value="admin_global">Administrador Global</option>' : ''}
                     </select>
                 </div>
                 ${instSelectHtml}
+                ${campusSelectHtml}
                 <button class="btn-primary w-100" onclick="saveUser()">Salvar</button>
             </div>
         </div>
     `;
     document.body.insertAdjacentHTML('beforeend', html);
+    const institution = document.getElementById('new-institution');
+    if (institution) institution.addEventListener('change', () => carregarCampi(institution.value, 'new-campus'));
+    if (currentUser && currentUser.role === 'admin_instituicao') {
+        carregarCampi(currentUser.institution_id, 'new-campus');
+    }
+}
+
+async function carregarCampi(institutionId, selectId, selectedId = '') {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    if (!institutionId) {
+        select.disabled = true;
+        select.innerHTML = '<option value="">Selecione a instituição primeiro</option>';
+        return;
+    }
+    select.disabled = true;
+    select.innerHTML = '<option value="">Carregando...</option>';
+    try {
+        const resposta = await fetch(`${API_URL}/campuses?institution_id=${encodeURIComponent(institutionId)}`, {
+            headers: getAuthHeaders()
+        });
+        if (!resposta.ok) throw new Error('Não foi possível carregar os campi.');
+        const campi = await resposta.json();
+        select.innerHTML = '<option value="">Sem restrição de campus</option>';
+        campi.forEach(campus => {
+            const option = new Option(campus.name, campus.id, false, campus.id === selectedId);
+            select.append(option);
+        });
+        select.disabled = false;
+    } catch (erro) {
+        select.innerHTML = '<option value="">Erro ao carregar campi</option>';
+        alert(erro.message);
+    }
 }
 
 async function loadUsers() {
@@ -124,6 +177,8 @@ async function saveUser() {
     if (instSelect) {
         institution_id = instSelect.value;
     }
+    const campusSelect = document.getElementById('new-campus');
+    const campus_id = campusSelect && !campusSelect.disabled ? campusSelect.value || null : null;
     
     try {
         const response = await fetch(`${API_URL}/users`, {
@@ -132,7 +187,7 @@ async function saveUser() {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ username, password, role, institution_id })
+            body: JSON.stringify({ username, password, role, institution_id, campus_id })
         });
         if(response.ok) {
             document.getElementById('modal-user').remove();
@@ -147,7 +202,7 @@ async function saveUser() {
 }
 
 function openEditUserModal(user) {
-    const currentUser = JSON.parse(localStorage.getItem('user'));
+    const currentUser = obterUsuarioAtual();
     const html = `
         <div class="modal-overlay active" id="modal-edit-user">
             <div class="modal-content glass-panel" style="width: 400px; padding: 30px;">
@@ -164,6 +219,12 @@ function openEditUserModal(user) {
                         <option value="admin_instituicao" ${user.role === 'admin_instituicao' ? 'selected' : ''}>Gestor de Instituição</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>Campus (opcional)</label>
+                    <select id="edit-campus" disabled>
+                        <option value="">Carregando...</option>
+                    </select>
+                </div>
                 <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
                     <input type="checkbox" id="edit-active" ${user.is_active ? 'checked' : ''} style="width: auto;">
                     <label for="edit-active" style="margin-bottom: 0;">Usuário Ativo</label>
@@ -173,11 +234,15 @@ function openEditUserModal(user) {
         </div>
     `;
     document.body.insertAdjacentHTML('beforeend', html);
+    carregarCampi(user.institution_id, 'edit-campus', user.campus_id || '');
 }
 
 async function updateUser(userId) {
     const role = document.getElementById('edit-role').value;
     const is_active = document.getElementById('edit-active').checked;
+    const campus_id = document.getElementById('edit-campus').disabled
+        ? null
+        : (document.getElementById('edit-campus').value || null);
     
     try {
         const response = await fetch(`${API_URL}/users/${userId}`, {
@@ -186,7 +251,7 @@ async function updateUser(userId) {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ role, is_active })
+            body: JSON.stringify({ role, is_active, campus_id })
         });
         if(response.ok) {
             document.getElementById('modal-edit-user').remove();

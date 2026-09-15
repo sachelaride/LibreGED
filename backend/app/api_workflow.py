@@ -8,7 +8,7 @@ from app import auth
 from app.schemas_workflow import (
     WorkflowCreate, WorkflowResponse,
     WorkflowStateCreate, WorkflowStateUpdate, WorkflowStateResponse,
-    WorkflowTransitionCreate, WorkflowTransitionResponse,
+    WorkflowTransitionCreate, WorkflowTransitionUpdate, WorkflowTransitionResponse,
     DocumentWorkflowInstanceCreate, DocumentWorkflowInstanceResponse,
     WorkflowTaskResponse, TaskCompletionRequest
 )
@@ -145,6 +145,8 @@ def delete_state(workflow_id: str, state_id: str, db: Session = Depends(get_db),
 # --- TRANSITIONS ---
 @router.post("/workflows/{workflow_id}/transitions", response_model=WorkflowTransitionResponse, tags=["Admin - Workflows"])
 def create_transition(workflow_id: str, transition_in: WorkflowTransitionCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    if (transition_in.condition_key is None) != (transition_in.condition_value is None):
+        raise HTTPException(status_code=422, detail="condition_key e condition_value devem ser informados juntos.")
     workflow = db.get(models_workflow.Workflow, workflow_id)
     if workflow is None:
         raise HTTPException(status_code=404, detail="Workflow não encontrado")
@@ -163,15 +165,89 @@ def create_transition(workflow_id: str, transition_in: WorkflowTransitionCreate,
     ).first()
     if duplicate:
         raise HTTPException(status_code=409, detail="A transição entre estes estados já existe.")
+    if transition_in.is_default and db.query(models_workflow.WorkflowTransition).filter_by(
+        workflow_id=workflow_id,
+        origin_state_id=transition_in.origin_state_id,
+        is_default=True,
+    ).first():
+        raise HTTPException(status_code=409, detail="O estado já possui uma transição padrão.")
     transition = models_workflow.WorkflowTransition(
         workflow_id=workflow_id,
         origin_state_id=transition_in.origin_state_id,
         destination_state_id=transition_in.destination_state_id,
         label=transition_in.label,
         action_code=transition_in.action_code,
+        condition_key=transition_in.condition_key,
+        condition_value=transition_in.condition_value,
+        priority=transition_in.priority,
+        is_default=transition_in.is_default,
         allowed_roles=transition_in.allowed_roles
     )
     db.add(transition)
+    db.commit()
+    db.refresh(transition)
+    return transition
+
+@router.put("/workflows/{workflow_id}/transitions/{transition_id}", response_model=WorkflowTransitionResponse, tags=["Admin - Workflows"])
+def update_transition(workflow_id: str, transition_id: str, transition_in: WorkflowTransitionUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    transition = db.query(models_workflow.WorkflowTransition).filter_by(id=transition_id, workflow_id=workflow_id).first()
+    if not transition:
+        raise HTTPException(status_code=404, detail="Transição não encontrada")
+
+    if transition_in.condition_key is None and transition_in.condition_value is not None:
+        raise HTTPException(status_code=422, detail="condition_key e condition_value devem ser informados juntos.")
+    if transition_in.condition_key is not None and transition_in.condition_value is None:
+        raise HTTPException(status_code=422, detail="condition_key e condition_value devem ser informados juntos.")
+
+    origin_state_id = transition_in.origin_state_id or transition.origin_state_id
+    destination_state_id = transition_in.destination_state_id or transition.destination_state_id
+    if origin_state_id == destination_state_id:
+        raise HTTPException(status_code=422, detail="Origem e destino devem ser estados distintos do workflow.")
+
+    if transition_in.origin_state_id is not None or transition_in.destination_state_id is not None:
+        states = db.query(models_workflow.WorkflowState).filter(
+            models_workflow.WorkflowState.workflow_id == workflow_id,
+            models_workflow.WorkflowState.id.in_([origin_state_id, destination_state_id]),
+        ).all()
+        if len(states) != 2:
+            raise HTTPException(status_code=422, detail="Origem e destino devem pertencer ao workflow informado.")
+
+    duplicate = db.query(models_workflow.WorkflowTransition).filter(
+        models_workflow.WorkflowTransition.workflow_id == workflow_id,
+        models_workflow.WorkflowTransition.origin_state_id == origin_state_id,
+        models_workflow.WorkflowTransition.destination_state_id == destination_state_id,
+        models_workflow.WorkflowTransition.id != transition_id,
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=409, detail="A transição entre estes estados já existe.")
+
+    if transition_in.is_default and db.query(models_workflow.WorkflowTransition).filter(
+        models_workflow.WorkflowTransition.workflow_id == workflow_id,
+        models_workflow.WorkflowTransition.origin_state_id == origin_state_id,
+        models_workflow.WorkflowTransition.is_default.is_(True),
+        models_workflow.WorkflowTransition.id != transition_id,
+    ).first():
+        raise HTTPException(status_code=409, detail="O estado já possui uma transição padrão.")
+
+    if transition_in.label is not None:
+        transition.label = transition_in.label
+    if transition_in.origin_state_id is not None:
+        transition.origin_state_id = transition_in.origin_state_id
+    if transition_in.destination_state_id is not None:
+        transition.destination_state_id = transition_in.destination_state_id
+    if transition_in.action_code is not None:
+        transition.action_code = transition_in.action_code
+    if transition_in.condition_key is not None:
+        transition.condition_key = transition_in.condition_key
+    if transition_in.condition_value is not None:
+        transition.condition_value = transition_in.condition_value
+    if transition_in.priority is not None:
+        transition.priority = transition_in.priority
+    if transition_in.is_default is not None:
+        transition.is_default = transition_in.is_default
+    if transition_in.allowed_roles is not None:
+        transition.allowed_roles = transition_in.allowed_roles
+
     db.commit()
     db.refresh(transition)
     return transition
@@ -259,21 +335,34 @@ def complete_task(
         raise HTTPException(status_code=400, detail="Task is already completed or cancelled")
         
     from app.api_document_operations import obter_documento
-    obter_documento(db, user, task.instance.document_id, "executar_fluxo")
+    documento_autorizado = obter_documento(db, user, task.instance.document_id, "executar_fluxo")
     instance = task.instance
     transitions = db.query(models_workflow.WorkflowTransition).filter_by(
         workflow_id=instance.workflow_id,
         origin_state_id=instance.current_state_id,
     ).all()
     action = payload.action.strip().casefold()
+    candidates = [
+        item for item in transitions
+        if action in {
+            (item.action_code or "").strip().casefold(),
+            item.label.strip().casefold(),
+        }
+    ]
+    matching = [
+        item for item in candidates
+        if item.condition_key is None
+        or str(payload.variables.get(item.condition_key)) == item.condition_value
+    ]
+    conditional_matching = [item for item in matching if item.condition_key is not None]
+    if conditional_matching:
+        matching = conditional_matching
     transition = next(
-        (
-            item for item in transitions
-            if action in {
-                (item.action_code or "").strip().casefold(),
-                item.label.strip().casefold(),
-            }
-        ),
+        iter(sorted(
+            matching,
+            key=lambda item: (item.is_default, item.priority),
+            reverse=True,
+        )),
         None,
     )
     if transition is None:

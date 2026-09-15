@@ -17,7 +17,7 @@ import json
 from datetime import timedelta
 from app.config import settings
 
-from app.storage import delete_file, save_file
+from app.storage import delete_file, save_file, reconcile_document_storage
 from app.upload_validation import read_validated_upload
 from app.database import get_db
 from app import models
@@ -100,6 +100,27 @@ async def filewatch_task():
         await run_filewatch_cycle()
     except Exception as e:
         print(f"Erro no ciclo FileWatch: {e}")
+
+
+@app.on_event("startup")
+@repeat_every(seconds=3600, wait_first=True)
+async def storage_reconciliation_task():
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        report = reconcile_document_storage(db)
+        if not report["consistent"]:
+            add_audit(
+                db,
+                "storage",
+                "reconciliation",
+                "storage_reconciliation_mismatch",
+                json.dumps(report, ensure_ascii=False),
+            )
+            db.commit()
+    finally:
+        db.close()
 
 app.add_middleware(
     CORSMiddleware,
@@ -642,8 +663,6 @@ def add_audit(db: Session, entity: str, entity_id: str, action: str, details: st
         hash_signature=signature,
     )
     db.add(audit_event)
-
-
 
 
 

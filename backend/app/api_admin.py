@@ -24,10 +24,33 @@ OperadorRole = Depends(role_checker(["admin_global", "admin_instituicao", "opera
 from app.models_config import ConfigProposal
 from app.schemas_config import ConfigProposalCreate, ConfigProposalResponse
 from app.config_manager import config_manager
+from app.storage import cleanup_pending_deletions, reconcile_document_storage
 from datetime import datetime, UTC
 
 def utc_now():
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+@router.post("/storage/cleanup-pending-deletions", dependencies=[AdminRole])
+def cleanup_pending_deletion_files(db: Session = Depends(get_db)):
+    return cleanup_pending_deletions(db=db)
+
+
+@router.get("/storage/reconciliation", dependencies=[AdminRole])
+def reconcile_storage_and_index(db: Session = Depends(get_db),
+                                administrator: models.User = Depends(get_current_admin)):
+    report = reconcile_document_storage(db)
+    from app.main import add_audit
+    add_audit(
+        db,
+        "storage",
+        "reconciliation",
+        "storage_reconciliation",
+        json.dumps(report, ensure_ascii=False),
+        administrator.id,
+    )
+    db.commit()
+    return report
 
 # --- SCHEMAS ---
 
@@ -301,6 +324,8 @@ class IngestionJobResponse(BaseModel):
     manifest_path: str
     error_message: Optional[str] = None
     retries: int
+    next_attempt_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
@@ -371,3 +396,48 @@ def retry_ingestion(
     db.commit()
     
     return {"message": "Job sent to retry"}
+
+
+@router.get("/ingestions/{job_id}/conflict")
+def get_ingestion_conflict(
+    job_id: str,
+    db: Session = Depends(get_db),
+    user: models.User = AdminRole,
+):
+    target_inst_id = user.institution_id
+    job = db.query(models.IngestionJob).filter_by(id=job_id).first()
+    if job is None or (user.role != "admin_global" and job.institution_id != target_inst_id):
+        raise HTTPException(status_code=404, detail="Ingestion job not found")
+    if job.status != "CONFLICT":
+        raise HTTPException(status_code=409, detail="Job is not a conflict")
+    return {
+        "id": job.id,
+        "status": job.status,
+        "ingestion_id": job.ingestion_id,
+        "document_id": job.document_id,
+        "file_hash": job.file_hash,
+        "file_path": job.file_path,
+        "manifest_path": job.manifest_path,
+        "error_message": job.error_message,
+        "retries": job.retries,
+    }
+
+
+@router.post("/ingestions/{job_id}/resolve-conflict")
+def resolve_ingestion_conflict(
+    job_id: str,
+    db: Session = Depends(get_db),
+    user: models.User = AdminRole,
+):
+    job = db.query(models.IngestionJob).filter_by(id=job_id).first()
+    if job is None or (user.role != "admin_global" and job.institution_id != user.institution_id):
+        raise HTTPException(status_code=404, detail="Ingestion job not found")
+    if job.status != "CONFLICT":
+        raise HTTPException(status_code=409, detail="Job is not a conflict")
+    job.status = "CONFLICT_RESOLVED"
+    job.error_message = (job.error_message or "") + " | Conflito encerrado administrativamente."
+    from app.main import add_audit
+    add_audit(db, "ingestion", job.id, "conflict_resolved",
+              "Conflito preservado e encerrado sem sobrescrever a entrega original.", user.id)
+    db.commit()
+    return {"message": "Conflict resolved without overwriting the original delivery.", "status": job.status}

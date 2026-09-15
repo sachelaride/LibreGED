@@ -23,10 +23,12 @@ def list_quarantined_documents(
     query = db.query(GEDDocument).filter(GEDDocument.status == GEDDocumentStatus.QUARENTENA)
     if current_user.role != "admin_global":
         query = query.filter(GEDDocument.institution_id == current_user.institution_id)
+        if current_user.campus_id:
+            query = query.filter(GEDDocument.campus_id == current_user.campus_id)
         
     documentos = query.all()
     if current_user.role != "admin_global":
-        if not current_user.institution_id or current_user.campus_id:
+        if not current_user.institution_id:
             return []
         documentos = [d for d in documentos if tem_permissao(db, current_user, d.category_id, "consultar")]
     return documentos

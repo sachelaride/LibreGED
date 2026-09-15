@@ -1,6 +1,15 @@
 // Cadastros e privilégios documentais do administrador.
 const escaparAdmin = valor => String(valor ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const adminGlobal = () => JSON.parse(localStorage.getItem('user') || '{}').role === 'admin_global';
+const adminGlobal = () => {
+    try {
+        const token = localStorage.getItem('ged_token');
+        const payload = token && typeof parseJwt === 'function' ? parseJwt(token) : null;
+        return payload?.role === 'admin_global';
+    } catch (erro) {
+        console.error('Não foi possível verificar o papel administrativo.', erro);
+        return false;
+    }
+};
 async function requisicaoAdmin(caminho, metodo = 'GET', dados) {
     const resposta = await fetch(`${API_URL}${caminho}`, {
         method: metodo, headers: {...getAuthHeaders(), 'Content-Type': 'application/json'},

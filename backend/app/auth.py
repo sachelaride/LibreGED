@@ -112,7 +112,9 @@ def verify_document_ownership(user: models.User, db_doc):
         return
         
     doc_campus_id = getattr(db_doc, "campus_id", None)
-    if doc_campus_id and doc_campus_id != user.campus_id:
+    if not doc_campus_id:
+        raise HTTPException(status_code=403, detail="Campus do documento não definido")
+    if doc_campus_id != user.campus_id:
         raise HTTPException(status_code=403, detail="Cross-campus access forbidden")
 
 def check_document_type_access(db: Session, user: models.User, document_type_id: str):

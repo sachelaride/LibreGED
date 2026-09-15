@@ -2,12 +2,64 @@ from fastapi import APIRouter, Header, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas_erp import IngestionPayload, IngestionResponse
-from app.models_ged import ExternalIngestionAudit, GEDDocument, GEDDocumentStatus, DocumentCategory, GEDAcademicPhase
+from app.models_ged import (
+    ExternalIngestionAudit, GEDDocument, GEDDocumentStatus, DocumentCategory,
+    GEDAcademicPhase, FilaProcessamento,
+)
+from app.auth import get_current_admin
+from app.models import User
 import hashlib
 import json
 import uuid
 
 router = APIRouter()
+
+
+@router.get("/api/integration/erp/reconciliation", tags=["Integração ERP"])
+def reconcile_erp_ingestions(
+    db: Session = Depends(get_db),
+    administrator: User = Depends(get_current_admin),
+):
+    """Report ERP ingestions whose local document or queue state diverged."""
+    audits = db.query(ExternalIngestionAudit).all()
+    missing_documents = []
+    missing_queue = []
+    queue_statuses = {}
+    for audit in audits:
+        if not audit.document_id:
+            missing_documents.append(audit.id)
+            continue
+        document = db.get(GEDDocument, audit.document_id)
+        if document is None:
+            missing_documents.append(audit.id)
+            continue
+        queue = db.query(FilaProcessamento).filter_by(documento_id=document.id).order_by(
+            FilaProcessamento.created_at.desc()
+        ).first()
+        if queue is None:
+            missing_queue.append(document.id)
+        else:
+            queue_statuses[document.id] = queue.status
+
+    report = {
+        "audits_checked": len(audits),
+        "missing_documents": missing_documents,
+        "missing_queue": missing_queue,
+        "queue_statuses": queue_statuses,
+        "consistent": not missing_documents and not missing_queue,
+        "scope": "erp_ingestion_to_local_document_queue",
+    }
+    from app.main import add_audit
+    add_audit(
+        db,
+        "integration",
+        "erp-reconciliation",
+        "erp_reconciliation",
+        json.dumps(report, ensure_ascii=False),
+        administrator.id,
+    )
+    db.commit()
+    return report
 
 @router.post("/api/integration/erp/ingest", response_model=IngestionResponse, tags=["Integração ERP"])
 def ingest_erp_data(

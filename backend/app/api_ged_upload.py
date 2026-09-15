@@ -22,10 +22,13 @@ async def upload_document(
     title: str = Form(...),
     document_type_id: str = Form(...),
     indices_json: str = Form("[]"), # Expects JSON string of list of dicts [{"index_id": "...", "value": "..."}]
+    document_purpose: str = Form("official"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    if document_purpose not in {"official", "conference"}:
+        raise HTTPException(422, "Finalidade documental inválida.")
     doc_type = db.query(DocumentType).filter(DocumentType.id == document_type_id).first()
     if not doc_type:
         raise HTTPException(status_code=400, detail="Tipo de Documento inválido.")
@@ -87,7 +90,9 @@ async def upload_document(
         status=initial_doc_status,
         institution_id=current_user.institution_id,
         campus_id=current_user.campus_id,
-        uploaded_by_user_id=persisted_user_id
+        uploaded_by_user_id=persisted_user_id,
+        document_purpose=document_purpose,
+        is_official=document_purpose == "official",
     )
     db.add(db_doc)
     db.flush() # Get the document ID

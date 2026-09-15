@@ -7,12 +7,13 @@ from app.models_ged_config import (
     PermissionGroup, PermissionGroupDocumentType,
 )
 
-AcaoDocumental = Literal['consultar', 'cadastrar', 'editar', 'arquivar', 'excluir', 'download', 'assinar', 'iniciar_fluxo', 'executar_fluxo', 'liberar_quarentena', 'editar_indices', 'exportar', 'imprimir', 'comentar']
+AcaoDocumental = Literal['consultar', 'cadastrar', 'editar', 'arquivar', 'excluir', 'download', 'assinar', 'segunda_via', 'iniciar_fluxo', 'executar_fluxo', 'liberar_quarentena', 'editar_indices', 'exportar', 'imprimir', 'comentar']
 ACOES = {
     'consultar': 'Visualizar e pesquisar', 'cadastrar': 'Cadastrar documento',
     'editar': 'Editar documento', 'arquivar': 'Arquivar documento',
     'excluir': 'Excluir documento', 'download': 'Baixar arquivo',
     'assinar': 'Assinar documento', 'iniciar_fluxo': 'Iniciar fluxo',
+    'segunda_via': 'Emitir segunda via',
     'executar_fluxo': 'Executar fluxo', 'liberar_quarentena': 'Liberar quarentena',
     'editar_indices': 'Editar índices', 'exportar': 'Exportar documento',
     'imprimir': 'Imprimir', 'comentar': 'Comentar',

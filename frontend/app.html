@@ -176,6 +176,10 @@
                                 <button class="btn-secondary" onclick="promptCreateFolder()"><i class="fa-solid fa-folder-plus"></i> Nova Pasta</button>
                                 <button class="btn-primary" onclick="document.getElementById('library-upload-input').click()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload</button>
                                 <input type="file" id="library-upload-input" style="display:none;" multiple onchange="uploadToLibrary(this.files)">
+                                <input id="library-tag-filter" class="form-control" type="search"
+                                    placeholder="Filtrar por etiqueta" aria-label="Filtrar por etiqueta"
+                                    style="max-width:220px;">
+                                <button class="btn-secondary btn-small" type="button" onclick="applyLibraryTagFilter()">Filtrar</button>
                             </div>
                         </div>
                         
@@ -217,6 +221,9 @@
                                         <small class="text-muted">Formato JSON das propriedades dinâmicas.</small>
                                     </div>
                                     <button class="btn-primary w-100" onclick="saveMetadata()"><i class="fa-solid fa-floppy-disk"></i> Salvar Propriedades</button>
+                                    <button class="btn-secondary w-100" type="button" onclick="previewCurrentDocument()" style="margin-top:10px;">
+                                        <i class="fa-solid fa-eye"></i> Pré-visualizar arquivo
+                                    </button>
 
                                         <div class="document-tags-section">
                                             <h4><i class="fa-solid fa-tags" aria-hidden="true"></i> Etiquetas</h4>
@@ -242,6 +249,10 @@
                                         </button>
                                         <input type="file" id="doc-version-input" hidden onchange="uploadDocumentVersion(this.files[0])">
                                     </div>
+                                    <button class="btn-secondary" type="button" onclick="loadVersionHistory()">
+                                        <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Ver histórico de versões
+                                    </button>
+                                    <div id="doc-version-history" style="margin-top:12px;"></div>
                                 </div>
                                 
                                 <!-- Aba Workflow -->
@@ -348,6 +359,12 @@
                                     <select id="upload-document-type" onchange="carregarIndicesUpload()">
                                         <option value="">Selecione o tipo documental</option>
                                     </select>
+                                    <label for="upload-document-purpose" style="display:block; margin-top:12px;">Finalidade do documento</label>
+                                    <select id="upload-document-purpose" aria-describedby="upload-document-purpose-help">
+                                        <option value="official">Oficial</option>
+                                        <option value="conference">Conferência (não oficial)</option>
+                                    </select>
+                                    <small id="upload-document-purpose-help" class="text-muted">Documentos de conferência não substituem o documento oficial.</small>
                                 </div>
                                 <div id="upload-indices" onclick="event.stopPropagation()"></div>
                                 <div style="border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 40px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease;">

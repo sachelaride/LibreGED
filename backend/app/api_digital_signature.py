@@ -54,7 +54,7 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Documento não encontrado.")
     
     exigir_documento(db, usuario, doc, "assinar")
-    if doc.status in (GEDDocumentStatus.ARQUIVADO, GEDDocumentStatus.QUARENTENA):
+    if doc.status in (GEDDocumentStatus.ARQUIVADO, GEDDocumentStatus.QUARENTENA, GEDDocumentStatus.SUSPENSO):
         raise HTTPException(409, "Documento arquivado ou em quarentena não pode ser assinado.")
     signer = db.query(Signer).filter(Signer.id == payload.signer_id).first()
     if not signer or not signer.certificate_path:
@@ -154,4 +154,3 @@ def list_signers(db: Session = Depends(get_db), usuario: User = Depends(get_curr
 def get_document_signatures(document_id: str, db: Session = Depends(get_db), usuario: User = Depends(get_current_active_user)):
     logs = db.query(SignatureLog).filter(SignatureLog.document_id == document_id).order_by(SignatureLog.created_at.desc()).all()
     return logs
-

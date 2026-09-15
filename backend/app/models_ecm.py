@@ -30,6 +30,38 @@ class Node(Base):
     children = relationship("Node", backref=__tablename__ + "_parent", remote_side=[id])
     aspects = relationship("NodeAspect", back_populates="node", cascade="all, delete-orphan")
     tags = relationship("NodeTag", back_populates="node", cascade="all, delete-orphan")
+    versions = relationship("NodeVersion", back_populates="node", cascade="all, delete-orphan",
+                            order_by="NodeVersion.major_version, NodeVersion.minor_version")
+
+
+class NodeVersion(Base):
+    __tablename__ = "ecm_node_versions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    node_id = Column(String, ForeignKey("ecm_nodes.id", ondelete="CASCADE"), nullable=False, index=True)
+    major_version = Column(Integer, nullable=False)
+    minor_version = Column(Integer, nullable=False)
+    file_name = Column(String, nullable=False)
+    stored_path = Column(String, nullable=False)
+    checksum = Column(String, nullable=False)
+    size = Column(Integer, nullable=False)
+    mime_type = Column(String, nullable=True)
+    created_by = Column(String, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+    node = relationship("Node", back_populates="versions")
+
+
+class NodePermission(Base):
+    __tablename__ = "ecm_node_permissions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    node_id = Column(String, ForeignKey("ecm_nodes.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    site_id = Column(String, ForeignKey("ecm_sites.id", ondelete="CASCADE"), nullable=True, index=True)
+    permissions = Column(JSONB, nullable=False, default=list)
+
+    node = relationship("Node")
 
 
 class NodeAspect(Base):

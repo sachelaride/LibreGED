@@ -11,6 +11,7 @@ class AcademicDossier(Base):
     student_id = Column(String, ForeignKey("students.id"), nullable=False, index=True)
     enrollment_id = Column(String, ForeignKey("enrollments.id"), nullable=False, index=True)
     dossier_type = Column(String, nullable=False, default="diploma") # diploma, transfer, etc.
+    group_id = Column(String, nullable=True, index=True)
     status = Column(String, nullable=False, default="open") # open, in_validation, approved, signed, canceled
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)

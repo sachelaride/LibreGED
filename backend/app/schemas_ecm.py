@@ -33,6 +33,15 @@ class NodeTagBase(BaseModel):
 class PropertiesUpdate(BaseModel):
     properties: Dict[str, Any]
 
+class NodePropertiesResponse(BaseModel):
+    node_id: str
+    properties: Dict[str, Any]
+
+class NodePermissionUpdate(BaseModel):
+    user_id: Optional[str] = None
+    site_id: Optional[str] = None
+    permissions: List[str] = Field(default_factory=list)
+
 class NodeResponse(NodeBase):
     id: str
     major_version: int
@@ -44,6 +53,22 @@ class NodeResponse(NodeBase):
     aspects: List[NodeAspectBase] = []
     # Using Any or dict for tags just to reflect the shape for now
     tags: List[Any] = []
+
+    class Config:
+        from_attributes = True
+
+class NodeVersionResponse(BaseModel):
+    id: str
+    node_id: str
+    major_version: int
+    minor_version: int
+    file_name: str
+    stored_path: str
+    checksum: str
+    size: int
+    mime_type: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True

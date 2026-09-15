@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 from pathlib import Path
@@ -9,11 +10,12 @@ from hashlib import sha256
 from app.database import get_db
 from app.models import User
 router = APIRouter()
-from app.models_ecm import Node, NodeAspect, Tag, NodeTag, DashboardConfig, SiteMember
-from app.schemas_ecm import NodeCreate, NodeResponse, AspectAdd, TagCreate, TagResponse, PropertiesUpdate, DashboardConfigUpdate, DashboardConfigResponse
+from app.models_ecm import Node, NodeAspect, NodeVersion, NodePermission, Tag, NodeTag, DashboardConfig, Site, SiteMember
+from app.schemas_ecm import NodeCreate, NodeResponse, NodeVersionResponse, NodePropertiesResponse, NodePermissionUpdate, AspectAdd, TagCreate, TagResponse, PropertiesUpdate, DashboardConfigUpdate, DashboardConfigResponse
 from app.auth import get_current_active_user
 from app.services.retention_service import apply_temporality_rule
 from app.storage import save_file
+from app.storage import STORAGE_ROOT
 from app.document_permissions import exigir_permissao
 from app.models_ged_config import DocumentType
 
@@ -21,6 +23,29 @@ def check_node_permission(db, user, node_type, acao):
     tipo = db.get(DocumentType, node_type)
     if tipo:
         exigir_permissao(db, user, node_type, acao)
+
+
+def _has_node_scope(db, user, node, permission):
+    if user.role == "admin_global":
+        return True
+    all_grants = db.query(NodePermission).filter(NodePermission.node_id == node.id).all()
+    if not all_grants:
+        return True
+    site_ids = {
+        site_id for site_id, in db.query(SiteMember.site_id).filter(
+            SiteMember.user_id == user.id
+        ).all()
+    }
+    matching = [
+        grant for grant in all_grants
+        if grant.user_id == user.id or grant.site_id in site_ids
+    ]
+    return any(permission in (grant.permissions or []) for grant in matching)
+
+
+def check_node_scope(db, user, node, permission):
+    if not _has_node_scope(db, user, node, permission):
+        raise HTTPException(status_code=403, detail="Node permission denied")
 
 
 @router.post("/api/ecm/nodes/upload", response_model=List[NodeResponse], tags=["ECM"])
@@ -80,6 +105,12 @@ def upload_nodes(
         # Adicionar o aspecto de conteúdo físico explicitamente
         aspect = NodeAspect(node_id=node.id, aspect_name="cm:content")
         db.add(aspect)
+        db.add(NodeVersion(
+            node_id=node.id, major_version=1, minor_version=0,
+            file_name=original_name, stored_path=stored_path,
+            checksum=sha256(content).hexdigest(), size=len(content),
+            mime_type=file.content_type, created_by=user.id,
+        ))
         
         # Regra de temporalidade
         if node_type == "ies:documento_graduacao":
@@ -114,6 +145,8 @@ def upload_node_version(
     ).first()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
+    if user.role == "admin_instituicao" and user.institution_id != node.institution_id:
+        raise HTTPException(status_code=403, detail="Node belongs to another institution")
 
     check_node_permission(db, user, node.node_type, 'editar')
 
@@ -148,9 +181,33 @@ def upload_node_version(
     node.major_version = next_major
     node.minor_version = next_minor
     node.properties = properties
+    db.add(NodeVersion(
+        node_id=node.id, major_version=next_major, minor_version=next_minor,
+        file_name=original_name, stored_path=stored_path,
+        checksum=sha256(content).hexdigest(), size=len(content),
+        mime_type=file.content_type, created_by=user.id,
+    ))
     db.commit()
     db.refresh(node)
     return node
+
+
+@router.get("/api/ecm/nodes/{node_id}/versions", response_model=List[NodeVersionResponse], tags=["ECM"])
+def list_node_versions(
+    node_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    node = db.query(Node).filter(
+        Node.id == node_id,
+        Node.institution_id == user.institution_id,
+    ).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    check_node_permission(db, user, node.node_type, "consultar")
+    return db.query(NodeVersion).filter(
+        NodeVersion.node_id == node.id
+    ).order_by(NodeVersion.major_version.desc(), NodeVersion.minor_version.desc()).all()
 
 
 @router.post("/api/ecm/nodes", response_model=NodeResponse, tags=["ECM"])
@@ -186,6 +243,7 @@ def create_node(
 def list_nodes(
     parent_id: str = None,
     node_type: str = None,
+    tag: str = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_active_user)
 ):
@@ -194,8 +252,16 @@ def list_nodes(
         query = query.filter(Node.parent_id == parent_id)
     if node_type:
         query = query.filter(Node.node_type == node_type)
+    if tag:
+        query = query.join(NodeTag, NodeTag.node_id == Node.id).join(
+            Tag, Tag.id == NodeTag.tag_id
+        ).filter(Tag.name.ilike(tag.strip())).distinct()
         
-    return query.all()
+    nodes = query.all()
+    return [
+        node for node in nodes
+        if _has_node_scope(db, user, node, "read")
+    ]
 
 @router.post("/api/ecm/nodes/{node_id}/aspects", response_model=NodeResponse, tags=["ECM"])
 def add_aspect(
@@ -240,9 +306,123 @@ def update_node_properties(
     db.refresh(node)
     return node
 
+
+@router.get("/api/ecm/nodes/{node_id}/properties", response_model=NodePropertiesResponse, tags=["ECM"])
+def get_node_properties(
+    node_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    node = db.query(Node).filter(
+        Node.id == node_id,
+        Node.institution_id == user.institution_id,
+    ).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    check_node_permission(db, user, node.node_type, "consultar")
+    check_node_scope(db, user, node, "read")
+    return {"node_id": node.id, "properties": node.properties or {}}
+
+
+@router.get("/api/ecm/nodes/{node_id}/preview", tags=["ECM"])
+def preview_node(
+    node_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    node = db.query(Node).filter(
+        Node.id == node_id,
+        Node.institution_id == user.institution_id,
+    ).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    check_node_permission(db, user, node.node_type, "consultar")
+    check_node_scope(db, user, node, "read")
+    content = (node.properties or {}).get("cm:content") or {}
+    stored_path = content.get("stored_path")
+    if not stored_path:
+        raise HTTPException(status_code=404, detail="Preview unavailable")
+    path = Path(stored_path).resolve()
+    if not path.is_file() or not path.is_relative_to(STORAGE_ROOT.resolve()):
+        raise HTTPException(status_code=404, detail="Preview unavailable")
+    return FileResponse(
+        path,
+        media_type=content.get("mime_type") or "application/octet-stream",
+        content_disposition_type="inline",
+        filename=content.get("file_name") or node.name,
+    )
+
+
+@router.put("/api/ecm/nodes/{node_id}/permissions", tags=["ECM Permissions"])
+def update_node_permissions(
+    node_id: str,
+    payload: NodePermissionUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    node_query = db.query(Node).filter(Node.id == node_id)
+    if user.role != "admin_global":
+        node_query = node_query.filter(Node.institution_id == user.institution_id)
+    node = node_query.first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    if payload.site_id:
+        site = db.query(Site).filter(
+            Site.id == payload.site_id,
+            Site.institution_id == node.institution_id,
+        ).first()
+        if site is None:
+            raise HTTPException(status_code=422, detail="Site does not belong to the node institution")
+    if user.role not in {"admin_global", "admin_instituicao"}:
+        member = None
+        if payload.site_id:
+            member = db.query(SiteMember).filter(
+                SiteMember.site_id == payload.site_id,
+                SiteMember.user_id == user.id,
+                SiteMember.role == "SiteManager",
+            ).first()
+        if member is None:
+            raise HTTPException(status_code=403, detail="Only global admins or SiteManagers can manage node permissions")
+    if (payload.user_id is None) == (payload.site_id is None):
+        raise HTTPException(status_code=422, detail="Informe user_id ou site_id, mas não ambos.")
+    if payload.user_id:
+        target = db.query(User).filter(User.id == payload.user_id).first()
+        if target is None:
+            raise HTTPException(status_code=422, detail="Usuário não encontrado.")
+        if target.institution_id != node.institution_id:
+            raise HTTPException(status_code=422, detail="Usuário pertence a outra instituição.")
+    allowed = {"read", "edit", "download", "share"}
+    if not set(payload.permissions).issubset(allowed):
+        raise HTTPException(status_code=422, detail="Permissão de nó inválida.")
+    query = db.query(NodePermission).filter(NodePermission.node_id == node.id)
+    if payload.user_id:
+        query = query.filter(NodePermission.user_id == payload.user_id)
+    else:
+        query = query.filter(NodePermission.site_id == payload.site_id)
+    grant = query.first()
+    if grant is None:
+        grant = NodePermission(
+            node_id=node.id,
+            user_id=payload.user_id,
+            site_id=payload.site_id,
+            permissions=sorted(set(payload.permissions)),
+        )
+        db.add(grant)
+    else:
+        grant.permissions = sorted(set(payload.permissions))
+    db.commit()
+    return {
+        "node_id": node.id,
+        "user_id": grant.user_id,
+        "site_id": grant.site_id,
+        "permissions": grant.permissions,
+    }
+
 @router.get("/api/ecm/tags", response_model=List[TagResponse], tags=["ECM Tags"])
 def list_tags(db: Session = Depends(get_db)):
-    return db.query(Tag).all()
+    return db.query(Tag).join(NodeTag, NodeTag.tag_id == Tag.id).join(
+        Node, Node.id == NodeTag.node_id
+    ).distinct().order_by(Tag.name).all()
 
 @router.post("/api/ecm/tags", response_model=TagResponse, tags=["ECM Tags"])
 def create_tag(payload: TagCreate, db: Session = Depends(get_db)):

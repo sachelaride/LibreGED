@@ -31,13 +31,17 @@ async function performSearch() {
 
         let html = '<div style="display:grid; gap:15px;">';
         documentos.forEach(doc => {
+            const oficial = doc.is_official !== false && doc.document_purpose !== 'conference';
+            const selo = oficial
+                ? '<span class="document-purpose-badge document-purpose-official">OFICIAL</span>'
+                : '<span class="document-purpose-badge document-purpose-conference">CONFERÊNCIA · NÃO OFICIAL</span>';
             html += `
                 <div class="glass-panel" style="padding: 20px; display:flex; justify-content:space-between; align-items:center;">
                     <div>
-                        <h4 style="margin-bottom:5px; color:var(--primary);">${doc.file_name || 'Documento sem nome'}</h4>
+                        <h4 style="margin-bottom:5px; color:var(--primary);">${doc.title || 'Documento sem nome'}</h4>
                         <p style="font-size:13px; color:var(--text-muted);">
-                            <strong>Tipo:</strong> ${doc.document_category_code || 'N/A'} | 
-                            <strong>Data:</strong> ${new Date(doc.created_at).toLocaleDateString()}
+                            ${selo}
+                            <strong>Status:</strong> ${doc.status || 'N/A'}
                         </p>
                     </div>
                     <div>
@@ -247,6 +251,7 @@ async function handleFiles(files) {
         const formData = new FormData();
         formData.append("title", files[i].name);
         formData.append("document_type_id", docTypeId);
+        formData.append("document_purpose", document.getElementById('upload-document-purpose').value);
         formData.append("indices_json", JSON.stringify(indices));
         formData.append("file", files[i]);
         
@@ -494,7 +499,11 @@ async function loadLibrary(parentId = null) {
     
     try {
         let url = `${API_URL}/ecm/nodes`;
-        if(parentId) url += `?parent_id=${parentId}`;
+        const params = new URLSearchParams();
+        if(parentId) params.set('parent_id', parentId);
+        const tag = document.getElementById('library-tag-filter')?.value.trim();
+        if(tag) params.set('tag', tag);
+        if(params.toString()) url += `?${params.toString()}`;
         
         const response = await fetch(url, {
             headers: getAuthHeaders()
@@ -531,6 +540,10 @@ async function loadLibrary(parentId = null) {
         
     } catch(e) {
         grid.innerHTML = `<p style="color:red;">Falha: ${e.message}</p>`;
+    }
+
+    function applyLibraryTagFilter() {
+        loadLibrary(currentFolderId);
     }
 }
 
@@ -782,6 +795,12 @@ async function saveMetadata() {
         alert("O JSON de propriedades é inválido.");
         return;
     }
+
+    function previewCurrentDocument() {
+        const nodeId = document.getElementById('doc-modal-id').value;
+        if(!nodeId) return;
+        window.open(`${API_URL}/ecm/nodes/${encodeURIComponent(nodeId)}/preview`, '_blank', 'noopener,noreferrer');
+    }
     
     try {
         const response = await fetch(`${API_URL}/ecm/nodes/${nodeId}/properties`, {
@@ -829,11 +848,37 @@ async function uploadDocumentVersion(file) {
 
         loadedNodes[nodeId] = data;
         document.getElementById('doc-modal-version').innerText = `${data.major_version}.${data.minor_version}`;
+        loadVersionHistory();
         alert(`Versão ${data.major_version}.${data.minor_version} enviada com sucesso.`);
     } catch(error) {
         alert(error.message);
     } finally {
         input.value = '';
+    }
+
+    async function loadVersionHistory() {
+        const nodeId = document.getElementById('doc-modal-id').value;
+        const container = document.getElementById('doc-version-history');
+        if(!nodeId || !container) return;
+        container.innerHTML = '<p class="text-muted">Carregando histórico...</p>';
+        try {
+            const response = await fetch(`${API_URL}/ecm/nodes/${nodeId}/versions`, {
+                headers: getAuthHeaders()
+            });
+            const versions = await response.json();
+            if(!response.ok) throw new Error(versions.detail || 'Não foi possível carregar o histórico.');
+            container.innerHTML = versions.length
+                ? versions.map(version => `
+                    <div style="padding:8px 0; border-top:1px solid var(--glass-border); font-size:12px;">
+                        <strong>v${version.major_version}.${version.minor_version}</strong>
+                        — ${version.file_name}
+                        <span class="text-muted">(${version.size} bytes, ${new Date(version.created_at).toLocaleString()})</span>
+                    </div>
+                `).join('')
+                : '<p class="text-muted">Nenhuma versão registrada.</p>';
+        } catch(error) {
+            container.innerHTML = `<p style="color:var(--accent);">${error.message}</p>`;
+        }
     }
 }
 

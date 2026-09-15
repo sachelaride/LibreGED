@@ -34,6 +34,7 @@ def create_dossier(
         student_id=payload.student_id,
         enrollment_id=payload.enrollment_id,
         dossier_type=payload.dossier_type,
+        group_id=payload.group_id or (str(uuid.uuid4()) if payload.dossier_type == "partial_history" else None),
         status="open"
     )
     db.add(dossier)
@@ -113,17 +114,20 @@ def validate_dossier(
     ))
     
     # Rule 2: Enrollment is graduated (for diploma)
-    if dossier.dossier_type == "diploma":
+    if dossier.dossier_type in ("diploma", "partial_history"):
+        if dossier.dossier_type == "partial_history" and not dossier.group_id:
+            dossier.group_id = str(uuid.uuid4())
         is_grad = dossier.enrollment.status == "graduated"
-        rules.append(AcademicValidation(
-            id=str(uuid.uuid4()), dossier_id=dossier_id, rule_name="Enrollment Status is Graduated",
-            status="passed" if is_grad else "failed",
-            message="Enrollment is graduated" if is_grad else f"Status is {dossier.enrollment.status}"
-        ))
+        if dossier.dossier_type == "diploma":
+            rules.append(AcademicValidation(
+                id=str(uuid.uuid4()), dossier_id=dossier_id, rule_name="Enrollment Status is Graduated",
+                status="passed" if is_grad else "failed",
+                message="Enrollment is graduated" if is_grad else f"Status is {dossier.enrollment.status}"
+            ))
         
         # Rule 3: Has required documents
         doc_types = [d.document_type_code for d in dossier.documents]
-        required = ["RG", "HISTORICO"]
+        required = ["RG", "HISTORICO_PARCIAL"] if dossier.dossier_type == "partial_history" else ["RG", "HISTORICO"]
         for req in required:
             has_doc = req in doc_types
             rules.append(AcademicValidation(

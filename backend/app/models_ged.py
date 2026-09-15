@@ -1,6 +1,7 @@
 import enum
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum, Text
+import secrets
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime, UTC
 from app.models import Base, utc_now
@@ -13,6 +14,9 @@ class GEDDocumentStatus(str, enum.Enum):
     VALIDO = "VALIDO"
     ASSINADO = "ASSINADO"
     ARQUIVADO = "ARQUIVADO"
+    SUSPENSO = "SUSPENSO"
+    REVOGADO = "REVOGADO"
+    ANULADO = "ANULADO"
 
 class GEDAcademicPhase(str, enum.Enum):
     MATRICULA = "MATRICULA"
@@ -89,6 +93,14 @@ class GEDDocument(Base):
     campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
     modality = Column(String, nullable=True, index=True) # EAD, PRESENCIAL, SEMIPRESENCIAL
     uploaded_by_user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    document_purpose = Column(String, nullable=False, default="official", server_default="official")
+    is_official = Column(Boolean, nullable=False, default=True, server_default="true")
+    suspended_previous_status = Column(String, nullable=True)
+    suspension_reason = Column(Text, nullable=True)
+    revocation_reason = Column(Text, nullable=True)
+    annulment_reason = Column(Text, nullable=True)
+    second_copy_of_id = Column(String, ForeignKey("ged_documents.id"), nullable=True, index=True)
+    public_code = Column(String, unique=True, nullable=False, default=lambda: secrets.token_urlsafe(18), index=True)
 
     
     created_at = Column(DateTime, default=utc_now)
@@ -97,6 +109,27 @@ class GEDDocument(Base):
     category = relationship("DocumentCategory", back_populates="documents")
     institution = relationship("Institution")
     transitions = relationship("DocumentTransitionHistory", back_populates="document", cascade="all, delete-orphan")
+    second_copy_of = relationship(
+        "GEDDocument", remote_side=[id], back_populates="second_copies"
+    )
+    second_copies = relationship("GEDDocument", back_populates="second_copy_of")
+    legal_holds = relationship("DocumentLegalHold", back_populates="document", cascade="all, delete-orphan")
+
+
+class DocumentLegalHold(Base):
+    __tablename__ = "ged_document_legal_holds"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id = Column(String, ForeignKey("ged_documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    reason = Column(Text, nullable=False)
+    authorization_reference = Column(String, nullable=False)
+    placed_by_user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    placed_at = Column(DateTime, default=utc_now, nullable=False)
+    released_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    released_at = Column(DateTime, nullable=True)
+    release_reason = Column(Text, nullable=True)
+
+    document = relationship("GEDDocument", back_populates="legal_holds")
 
 
 class DocumentTransitionHistory(Base):

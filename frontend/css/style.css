@@ -71,6 +71,26 @@ h1, h2, h3, h4, h5, h6, .logo h2 {
     box-shadow: 0 12px 40px 0 var(--shadow-color), inset 0 0 0 1px var(--glass-border);
 }
 
+.document-purpose-badge {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .04em;
+}
+
+.document-purpose-official {
+    color: #065f46;
+    background: #a7f3d0;
+}
+
+.document-purpose-conference {
+    color: #92400e;
+    background: #fde68a;
+}
+
 /* Sidebar */
 .sidebar {
     width: 280px;

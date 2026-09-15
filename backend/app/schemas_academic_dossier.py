@@ -34,11 +34,13 @@ class AcademicDossierCreate(BaseModel):
     student_id: str
     enrollment_id: str
     dossier_type: str
+    group_id: Optional[str] = None
 
 class AcademicDossierResponse(AcademicDossierBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    group_id: Optional[str] = None
     documents: List[DossierDocumentResponse] = []
     validations: List[AcademicValidationResponse] = []
     model_config = ConfigDict(from_attributes=True)

@@ -143,7 +143,7 @@ InstitutionRoles = Depends(role_checker(["admin_global", "admin_instituicao", "o
 
 from app import api_admin, api_users, api_institutions, api_ged_upload, api_ecm, api_sites
 from app import api_storage_config, api_ged_config, api_workflow, api_templates, api_search, api_erp_ingestion, api_digital_signature, api_academic, api_xsd, api_academic_dossier, api_validator, api_quarantine, api_integration, api_dashboard
-from app import api_ecm_dictionary
+from app import api_ecm_dictionary, api_public
 
 app.include_router(api_admin.router)
 app.include_router(api_users.router, prefix="/api")
@@ -169,6 +169,7 @@ app.include_router(api_integration.router)
 app.include_router(api_dashboard.router)
 from app import api_document_operations
 app.include_router(api_document_operations.router)
+app.include_router(api_public.router)
 
 @app.post("/api/documents/validate", tags=["GED - Validações"])
 def validate_academic_documents(payload: ValidationRequest):
@@ -663,7 +664,6 @@ def add_audit(db: Session, entity: str, entity_id: str, action: str, details: st
         hash_signature=signature,
     )
     db.add(audit_event)
-
 
 
 

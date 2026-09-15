@@ -25,6 +25,7 @@ from app.models_config import ConfigProposal
 from app.schemas_config import ConfigProposalCreate, ConfigProposalResponse
 from app.config_manager import config_manager
 from app.storage import cleanup_pending_deletions, reconcile_document_storage
+from app.legacy_archive import reconcile_legacy_archive
 from datetime import datetime, UTC
 
 def utc_now():
@@ -46,6 +47,25 @@ def reconcile_storage_and_index(db: Session = Depends(get_db),
         "storage",
         "reconciliation",
         "storage_reconciliation",
+        json.dumps(report, ensure_ascii=False),
+        administrator.id,
+    )
+    db.commit()
+    return report
+
+
+@router.get("/legacy/reconciliation", dependencies=[AdminRole])
+def reconcile_legacy_archive_endpoint(
+    db: Session = Depends(get_db),
+    administrator: models.User = Depends(get_current_admin),
+):
+    report = reconcile_legacy_archive(db)
+    from app.main import add_audit
+    add_audit(
+        db,
+        "legacy_archive",
+        "reconciliation",
+        "legacy_archive_reconciliation",
         json.dumps(report, ensure_ascii=False),
         administrator.id,
     )

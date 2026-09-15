@@ -45,6 +45,7 @@ class SearchService:
 
         pattern = f"%{normalized_query}%"
         query = db.query(GEDDocument).filter(
+            GEDDocument.status.notin_(("SUSPENSO", "REVOGADO", "ANULADO")),
             or_(
                 GEDDocument.title.ilike(pattern),
                 GEDDocument.extracted_metadata.ilike(pattern),
@@ -73,6 +74,9 @@ class SearchService:
             hits.append({
                 "document_id": document.id,
                 "title": document.title,
+                "document_purpose": document.document_purpose,
+                "is_official": document.is_official,
+                "status": document.status.value if hasattr(document.status, "value") else document.status,
                 "snippet": searchable_text[:180],
             })
 

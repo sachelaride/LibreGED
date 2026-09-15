@@ -38,6 +38,8 @@ class GEDDocumentBase(BaseModel):
     campus_id: Optional[str] = None
     academic_phase: Optional[GEDAcademicPhase] = None
     modality: Optional[str] = None
+    document_purpose: str = "official"
+    is_official: bool = True
 
 class GEDDocumentCreate(GEDDocumentBase):
     pass # file_path will be handled by upload endpoint
@@ -49,12 +51,32 @@ class GEDDocumentResponse(GEDDocumentBase):
     extracted_metadata: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    suspended_previous_status: Optional[str] = None
+    suspension_reason: Optional[str] = None
+    revocation_reason: Optional[str] = None
+    annulment_reason: Optional[str] = None
+    second_copy_of_id: Optional[str] = None
+    public_code: str
     model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentStatusUpdate(BaseModel):
     status: GEDDocumentStatus
     comments: Optional[str] = None
+
+class DocumentSuspensionRequest(BaseModel):
+    reason: str
+
+class DocumentDispositionRequest(BaseModel):
+    reason: str
+
+class SecondCopyRequest(BaseModel):
+    reason: str
+    title: Optional[str] = None
+
+class LegalHoldRequest(BaseModel):
+    reason: str
+    authorization_reference: str
 
 
 class DocumentTransitionResponse(BaseModel):

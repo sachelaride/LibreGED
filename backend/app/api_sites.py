@@ -59,16 +59,20 @@ def create_site(payload: SiteCreate, db: Session = Depends(get_db), user: models
     return site
 
 @router.get("/{site_id}", response_model=SiteResponse)
-def get_site(site_id: str, db: Session = Depends(get_db), _: models.User = SiteReadRole):
+def get_site(site_id: str, db: Session = Depends(get_db), user: models.User = SiteReadRole):
     site = db.query(Site).filter(Site.id == site_id).first()
     if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    if user.role != "admin_global" and site.institution_id != user.institution_id:
         raise HTTPException(status_code=404, detail="Site not found")
     return site
 
 @router.delete("/{site_id}")
-def delete_site(site_id: str, db: Session = Depends(get_db), _: models.User = SiteManagerRole):
+def delete_site(site_id: str, db: Session = Depends(get_db), user: models.User = SiteManagerRole):
     site = db.query(Site).filter(Site.id == site_id).first()
     if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    if user.role != "admin_global" and site.institution_id != user.institution_id:
         raise HTTPException(status_code=404, detail="Site not found")
         
     db.delete(site)
@@ -76,16 +80,20 @@ def delete_site(site_id: str, db: Session = Depends(get_db), _: models.User = Si
     return {"message": "Site removed successfully"}
 
 @router.post("/{site_id}/members", response_model=SiteMemberResponse)
-def add_site_member(site_id: str, payload: SiteMemberCreate, db: Session = Depends(get_db), _: models.User = SiteManagerRole):
+def add_site_member(site_id: str, payload: SiteMemberCreate, db: Session = Depends(get_db), user: models.User = SiteManagerRole):
     # Verifica se o site existe
     site = db.query(Site).filter(Site.id == site_id).first()
     if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    if user.role != "admin_global" and site.institution_id != user.institution_id:
         raise HTTPException(status_code=404, detail="Site not found")
         
     # Verifica se o usuario existe
     target_user = db.query(models.User).filter(models.User.id == payload.user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
+    if target_user.institution_id != site.institution_id:
+        raise HTTPException(status_code=422, detail="User belongs to another institution")
         
     # Validar Role
     valid_roles = ["SiteManager", "SiteCollaborator", "SiteContributor", "SiteConsumer"]
@@ -105,7 +113,10 @@ def add_site_member(site_id: str, payload: SiteMemberCreate, db: Session = Depen
     return member
 
 @router.delete("/{site_id}/members/{user_id}")
-def remove_site_member(site_id: str, user_id: str, db: Session = Depends(get_db), _: models.User = SiteManagerRole):
+def remove_site_member(site_id: str, user_id: str, db: Session = Depends(get_db), user: models.User = SiteManagerRole):
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if site and user.role != "admin_global" and site.institution_id != user.institution_id:
+        raise HTTPException(status_code=404, detail="Site not found")
     member = db.query(SiteMember).filter(SiteMember.site_id == site_id, SiteMember.user_id == user_id).first()
     if member:
         db.delete(member)

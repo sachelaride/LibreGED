@@ -48,6 +48,17 @@ def check_node_scope(db, user, node, permission):
         raise HTTPException(status_code=403, detail="Node permission denied")
 
 
+def _node_file_path(node):
+    content = (node.properties or {}).get("cm:content") or {}
+    stored_path = content.get("stored_path")
+    if not stored_path:
+        raise HTTPException(status_code=404, detail="File unavailable")
+    path = Path(stored_path).resolve()
+    if not path.is_file() or not path.is_relative_to(STORAGE_ROOT.resolve()):
+        raise HTTPException(status_code=404, detail="File unavailable")
+    return content, path
+
+
 @router.post("/api/ecm/nodes/upload", response_model=List[NodeResponse], tags=["ECM"])
 def upload_nodes(
     files: List[UploadFile] = File(...),
@@ -149,6 +160,7 @@ def upload_node_version(
         raise HTTPException(status_code=403, detail="Node belongs to another institution")
 
     check_node_permission(db, user, node.node_type, 'editar')
+    check_node_scope(db, user, node, "edit")
 
     content = file.file.read()
     if not content:
@@ -273,8 +285,9 @@ def add_aspect(
     node = db.query(Node).filter(Node.id == node_id, Node.institution_id == user.institution_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
-        
+
     check_node_permission(db, user, node.node_type, 'editar')
+    check_node_scope(db, user, node, "edit")
 
     aspect = db.query(NodeAspect).filter_by(node_id=node.id, aspect_name=payload.aspect_name).first()
     if not aspect:
@@ -296,6 +309,7 @@ def update_node_properties(
         raise HTTPException(status_code=404, detail="Node not found")
         
     check_node_permission(db, user, node.node_type, 'editar')
+    check_node_scope(db, user, node, "edit")
 
     # Update properties dict
     new_props = node.properties.copy()
@@ -338,17 +352,34 @@ def preview_node(
         raise HTTPException(status_code=404, detail="Node not found")
     check_node_permission(db, user, node.node_type, "consultar")
     check_node_scope(db, user, node, "read")
-    content = (node.properties or {}).get("cm:content") or {}
-    stored_path = content.get("stored_path")
-    if not stored_path:
-        raise HTTPException(status_code=404, detail="Preview unavailable")
-    path = Path(stored_path).resolve()
-    if not path.is_file() or not path.is_relative_to(STORAGE_ROOT.resolve()):
-        raise HTTPException(status_code=404, detail="Preview unavailable")
+    content, path = _node_file_path(node)
     return FileResponse(
         path,
         media_type=content.get("mime_type") or "application/octet-stream",
         content_disposition_type="inline",
+        filename=content.get("file_name") or node.name,
+    )
+
+
+@router.get("/api/ecm/nodes/{node_id}/download", tags=["ECM"])
+def download_node(
+    node_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    node = db.query(Node).filter(
+        Node.id == node_id,
+        Node.institution_id == user.institution_id,
+    ).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    check_node_permission(db, user, node.node_type, "consultar")
+    check_node_scope(db, user, node, "download")
+    content, path = _node_file_path(node)
+    return FileResponse(
+        path,
+        media_type=content.get("mime_type") or "application/octet-stream",
+        content_disposition_type="attachment",
         filename=content.get("file_name") or node.name,
     )
 
@@ -446,6 +477,7 @@ def add_node_tag(
         raise HTTPException(status_code=404, detail="Node not found")
         
     check_node_permission(db, user, node.node_type, 'editar')
+    check_node_scope(db, user, node, "edit")
 
     # Get or create tag
     tag = db.query(Tag).filter(Tag.name == payload.name).first()
@@ -476,6 +508,7 @@ def remove_node_tag(
         raise HTTPException(status_code=404, detail="Node not found")
         
     check_node_permission(db, user, node.node_type, 'editar')
+    check_node_scope(db, user, node, "edit")
 
     node_tag = db.query(NodeTag).filter_by(node_id=node.id, tag_id=tag_id).first()
     if node_tag:

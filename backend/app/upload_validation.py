@@ -1,7 +1,12 @@
 import json
 import os
 from pathlib import Path
-from xml.etree import ElementTree
+
+from defusedxml import defuse_stdlib
+
+defuse_stdlib()
+
+from xml.etree import ElementTree  # nosec B405 - parser is hardened via defusedxml.defuse_stdlib()
 
 from fastapi import HTTPException, UploadFile
 
@@ -106,6 +111,6 @@ def _validate_content(extension: str, content: bytes) -> None:
     if "<!DOCTYPE" in upper_text or "<!ENTITY" in upper_text:
         raise HTTPException(status_code=422, detail="XML DTD and entities are not allowed")
     try:
-        ElementTree.fromstring(text)
+        ElementTree.fromstring(text)  # nosec B314 - XML is parsed only after defuse_stdlib() hardening
     except ElementTree.ParseError as error:
         raise HTTPException(status_code=422, detail="invalid XML content") from error

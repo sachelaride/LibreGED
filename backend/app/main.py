@@ -3,7 +3,6 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
-from xml.sax.saxutils import escape, quoteattr
 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, status, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +25,7 @@ from app.search import search_service
 from app.retention import RetentionService
 from app.auth import get_current_active_user, role_checker, check_institution_access
 from app.filewatch import run_filewatch_cycle
+from app.privacy_utils import redact_text_for_log
 from fastapi_utils.tasks import repeat_every
 
 from app.schemas_historico import Model as HistoricoPayload
@@ -371,7 +371,7 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     access_token = create_access_token(
         data={"sub": user.username, "role": user.role, "institution_id": user.institution_id}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer"}  # nosec B105 - OAuth bearer scheme is not a secret
 
 
 @app.post("/api/institutions", response_model=Institution)
@@ -548,7 +548,7 @@ def export_audit_events_csv(db: Session = Depends(get_db), current_user: models.
             event.entity,
             event.entity_id,
             event.action,
-            event.details,
+            redact_text_for_log(event.details),
             event.hash_signature
         ])
         
@@ -668,11 +668,12 @@ def get_document_lifecycle(
 
 # ==================== Helper Functions ====================
 def add_audit(db: Session, entity: str, entity_id: str, action: str, details: str, user_id: str = None):
+    redacted_details = redact_text_for_log(details)
     last_event = db.query(models.AuditEvent).order_by(models.AuditEvent.created_at.desc()).first()
     last_hash = last_event.hash_signature if last_event and last_event.hash_signature else "genesis"
-    
+
     event_id = str(uuid4())
-    payload = f"{event_id}:{entity}:{entity_id}:{action}:{details}:{user_id}:{last_hash}"
+    payload = f"{event_id}:{entity}:{entity_id}:{action}:{redacted_details}:{user_id}:{last_hash}"
     signature = sha256(payload.encode("utf-8")).hexdigest()
 
     audit_event = models.AuditEvent(
@@ -681,7 +682,7 @@ def add_audit(db: Session, entity: str, entity_id: str, action: str, details: st
         entity=entity,
         entity_id=entity_id,
         action=action,
-        details=details,
+        details=redacted_details,
         user_id=user_id,
         hash_signature=signature,
     )

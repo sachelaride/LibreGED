@@ -26,7 +26,7 @@ def reconcile_legacy_archive(db: Session, root: Path = STORAGE_ROOT) -> dict[str
     }
 
     for table in legacy_tables:
-        count = db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar_one()
+        count = db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar_one()  # nosec B608 - legacy table names are constrained to an allowlisted set from database introspection
         report["legacy_records"][table] = count
         if count:
             report["safe_to_migrate"] = False

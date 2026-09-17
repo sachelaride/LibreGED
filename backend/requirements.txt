@@ -10,12 +10,19 @@ cryptography>=0.0.20
 Jinja2
 qrcode
 Pillow
+PyMuPDF>=1.24.0
 sqlalchemy>=2.0.35
 alembic>=1.19.1
 psycopg[binary]>=3.2.1
 elasticsearch>=8.11.0
 
+# OCR opcional: habilita processamento local sem executável externo.
+rapidocr_onnxruntime>=1.4.4
+
 pydantic-settings>=2.7.1
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 bcrypt>=4.2.1
+defusedxml>=0.7.1
+bandit>=1.7.8
+pip-audit>=2.7.3

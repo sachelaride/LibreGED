@@ -7,6 +7,16 @@ from app.models import Institution
 
 client = TestClient(app)
 
+
+def test_connector_status_contract():
+    res = client.get("/api/integration/erp/connector/status")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["status"] in {"RECEIVED", "QUEUED", "PROCESSING", "ACCEPTED", "REJECTED", "DUPLICATE", "FAILED", "COMPLETED"}
+    assert payload["source_system"] == "erp-connector"
+    assert payload["message"]
+
+
 def test_erp_ingestion_idempotency():
     with SessionLocal() as db:
         db.add(Institution(

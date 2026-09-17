@@ -1,30 +1,101 @@
 // app_operations.js - Lida com a busca e upload do app.html
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    }[character]));
+}
+
+async function loadSearchDocumentTypes() {
+    const selector = document.getElementById('search-document-type');
+    if (!selector) return;
+    try {
+        const response = await fetch(`${API_URL}/document-types?page=1&size=100`, { headers: getAuthHeaders() });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const items = payload.items || [];
+        const current = selector.value;
+        selector.innerHTML = '<option value="">Tipo documental</option>';
+        items.filter(item => item.is_active).forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.name;
+            if (current && current === item.id) option.selected = true;
+            selector.appendChild(option);
+        });
+    } catch (e) {
+        console.warn('Não foi possível carregar tipos para a busca', e);
+    }
+}
+
+function updateOcrHelp() {
+    const help = document.getElementById('upload-ocr-help');
+    const engine = document.getElementById('upload-ocr-engine')?.value || 'auto';
+    if (!help) return;
+    const descriptions = {
+        auto: 'Auto seleciona o melhor motor disponível no ambiente.',
+        none: 'O arquivo será armazenado sem extração de texto OCR.',
+        tesseract: 'Boa opção para documentos impressos e idiomas configurados.',
+        paddleocr: 'Recomendado para imagens com diferentes layouts e qualidade variável.',
+        rapidocr: 'Alternativa leve para processamento rápido de imagens.'
+    };
+    help.textContent = descriptions[engine] || descriptions.auto;
+}
+
+function clearSearchFilters() {
+    ['search-query', 'search-student', 'search-group'].forEach(id => {
+        const field = document.getElementById(id);
+        if (field) field.value = '';
+    });
+    const typeField = document.getElementById('search-document-type');
+    if (typeField) typeField.value = '';
+    document.getElementById('search-summary').textContent = '';
+    document.getElementById('search-results').innerHTML =
+        '<p class="text-muted" style="text-align:center;">Digite um termo ou use filtros para começar a busca.</p>';
+}
+
 async function performSearch() {
-    const query = document.getElementById('search-query').value;
+    const query = document.getElementById('search-query').value.trim();
+    const studentId = document.getElementById('search-student')?.value || '';
+    const groupId = document.getElementById('search-group')?.value || '';
+    const docTypeId = document.getElementById('search-document-type')?.value || '';
     const resultsContainer = document.getElementById('search-results');
-    
-    if(!query.trim()) {
-        resultsContainer.innerHTML = '<p class="text-muted" style="text-align:center;">Digite um termo para começar a busca.</p>';
+    const summary = document.getElementById('search-summary');
+
+    if (!query && !studentId && !groupId && !docTypeId) {
+        summary.textContent = '';
+        resultsContainer.innerHTML = '<p class="text-muted" style="text-align:center;">Digite um termo ou use filtros para começar a busca.</p>';
         return;
     }
 
+    summary.textContent = 'Consultando documentos autorizados...';
     resultsContainer.innerHTML = '<p style="text-align:center;">Buscando...</p>';
-    
+
     try {
-        const response = await fetch(`${API_URL}/documents/search?q=${encodeURIComponent(query)}`, {
+        const params = new URLSearchParams();
+        if (query) params.set('q', query);
+        if (studentId) params.set('student_id', studentId);
+        if (groupId) params.set('group_id', groupId);
+        if (docTypeId) params.set('document_type_id', docTypeId);
+
+        const response = await fetch(`${API_URL}/documents/search?${params.toString()}`, {
             headers: getAuthHeaders()
         });
-        
-        if(!response.ok) {
+
+        if (!response.ok) {
+            summary.textContent = '';
             resultsContainer.innerHTML = '<p style="color:red; text-align:center;">Erro ao realizar a busca.</p>';
             return;
         }
 
         const results = await response.json();
-        
         const documentos = results.items || [];
-        if(documentos.length === 0) {
+        summary.textContent = `${results.total || 0} documento(s) encontrado(s)`;
+        if (documentos.length === 0) {
             resultsContainer.innerHTML = '<p class="text-muted" style="text-align:center;">Nenhum documento encontrado.</p>';
             return;
         }
@@ -35,17 +106,34 @@ async function performSearch() {
             const selo = oficial
                 ? '<span class="document-purpose-badge document-purpose-official">OFICIAL</span>'
                 : '<span class="document-purpose-badge document-purpose-conference">CONFERÊNCIA · NÃO OFICIAL</span>';
+            const snippet = escapeHtml((doc.snippet || '').replace(/\s+/g, ' ').trim());
+            const studentText = doc.student_id
+                ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">Aluno: ${escapeHtml(doc.student_id)}</div>`
+                : '';
+            const groupText = doc.group_id
+                ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Grupo: ${escapeHtml(doc.group_id)}</div>`
+                : '';
+            const ocrIndexed = doc.ocr_status === 'success' || doc.ocr_status === 'indexed';
+            const ocrLabel = ocrIndexed
+                ? `OCR indexado · ${escapeHtml(doc.ocr_engine || 'auto')}`
+                : 'OCR não executado';
+            const ocrClass = ocrIndexed ? 'ocr-status-indexed' : 'ocr-status-skipped';
+            const documentId = encodeURIComponent(doc.document_id || doc.id || '');
             html += `
-                <div class="glass-panel" style="padding: 20px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <h4 style="margin-bottom:5px; color:var(--primary);">${doc.title || 'Documento sem nome'}</h4>
-                        <p style="font-size:13px; color:var(--text-muted);">
+                <div class="glass-panel" style="padding: 20px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                    <div style="flex:1;">
+                        <h4 style="margin-bottom:5px; color:var(--primary);">${escapeHtml(doc.title || 'Documento sem nome')}</h4>
+                        <p style="font-size:13px; color:var(--text-muted); margin: 4px 0;">
                             ${selo}
-                            <strong>Status:</strong> ${doc.status || 'N/A'}
+                            <strong>Status:</strong> ${escapeHtml(doc.status || 'N/A')}
+                            <span class="ocr-status-badge ${ocrClass}" title="Estado da extração de texto">${ocrLabel}</span>
                         </p>
+                        ${studentText}
+                        ${groupText}
+                        <div class="search-result-snippet">${snippet || 'Sem prévia extraída por OCR.'}</div>
                     </div>
                     <div>
-                        <button class="btn-secondary btn-small" onclick="viewDocument('${doc.id}')">Visualizar</button>
+                        <button class="btn-secondary btn-small" onclick="viewDocument(decodeURIComponent('${documentId}'))">Visualizar</button>
                     </div>
                 </div>
             `;
@@ -54,12 +142,14 @@ async function performSearch() {
         resultsContainer.innerHTML = html;
 
     } catch(e) {
+        summary.textContent = '';
         resultsContainer.innerHTML = `<p style="color:red; text-align:center;">Falha de comunicação: ${e.message}</p>`;
     }
 }
 
 function viewDocument(docId) {
-    alert(`Redirecionando para visualizador do documento: ${docId}\n(Recurso em desenvolvimento)`);
+    const summary = document.getElementById('search-summary');
+    if (summary) summary.textContent = `Documento selecionado: ${docId}. A visualização do arquivo será aberta pelo módulo documental.`;
 }
 
 let tiposDocumentaisUpload = [];
@@ -118,6 +208,28 @@ function carregarIndicesUpload() {
 
 let currentStudentId = null;
 let currentInstitutionId = null;
+let uploadQueueState = [];
+
+function renderUploadStatus(message = '') {
+    const container = document.getElementById('upload-status');
+    if (!container) return;
+    const completed = uploadQueueState.filter(item => item.status === 'success').length;
+    const failed = uploadQueueState.filter(item => item.status === 'error').length;
+    const pending = uploadQueueState.length - completed - failed;
+    const summary = message || `${completed} concluído(s) · ${pending} pendente(s)${failed ? ` · ${failed} com erro` : ''}`;
+    container.innerHTML = `
+        <div class="upload-status-header">
+            <span>${escapeHtml(summary)}</span>
+            <span>${uploadQueueState.length} arquivo(s)</span>
+        </div>
+        ${uploadQueueState.map(item => `
+            <div class="upload-file-row">
+                <span class="upload-file-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
+                <span class="upload-file-status upload-status-${item.status}">${escapeHtml(item.detail)}</span>
+            </div>
+        `).join('')}
+    `;
+}
 
 async function createDossier() {
     const name = document.getElementById('student-name').value;
@@ -182,6 +294,7 @@ async function createDossier() {
 
     // Libera a zona de upload
     const uploadZone = document.getElementById('upload-zone');
+    const uploadDropzone = document.getElementById('upload-dropzone');
     uploadZone.style.opacity = '1';
     uploadZone.style.pointerEvents = 'auto';
     try {
@@ -192,26 +305,25 @@ async function createDossier() {
     }
     
     // Adiciona listener pro clique na zona
-    uploadZone.onclick = () => document.getElementById('file-input').click();
-    
+    uploadDropzone.onclick = () => document.getElementById('file-input').click();
+
     // Configura os eventos de Drag & Drop
-    uploadZone.addEventListener('dragover', (e) => {
+    uploadDropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
-        uploadZone.style.borderColor = 'var(--primary)';
-        uploadZone.style.background = 'rgba(0, 210, 255, 0.1)';
+        uploadDropzone.style.borderColor = 'var(--primary)';
+        uploadDropzone.style.background = 'rgba(0, 210, 255, 0.1)';
     });
 
-    uploadZone.addEventListener('dragleave', (e) => {
+    uploadDropzone.addEventListener('dragleave', (e) => {
         e.preventDefault();
-        uploadZone.style.borderColor = 'rgba(255,255,255,0.2)';
-        uploadZone.style.background = 'transparent';
+        uploadDropzone.style.borderColor = 'rgba(255,255,255,0.2)';
+        uploadDropzone.style.background = 'transparent';
     });
 
-    uploadZone.addEventListener('drop', (e) => {
+    uploadDropzone.addEventListener('drop', (e) => {
         e.preventDefault();
-        uploadZone.style.borderColor = 'rgba(255,255,255,0.2)';
-        uploadZone.style.background = 'transparent';
-        
+        uploadDropzone.style.borderColor = 'rgba(255,255,255,0.2)';
+        uploadDropzone.style.background = 'transparent';
         const files = e.dataTransfer.files;
         handleFiles(files);
     });
@@ -225,7 +337,7 @@ async function createDossier() {
 }
 
 async function handleFiles(files) {
-    if(files.length === 0) return;
+    if (!files || files.length === 0) return;
     
     if(!currentStudentId) {
         alert("Nenhum aluno ativo no dossiê.");
@@ -245,13 +357,27 @@ async function handleFiles(files) {
         .filter(campo => campo.dataset.autoIncrement !== 'true' && campo.value !== '')
         .map(campo => ({index_id: campo.dataset.indexId, value: campo.value}));
 
-    alert(`${files.length} arquivo(s) selecionado(s). Iniciando upload para o Dossiê...`);
-    
+    const ocrEngine = document.getElementById('upload-ocr-engine')?.value || 'auto';
+    const ocrEnabled = ocrEngine !== 'none';
+    const groupId = document.getElementById('upload-group-id')?.value.trim() || '';
+    uploadQueueState = Array.from(files).map(file => ({
+        name: file.name,
+        status: 'pending',
+        detail: 'Aguardando'
+    }));
+    renderUploadStatus(`Preparando ${files.length} arquivo(s)...`);
+
     for(let i=0; i<files.length; i++) {
+        uploadQueueState[i].detail = 'Enviando';
+        renderUploadStatus();
         const formData = new FormData();
         formData.append("title", files[i].name);
         formData.append("document_type_id", docTypeId);
         formData.append("document_purpose", document.getElementById('upload-document-purpose').value);
+        formData.append("student_id", currentStudentId || '');
+        formData.append("group_id", groupId);
+        formData.append("ocr_engine", ocrEngine);
+        formData.append("ocr_enabled", ocrEnabled ? 'true' : 'false');
         formData.append("indices_json", JSON.stringify(indices));
         formData.append("file", files[i]);
         
@@ -264,15 +390,33 @@ async function handleFiles(files) {
             
             if(!response.ok) {
                 const erro = await response.json().catch(() => ({}));
-                alert(`Erro em ${files[i].name}: ${erro.detail || 'upload recusado'}`);
-                return;
+                uploadQueueState[i] = {
+                    name: files[i].name,
+                    status: 'error',
+                    detail: erro.detail || 'Upload recusado'
+                };
+                renderUploadStatus();
+                continue;
             }
+            uploadQueueState[i].status = 'success';
+            uploadQueueState[i].detail = ocrEnabled ? 'Concluído · OCR solicitado' : 'Concluído · sem OCR';
+            renderUploadStatus();
         } catch(e) {
-            console.error("Erro de rede no upload " + files[i].name);
+            console.error("Erro de rede no upload " + files[i].name, e);
+            uploadQueueState[i] = {
+                name: files[i].name,
+                status: 'error',
+                detail: 'Falha de comunicação'
+            };
+            renderUploadStatus();
         }
     }
-    
-    alert("Uploads concluídos! (Verifique o log de rede para detalhes)");
+
+    const failed = uploadQueueState.filter(item => item.status === 'error').length;
+    renderUploadStatus(failed
+        ? `Processamento concluído com ${failed} erro(s). Os demais arquivos foram enviados.`
+        : 'Todos os arquivos foram enviados com sucesso.');
+    document.getElementById('file-input').value = '';
 }
 
 // --- Dashboard & Sites (ECM) ---
@@ -655,7 +799,17 @@ function setupLibraryDropzone() {
     });
 }
 
-document.addEventListener('DOMContentLoaded', setupLibraryDropzone);
+document.addEventListener('DOMContentLoaded', () => {
+    loadSearchDocumentTypes();
+    updateOcrHelp();
+    const searchQuery = document.getElementById('search-query');
+    if (searchQuery) {
+        searchQuery.addEventListener('keydown', event => {
+            if (event.key === 'Enter') performSearch();
+        });
+    }
+    setupLibraryDropzone();
+});
 
 // --- Document Details Modal (Metadata & Workflows) ---
 function openDocumentDetails(nodeId) {

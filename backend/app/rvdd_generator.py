@@ -1,4 +1,4 @@
-﻿from jinja2 import Environment, FileSystemLoader, Template
+﻿from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
 import qrcode
 import base64
 from io import BytesIO
@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app import models_templates
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
-env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
+env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=select_autoescape(["html", "xml"]))
 
 def generate_qrcode_base64(data: str) -> str:
     """Gera um QR Code e retorna a string em Base64 para injetar no HTML."""

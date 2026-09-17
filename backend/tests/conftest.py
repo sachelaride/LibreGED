@@ -36,7 +36,7 @@ def setup_db(request):
         return
 
     existing_files = set(storage.STORAGE_ROOT.iterdir())
-    models.Base.metadata.drop_all(bind=engine)
+    models.Base.metadata.drop_all(bind=engine, checkfirst=True)
     models.Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     db.add(
@@ -54,7 +54,7 @@ def setup_db(request):
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(dependency_overrides)
-        models.Base.metadata.drop_all(bind=engine)
+        models.Base.metadata.drop_all(bind=engine, checkfirst=True)
         for created_file in set(storage.STORAGE_ROOT.iterdir()) - existing_files:
             if created_file.is_file():
                 created_file.unlink()

@@ -1,4 +1,8 @@
-import xml.etree.ElementTree as ET
+from defusedxml import defuse_stdlib
+
+defuse_stdlib()
+
+import xml.etree.ElementTree as ET  # nosec B405 - defusedxml stdlib patch is applied before XML construction
 from .schemas_diploma import Model as DiplomaPayload
 
 def dict_to_xml(data, root=None):

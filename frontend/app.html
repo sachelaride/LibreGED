@@ -319,11 +319,22 @@
                 <section id="view-search" class="view active">
                     <div class="glass-panel" style="padding: 30px; text-align:center; min-height: 400px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
                         <h2 style="font-size: 36px; margin-bottom: 20px;">O que você procura?</h2>
-                        <div style="width: 100%; max-width: 600px; display:flex; gap:10px;">
-                            <input type="text" id="search-query" class="form-control" placeholder="Buscar por CPF, nome, código..." style="padding: 16px; font-size: 16px; width: 100%; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;">
-                            <button class="btn-primary" onclick="performSearch()" style="padding: 16px 30px;"><i class="fa-solid fa-search"></i></button>
+                        <div style="width: 100%; max-width: 900px; display:flex; flex-direction:column; gap:12px;">
+                            <div style="display:flex; gap:10px;">
+                                <input type="text" id="search-query" class="form-control" placeholder="Buscar por CPF, nome, código..." style="padding: 16px; font-size: 16px; width: 100%; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;">
+                                <button class="btn-primary" onclick="performSearch()" style="padding: 16px 30px;"><i class="fa-solid fa-search"></i></button>
+                                <button class="btn-secondary" type="button" onclick="clearSearchFilters()" title="Limpar busca" aria-label="Limpar busca" style="padding: 16px 18px;"><i class="fa-solid fa-rotate-left"></i></button>
+                            </div>
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                                <input type="text" id="search-student" class="form-control" placeholder="Aluno / student_id" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                <input type="text" id="search-group" class="form-control" placeholder="Grupo / turma" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                <select id="search-document-type" class="form-control" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                    <option value="">Tipo documental</option>
+                                </select>
+                            </div>
                         </div>
-                        <div id="search-results" style="margin-top: 40px; width: 100%; max-width: 800px; text-align:left;">
+                        <div id="search-summary" class="search-summary" aria-live="polite"></div>
+                        <div id="search-results" style="margin-top: 40px; width: 100%; max-width: 900px; text-align:left;">
                             <p class="text-muted" style="text-align:center;">Digite um termo para começar a busca.</p>
                         </div>
                     </div>
@@ -364,15 +375,26 @@
                                         <option value="official">Oficial</option>
                                         <option value="conference">Conferência (não oficial)</option>
                                     </select>
-                                    <small id="upload-document-purpose-help" class="text-muted">Documentos de conferência não substituem o documento oficial.</small>
+                                    <label for="upload-ocr-engine" style="display:block; margin-top:12px;">Motor OCR</label>
+                                    <select id="upload-ocr-engine" onchange="updateOcrHelp()">
+                                        <option value="auto">Auto (recomendado)</option>
+                                        <option value="none">Não processar OCR</option>
+                                        <option value="tesseract">Tesseract</option>
+                                        <option value="paddleocr">PaddleOCR</option>
+                                        <option value="rapidocr">RapidOCR</option>
+                                    </select>
+                                    <small id="upload-ocr-help" class="text-muted">Auto seleciona o melhor motor disponível no ambiente.</small>
+                                    <label for="upload-group-id" style="display:block; margin-top:12px;">Grupo / turma (opcional)</label>
+                                    <input type="text" id="upload-group-id" class="form-control" placeholder="Ex.: turma-2026-A" maxlength="120">
                                 </div>
                                 <div id="upload-indices" onclick="event.stopPropagation()"></div>
-                                <div style="border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 40px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease;">
+                                <div id="upload-dropzone" style="border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 40px; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease;">
                                     <i class="fa-solid fa-file-arrow-up" style="font-size: 48px; color: var(--primary); margin-bottom:20px;"></i>
                                     <h3>Arraste documentos aqui</h3>
-                                    <p class="text-muted" style="margin-top:10px;">ou clique para selecionar</p>
-                                    <input type="file" id="file-input" style="display:none;" multiple>
+                                    <p class="text-muted" style="margin-top:10px;">ou clique para selecionar PDF, imagem ou documento</p>
+                                    <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.txt" style="display:none;" multiple>
                                 </div>
+                                <div id="upload-status" class="upload-status" aria-live="polite"></div>
                             </div>
                         </div>
                     </div>

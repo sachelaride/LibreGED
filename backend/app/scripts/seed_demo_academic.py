@@ -33,7 +33,7 @@ CAMPUS_ID = f"{PREFIX.lower()}-campus"
 STUDENT_ID = f"{PREFIX.lower()}-aluno"
 USER_ID = f"{PREFIX.lower()}-usuario"
 USERNAME = "demo.academico"
-PASSWORD = "Demo@123456"
+PASSWORD = "Demo@123456"  # nosec B105 - demo seed credential only; not used in production
 COURSE = "Pedagogia"
 
 

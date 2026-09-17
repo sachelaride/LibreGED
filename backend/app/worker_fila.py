@@ -34,6 +34,7 @@ def _process_fila_loop():
                 _stop_event.wait(5.0) # Dorme por 5 segundos ou até ser interrompido
                 continue
                 
+            current_status = tarefa.status
             # Travar a tarefa
             tarefa.status = "PROCESSANDO"
             tarefa.tentativas += 1
@@ -50,7 +51,7 @@ def _process_fila_loop():
                 # ========================================================
                 
                 doc = db.query(GEDDocument).filter(GEDDocument.id == tarefa.documento_id).first()
-                if doc and tarefa.status == "PENDENTE":
+                if doc and current_status == "PENDENTE":
                     # Simulação do tempo de processamento pesado
                     time.sleep(2.0) 
                     

@@ -6,10 +6,11 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 - database backup commands are explicit and controlled
 import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Iterable
 
 from app.config import settings
 from app.storage import STORAGE_ROOT
@@ -57,7 +58,7 @@ def restore_backup(backup_dir: Path, *, confirm: bool = False) -> None:
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
     with tarfile.open(storage_archive, "r:gz") as archive:
-        archive.extractall(staging)
+        archive.extractall(staging, members=_safe_tar_members(archive, staging))  # nosec B202 - members are explicitly validated before extraction
     extracted = staging / "storage"
     if not extracted.is_dir():
         raise ValueError("storage archive does not contain the expected storage directory")
@@ -67,25 +68,53 @@ def restore_backup(backup_dir: Path, *, confirm: bool = False) -> None:
     staging.rmdir()
 
 
+def _safe_tar_members(archive: tarfile.TarFile, destination: Path) -> list[tarfile.TarInfo]:
+    destination_root = destination.resolve()
+    safe_members: list[tarfile.TarInfo] = []
+
+    for member in archive.getmembers():
+        member_name = member.name.replace("\\", "/")
+        if member_name.startswith("/") or ".." in member_name.split("/"):
+            raise ValueError(f"unsafe archive member detected: {member_name!r}")
+
+        candidate = (destination_root / member_name).resolve()
+        if not str(candidate).startswith(str(destination_root)):
+            raise ValueError(f"archive member escapes the restore directory: {member_name!r}")
+        if member.issym() or member.islnk():
+            raise ValueError(f"symbolic links are not allowed in restore archives: {member_name!r}")
+        safe_members.append(member)
+
+    return safe_members
+
+
+def _database_dsn() -> str:
+    url = settings.DATABASE_URL
+    if "+psycopg" in url:
+        return url.replace("+psycopg2", "").replace("+psycopg", "")
+    return url
+
+
 def _run_pg_dump(output: Path) -> None:
     _run_database_command(["pg_dump", "--format=custom", "--file", str(output)])
 
 
 def _run_pg_restore(dump_path: Path) -> None:
-    _run_command(
-        ["pg_restore", "--clean", "--if-exists", "--dbname", settings.DATABASE_URL, str(dump_path)]
-    )
+    _run_command(["pg_restore", "--clean", "--if-exists", "--dbname", _database_dsn(), str(dump_path)])
 
 
 def _run_database_command(command: list[str]) -> None:
-    _run_command([*command, settings.DATABASE_URL])
+    dsn = _database_dsn()
+    command = [*command]
+    if dsn not in command:
+        command.append(dsn)
+    _run_command(command)
 
 
 def _run_command(command: list[str]) -> None:
     env = os.environ.copy()
     env["PGDATABASE_URL"] = settings.DATABASE_URL
-    completed = subprocess.run(
-        [*command, settings.DATABASE_URL],
+    completed = subprocess.run(  # nosec B603 - command arguments are explicit and not derived from user input
+        command,
         env=env,
         capture_output=True,
         text=True,

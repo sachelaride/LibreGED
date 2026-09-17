@@ -9,6 +9,7 @@ from app import models
 from app.models_ged import GEDDocument
 from app.models_xsd import SchemaVersion
 from app.auth import get_current_active_user
+from app.privacy_utils import mask_cpf, mask_email, mask_name
 
 class XmlGenerationRequest(BaseModel):
     student_name: str
@@ -20,6 +21,28 @@ class XmlGenerationRequest(BaseModel):
     environment: str = "homologation"
 
 router = APIRouter(tags=["GED - Vida Acadêmica (Curso e Diplomação)"])
+
+
+def _mask_student_response(student: models.Student, current_user: models.User) -> "StudentResponse":
+    if current_user.role == "admin_global":
+        return StudentResponse(
+            id=student.id,
+            institution_id=student.institution_id,
+            full_name=student.full_name,
+            birth_date=student.birth_date,
+            cpf=student.cpf,
+            email=student.email,
+        )
+
+    return StudentResponse(
+        id=student.id,
+        institution_id=student.institution_id,
+        full_name=mask_name(student.full_name),
+        birth_date=student.birth_date,
+        cpf=mask_cpf(student.cpf),
+        email=mask_email(student.email),
+    )
+
 
 # Schemas repetidos ou importados
 class StudentResponse(BaseModel):
@@ -53,8 +76,9 @@ def get_students(
     # Por segurança, sempre filtramos pela instituição do usuário, a não ser que ele seja admin global
     if current_user.role != "admin_global":
         query = query.filter(models.Student.institution_id == current_user.institution_id)
-    
-    return query.all()
+
+    students = query.all()
+    return [_mask_student_response(student, current_user) for student in students]
 
 @router.get("/api/enrollments", response_model=List[EnrollmentResponse])
 def get_enrollments(

@@ -1,5 +1,14 @@
+import hashlib
+import json
+import logging
+import os
+import uuid
+from pathlib import Path
+from typing import Optional
+
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.storage import save_file
 from app.models_ged import GEDDocument, GEDDocumentStatus, GEDAcademicPhase, GEDDocumentIndexValue, DocumentTransitionHistory, DocumentCategory
@@ -7,15 +16,13 @@ from app.models_ged_config import DocumentType
 from app.models_workflow import DocumentWorkflowInstance, WorkflowState
 from app.schemas_ged import GEDDocumentResponse
 from app.search import SearchService
-import uuid
-import json
-import hashlib
-from pathlib import Path
+from app.ocr_engine import DocumentAnalyzer
 
 from app.auth import get_current_active_user, check_document_type_access
 from app.models import User, InstitutionSettings
 from app.config_manager import config_manager
-import os
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -25,6 +32,10 @@ async def upload_document(
     document_type_id: str = Form(...),
     indices_json: str = Form("[]"), # Expects JSON string of list of dicts [{"index_id": "...", "value": "..."}]
     document_purpose: str = Form("official"),
+    student_id: Optional[str] = Form(None),
+    group_id: Optional[str] = Form(None),
+    ocr_engine: str = Form("auto"),
+    ocr_enabled: bool = Form(True),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
@@ -90,7 +101,29 @@ async def upload_document(
         db.flush()
 
     persisted_user_id = db.query(User.id).filter(User.id == current_user.id).scalar()
-    
+
+    ocr_text = ""
+    ocr_result = {"status": "skipped", "engine": "none", "text": ""}
+    if ocr_enabled:
+        analyzer = DocumentAnalyzer()
+        ocr_result = analyzer.extract_text(
+            file_path=saved_path,
+            preferred_engine=ocr_engine or "auto",
+            document_type=doc_type.name,
+            language="pt",
+        )
+        ocr_text = (ocr_result or {}).get("text", "")
+
+    metadata_payload = {
+        "student_id": student_id,
+        "group_id": group_id,
+        "ocr_engine": ocr_result.get("engine"),
+        "ocr_status": ocr_result.get("status"),
+        "ocr_reason": ocr_result.get("reason"),
+        "ocr_text": ocr_text[:4000],
+        "indices": [{"index_id": indice.id, "value": valor} for indice, valor in indices],
+    }
+
     db_doc = GEDDocument(
         title=title,
         file_path=saved_path,
@@ -100,8 +133,10 @@ async def upload_document(
         institution_id=current_user.institution_id,
         campus_id=current_user.campus_id,
         uploaded_by_user_id=persisted_user_id,
+        student_id=student_id,
         document_purpose=document_purpose,
         is_official=document_purpose == "official",
+        extracted_metadata=json.dumps(metadata_payload, ensure_ascii=False),
     )
     db.add(db_doc)
     db.flush() # Get the document ID
@@ -161,12 +196,12 @@ async def upload_document(
         db.commit()
     except Exception as e:
         db.rollback()
-        # Compensação: remover o arquivo físico que foi salvo
+        # Compensação: remover o arquivo físico que foi salvo.
         if os.path.exists(saved_path):
             try:
                 os.remove(saved_path)
-            except:
-                pass
+            except OSError:
+                logger.warning("Falha ao remover arquivo persistido após erro de commit", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro interno ao salvar documento: {str(e)}")
     db.refresh(db_doc)
     
@@ -176,11 +211,11 @@ async def upload_document(
         db=db,
         document_id=db_doc.id,
         title=db_doc.title,
-        content="Conteúdo OCR mockado", # Aqui no futuro conectamos o PyTesseract
+        content=ocr_text[:4000] or db_doc.title,
         indices_data=json.dumps(
             [{"index_id": indice.id, "value": valor} for indice, valor in indices],
             ensure_ascii=False,
         )
     )
-    
+
     return db_doc

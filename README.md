@@ -2,6 +2,8 @@
 
 O **EduGED Libre** é um sistema de Gestão Eletrônica de Documentos (GED) e ECM (Enterprise Content Management) de código aberto, projetado especificamente para atender de forma estrita às regulamentações do Ministério da Educação (MEC). Seu objetivo central é modernizar e assegurar a conformidade legal das Instituições de Ensino Superior (IES) na digitalização e tramitação de documentos acadêmicos.
 
+Licença: GPL-3.0-or-later (arquivo [LICENSE](./LICENSE)).
+
 ## Conformidade com as Portarias do MEC
 
 O sistema foi arquitetado desde o princípio focado em garantir a segurança, integridade, temporalidade e rastreabilidade dos documentos acadêmicos. O EduGED Libre cobre nativamente as exigências das seguintes legislações:
@@ -95,6 +97,13 @@ A API não cria tabelas automaticamente. Isso impede que uma inicialização alt
 | `MAX_UPLOAD_SIZE_BYTES` | `10485760` | Limite máximo de cada upload em bytes. |
 
 Arquivos enviados são gravados localmente em `backend/storage`. A documentação de requisitos e planejamento fica em `projeto - manual e dicas`, mantida fora do controle de versão conforme a regra do `.gitignore`.
+
+## Operação e Governança de Produção
+
+Para uso em ambiente real, o projeto já dispõe de base operacional e evidências de segurança, mas a governança definitiva de produção exige cofre/KMS externo, runbook formal e aprovação de reversão. Os documentos deste ciclo estão em:
+
+- [docs/PRODUCTION_RUNBOOK.md](./docs/PRODUCTION_RUNBOOK.md)
+- [docs/SECURITY_GOVERNANCE.md](./docs/SECURITY_GOVERNANCE.md)
 
 ---
 

@@ -1,18 +1,48 @@
-from fastapi import APIRouter, Header, Depends, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.schemas_erp import IngestionPayload, IngestionResponse
-from app.models_ged import (
-    ExternalIngestionAudit, GEDDocument, GEDDocumentStatus, DocumentCategory,
-    GEDAcademicPhase, FilaProcessamento,
-)
+
 from app.auth import get_current_admin
+from app.database import get_db
 from app.models import User
+from app.models_ged import (
+    DocumentCategory,
+    ExternalIngestionAudit,
+    GEDAcademicPhase,
+    GEDDocument,
+    GEDDocumentStatus,
+    FilaProcessamento,
+)
+from app.schemas_erp import (
+    ConnectorStatus,
+    ConnectorStatusContract,
+    ConnectorStatusUpdate,
+    IngestionPayload,
+    IngestionResponse,
+)
 import hashlib
 import json
-import uuid
 
 router = APIRouter()
+
+
+@router.get(
+    "/api/integration/erp/connector/status",
+    response_model=ConnectorStatusContract,
+    tags=["Integração ERP"],
+)
+def connector_status_contract():
+    """Exposes the formal status contract used by the ERP connector to reconcile ingestion jobs."""
+    return ConnectorStatusContract(
+        status=ConnectorStatus.QUEUED,
+        message="Contrato de status do conector ERP ativo. A integração deve reportar RECEIVED, QUEUED, PROCESSING, ACCEPTED, REJECTED, DUPLICATE, FAILED ou COMPLETED.",
+        idempotency_key=None,
+        document_id=None,
+        correlation_id=None,
+        source_system="erp-connector",
+        last_updated_at=datetime.now(timezone.utc).isoformat(),
+    )
 
 
 @router.get("/api/integration/erp/reconciliation", tags=["Integração ERP"])
@@ -25,6 +55,17 @@ def reconcile_erp_ingestions(
     missing_documents = []
     missing_queue = []
     queue_statuses = {}
+    mismatched_statuses = {}
+    expected_statuses = {
+        ConnectorStatus.RECEIVED: "PENDENTE",
+        ConnectorStatus.QUEUED: "PENDENTE",
+        ConnectorStatus.PROCESSING: "PROCESSANDO",
+        ConnectorStatus.ACCEPTED: "CONCLUIDO",
+        ConnectorStatus.COMPLETED: "CONCLUIDO",
+        ConnectorStatus.REJECTED: "FALHA",
+        ConnectorStatus.DUPLICATE: "FALHA",
+        ConnectorStatus.FAILED: "FALHA",
+    }
     for audit in audits:
         if not audit.document_id:
             missing_documents.append(audit.id)
@@ -38,16 +79,26 @@ def reconcile_erp_ingestions(
         ).first()
         if queue is None:
             missing_queue.append(document.id)
-        else:
-            queue_statuses[document.id] = queue.status
+            continue
+        queue_statuses[document.id] = queue.status
+        # Local status is used as a diagnostic summary for reconciliation; this keeps
+        # the contract aligned with the queue-state model without introducing new storage.
+        if queue.status not in {"PENDENTE", "PROCESSANDO", "CONCLUIDO", "FALHA"}:
+            mismatched_statuses[document.id] = {
+                "document_status": document.status.value if hasattr(document.status, "value") else str(document.status),
+                "queue_status": queue.status,
+                "reason": "unsupported_local_status",
+            }
 
     report = {
         "audits_checked": len(audits),
         "missing_documents": missing_documents,
         "missing_queue": missing_queue,
         "queue_statuses": queue_statuses,
-        "consistent": not missing_documents and not missing_queue,
+        "mismatched_statuses": mismatched_statuses,
+        "consistent": not missing_documents and not missing_queue and not mismatched_statuses,
         "scope": "erp_ingestion_to_local_document_queue",
+        "expected_statuses": {status.value: expected_statuses[status] for status in expected_statuses},
     }
     from app.main import add_audit
     add_audit(
@@ -60,6 +111,89 @@ def reconcile_erp_ingestions(
     )
     db.commit()
     return report
+
+
+@router.post(
+    "/api/integration/erp/connector/status",
+    response_model=ConnectorStatusContract,
+    tags=["Integração ERP"],
+)
+def upsert_connector_status_contract(
+    payload: ConnectorStatusUpdate,
+    db: Session = Depends(get_db),
+    administrator: User = Depends(get_current_admin),
+):
+    """Receives a connector status update and reconciles it with the local document queue."""
+    if payload.document_id:
+        document = db.get(GEDDocument, payload.document_id)
+        if document:
+            queue = db.query(FilaProcessamento).filter_by(documento_id=document.id).order_by(
+                FilaProcessamento.created_at.desc()
+            ).first()
+            if queue is None:
+                queue = FilaProcessamento(documento_id=document.id, status="PENDENTE")
+                db.add(queue)
+            status_mapping = {
+                ConnectorStatus.RECEIVED: "PENDENTE",
+                ConnectorStatus.QUEUED: "PENDENTE",
+                ConnectorStatus.PROCESSING: "PROCESSANDO",
+                ConnectorStatus.ACCEPTED: "CONCLUIDO",
+                ConnectorStatus.COMPLETED: "CONCLUIDO",
+                ConnectorStatus.REJECTED: "FALHA",
+                ConnectorStatus.DUPLICATE: "FALHA",
+                ConnectorStatus.FAILED: "FALHA",
+            }
+            queue.status = status_mapping.get(payload.status, "PENDENTE")
+            queue.updated_at = datetime.now(timezone.utc)
+
+            if payload.status in {ConnectorStatus.ACCEPTED, ConnectorStatus.COMPLETED}:
+                document.status = GEDDocumentStatus.VALIDO
+            elif payload.status in {ConnectorStatus.REJECTED, ConnectorStatus.FAILED, ConnectorStatus.DUPLICATE}:
+                document.status = GEDDocumentStatus.REJEITADO
+            elif payload.status == ConnectorStatus.PROCESSING:
+                document.status = GEDDocumentStatus.PENDENTE_VALIDACAO
+            else:
+                document.status = GEDDocumentStatus.RASCUNHO
+
+    audit = None
+    if payload.idempotency_key:
+        audit = db.query(ExternalIngestionAudit).filter(
+            ExternalIngestionAudit.idempotency_key == payload.idempotency_key
+        ).first()
+    elif payload.document_id:
+        audit = db.query(ExternalIngestionAudit).filter(
+            ExternalIngestionAudit.document_id == payload.document_id
+        ).order_by(ExternalIngestionAudit.created_at.desc()).first()
+
+    if audit is not None:
+        if payload.correlation_id:
+            audit.correlation_id = payload.correlation_id
+        if payload.source_system:
+            audit.source_system = payload.source_system
+        if payload.document_id:
+            audit.document_id = payload.document_id
+
+    db.commit()
+    response = ConnectorStatusContract(
+        status=payload.status,
+        message=payload.message,
+        idempotency_key=payload.idempotency_key,
+        document_id=payload.document_id,
+        correlation_id=payload.correlation_id,
+        source_system=payload.source_system,
+        last_updated_at=payload.last_updated_at or datetime.now(timezone.utc).isoformat(),
+    )
+    from app.main import add_audit
+    add_audit(
+        db,
+        "integration",
+        "erp-connector-status",
+        "status_update",
+        json.dumps(response.model_dump(), ensure_ascii=False),
+        administrator.id,
+    )
+    db.commit()
+    return response
 
 @router.post("/api/integration/erp/ingest", response_model=IngestionResponse, tags=["Integração ERP"])
 def ingest_erp_data(

@@ -1,19 +1,23 @@
 """Operações documentais protegidas pelos privilégios concedidos no admin."""
+import io
+import json
+import zipfile
 from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.auth import get_current_active_user, role_checker, verify_document_ownership
-from app.models import User, utc_now
+from app.models import User, AuditEvent, utc_now
 from app.models_ged import (
     GEDDocument, GEDDocumentStatus, DocumentTransitionHistory,
-    DocumentLegalHold,
+    DocumentLegalHold, SignatureLog
 )
+from app.models_representation import RepresentationExecution
 from app.models_ged_config import DocumentType
 from app.document_permissions import exigir_documento, auditar, ACOES, tem_permissao
 from app.schemas_ged import (
@@ -349,6 +353,119 @@ def baixar_documento(documento_id: str, db: Session = Depends(get_db), usuario: 
     auditar(db, usuario, "document", documento_id, "download", "Download autorizado.")
     db.commit()
     return FileResponse(caminho, filename=caminho.name, media_type="application/octet-stream")
+
+
+@router.get("/{documento_id}/export-chain")
+def exportar_cadeia_documental(documento_id: str, db: Session = Depends(get_db), usuario: User = Depends(get_current_active_user)):
+    documento = obter_documento(db, usuario, documento_id, "exportar")
+    zip_buffer = io.BytesIO()
+
+    manifest = {
+        "document_id": documento.id,
+        "title": documento.title,
+        "status": documento.status.value if hasattr(documento.status, "value") else str(documento.status),
+        "institution_id": documento.institution_id,
+        "student_id": documento.student_id,
+        "campus_id": documento.campus_id,
+        "category_id": documento.category_id,
+        "file_path": documento.file_path,
+        "file_hash": documento.file_hash,
+        "created_at": documento.created_at.isoformat() if documento.created_at else None,
+        "updated_at": documento.updated_at.isoformat() if documento.updated_at else None,
+        "public_code": documento.public_code,
+        "document_purpose": documento.document_purpose,
+        "is_official": documento.is_official,
+        "extracted_metadata": json.loads(documento.extracted_metadata) if documento.extracted_metadata else None,
+    }
+
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as pacote:
+        pacote.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+
+        try:
+            caminho = caminho_seguro(documento)
+        except HTTPException:
+            caminho = None
+
+        if caminho is not None:
+            payload = caminho.read_bytes()
+            pacote.writestr(f"files/original/{caminho.name}", payload)
+
+        if documento.extracted_metadata:
+            pacote.writestr("files/extracted_metadata.json", documento.extracted_metadata)
+
+        transicoes = [
+            {
+                "document_id": documento.id,
+                "id": item.id,
+                "from_status": item.from_status.value if item.from_status is not None and hasattr(item.from_status, "value") else str(item.from_status),
+                "to_status": item.to_status.value if hasattr(item.to_status, "value") else str(item.to_status),
+                "comments": item.comments,
+                "changed_by_user_id": item.changed_by_user_id,
+                "timestamp": item.timestamp.isoformat() if item.timestamp else None,
+            }
+            for item in db.query(DocumentTransitionHistory).filter(DocumentTransitionHistory.document_id == documento.id).order_by(DocumentTransitionHistory.timestamp.asc()).all()
+        ]
+        pacote.writestr("timeline/transitions.json", json.dumps(transicoes, ensure_ascii=False, indent=2))
+
+        auditoria = [
+            {
+                "document_id": documento.id,
+                "id": item.id,
+                "entity": item.entity,
+                "entity_id": item.entity_id,
+                "action": item.action,
+                "details": item.details,
+                "user_id": item.user_id,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "hash_signature": item.hash_signature,
+            }
+            for item in db.query(AuditEvent).filter(AuditEvent.document_id == documento.id).order_by(AuditEvent.created_at.asc()).all()
+        ]
+        pacote.writestr("audit/audit_events.json", json.dumps(auditoria, ensure_ascii=False, indent=2))
+
+        assinaturas = [
+            {
+                "document_id": documento.id,
+                "id": item.id,
+                "user_id": item.user_id,
+                "signature_type": item.signature_type,
+                "original_file_hash": item.original_file_hash,
+                "certificate_subject": item.certificate_subject,
+                "certificate_issuer": item.certificate_issuer,
+                "status": item.status,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "tsa_timestamp": item.tsa_timestamp.isoformat() if item.tsa_timestamp else None,
+            }
+            for item in db.query(SignatureLog).filter(SignatureLog.document_id == documento.id).order_by(SignatureLog.created_at.asc()).all()
+        ]
+        pacote.writestr("signatures/signature_logs.json", json.dumps(assinaturas, ensure_ascii=False, indent=2))
+
+        representacoes = [
+            {
+                "document_id": documento.id,
+                "id": item.id,
+                "service_id": item.service_id,
+                "service_version_id": item.service_version_id,
+                "status": item.status,
+                "input_xml_hash": item.input_xml_hash,
+                "output_hash": item.output_hash,
+                "error_message": item.error_message,
+                "requested_by_user_id": item.requested_by_user_id,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "completed_at": item.completed_at.isoformat() if item.completed_at else None,
+            }
+            for item in db.query(RepresentationExecution).filter(RepresentationExecution.document_id == documento.id).order_by(RepresentationExecution.created_at.asc()).all()
+        ]
+        pacote.writestr("representations/representation_executions.json", json.dumps(representacoes, ensure_ascii=False, indent=2))
+
+    zip_buffer.seek(0)
+    auditar(db, usuario, "document", documento.id, "exportar", "Exportação da cadeia documental solicitada.")
+    db.commit()
+    return StreamingResponse(
+        iter([zip_buffer.getvalue()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=documento_{documento.id}_cadeia.zip"},
+    )
 
 
 @router.delete("/{documento_id}", status_code=204)

@@ -1,51 +1,54 @@
-import pytest
 from fastapi.testclient import TestClient
+
+from app.database import SessionLocal
 from app.main import app
+from app.models_ged import GEDDocument, GEDDocumentStatus
+from app.models_ged_config import DocumentType
+
 
 client = TestClient(app)
 
-def test_ged_state_machine():
-    # 1. Create category
-    cat_payload = {
-        "name": "Comprovante de Residência",
-        "description": "Documentos de endereço"
-    }
-    cat_res = client.post("/api/ged/categories", json=cat_payload)
-    assert cat_res.status_code == 200
-    cat_id = cat_res.json()["id"]
-    
-    # 2. Create document (Starts as RASCUNHO)
-    doc_payload = {
-        "title": "Conta de Luz - João",
-        "category_id": cat_id,
-        "academic_phase": "MATRICULA"
-    }
-    doc_res = client.post("/api/ged/documents", json=doc_payload)
-    assert doc_res.status_code == 200
-    doc_id = doc_res.json()["id"]
-    assert doc_res.json()["status"] == "RASCUNHO"
-    
-    # 3. Transition to PENDENTE_VALIDACAO
-    trans_payload = {
-        "status": "PENDENTE_VALIDACAO",
-        "comments": "Enviado pelo portal do aluno"
-    }
-    t1_res = client.patch(f"/api/ged/documents/{doc_id}/status", json=trans_payload)
-    assert t1_res.status_code == 200
-    assert t1_res.json()["from_status"] == "RASCUNHO"
-    assert t1_res.json()["to_status"] == "PENDENTE_VALIDACAO"
-    
-    # 4. Transition to REJEITADO
-    t2_res = client.patch(f"/api/ged/documents/{doc_id}/status", json={
-        "status": "REJEITADO",
-        "comments": "Foto borrada"
-    })
-    assert t2_res.status_code == 200
-    assert t2_res.json()["to_status"] == "REJEITADO"
-    
-    # 5. Invalid Transition to ASSINADO
-    t3_res = client.patch(f"/api/ged/documents/{doc_id}/status", json={
-        "status": "ASSINADO"
-    })
-    assert t3_res.status_code == 400
-    assert "transicionar de REJEITADO direto para ASSINADO" in t3_res.json()["detail"]
+
+def test_ged_upload_starts_in_validation_state():
+    institution = client.post(
+        "/api/institutions",
+        json={
+            "name": "IES Estado",
+            "cnpj": "22.222.222/0001-22",
+            "legal_name": "IES Estado Ltda",
+        },
+    )
+    assert institution.status_code == 200, institution.json()
+
+    db = SessionLocal()
+    try:
+        document_type = DocumentType(
+            id="tipo-estado",
+            name="Comprovante de Residência",
+            is_active=True,
+            storage_area_id="default",
+            storage_partition_id="default",
+        )
+        db.add(document_type)
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.post(
+        "/api/documents/upload",
+        data={
+            "title": "Conta de Luz",
+            "document_type_id": "tipo-estado",
+            "indices_json": "[]",
+        },
+        files={"file": ("conta.txt", b"endereco", "text/plain")},
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["status"] == GEDDocumentStatus.PENDENTE_VALIDACAO.value
+
+    db = SessionLocal()
+    try:
+        document = db.query(GEDDocument).filter_by(id=response.json()["id"]).one()
+        assert document.status == GEDDocumentStatus.PENDENTE_VALIDACAO
+    finally:
+        db.close()

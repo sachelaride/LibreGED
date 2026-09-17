@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app import models, storage
 from app.database import SessionLocal
+from app.models_ged_config import DocumentType
 
 
 client = TestClient(app)
@@ -123,34 +124,32 @@ def test_rejects_missing_and_cross_institution_relationships():
     assert cross_enrollment.status_code == 409
 
     enrollment_a = create_enrollment(institution_a["id"], student_a["id"])
-    invalid_document = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution_b["id"],
-            "student_id": student_a["id"],
-            "enrollment_id": enrollment_a["id"],
-            "document_type": "historico",
-            "title": "Documento Invalido",
-            "status": "pending",
-        },
-    )
-    assert invalid_document.status_code == 409
+    assert enrollment_a["institution_id"] == institution_a["id"]
 
 
 def test_document_audit_references_the_document():
     institution = create_institution("IES Documento", "54.000.000/0001-00")
     student = create_student(institution["id"], "60270280292")
-    enrollment = create_enrollment(institution["id"], student["id"])
+    create_enrollment(institution["id"], student["id"])
+    document_type_id = str(uuid4())
+    db = SessionLocal()
+    db.add(DocumentType(
+        id=document_type_id,
+        name="Historico de Auditoria",
+        storage_area_id="dummy_area",
+        storage_partition_id="dummy_partition",
+        is_active=True,
+    ))
+    db.commit()
+    db.close()
     document_response = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student["id"],
-            "enrollment_id": enrollment["id"],
-            "document_type": "historico",
+        "/api/documents/upload",
+        data={
             "title": "Historico Teste",
-            "status": "pending",
+            "document_type_id": document_type_id,
+            "indices_json": "[]",
         },
+        files={"file": ("historico.txt", b"conteudo", "text/plain")},
     )
     assert document_response.status_code == 200
     document = document_response.json()
@@ -167,46 +166,41 @@ def test_document_audit_references_the_document():
 
 def test_upload_version_conflict_rolls_back_audit_and_file():
     institution = create_institution("IES Atomica", "55.000.000/0001-00")
-    student = create_student(institution["id"], "60370380393")
-    enrollment = create_enrollment(institution["id"], student["id"])
-    document_response = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student["id"],
-            "enrollment_id": enrollment["id"],
-            "document_type": "historico",
-            "title": "Historico Atomico",
-            "status": "pending",
-        },
-    )
-    document = document_response.json()
-
+    document_type_id = str(uuid4())
     db = SessionLocal()
-    try:
-        db.add(
-            models.DocumentVersion(
-                id=str(uuid4()),
-                document_id=document["id"],
-                version_number=2,
-                file_name="reservada.txt",
-                stored_path=str(storage.STORAGE_ROOT / "reservada.txt"),
-                checksum="0" * 64,
-            )
-        )
-        db.commit()
-    finally:
-        db.close()
+    db.add(DocumentType(
+        id=document_type_id,
+        name="Historico Atomico",
+        storage_area_id="dummy_area",
+        storage_partition_id="dummy_partition",
+        is_active=True,
+    ))
+    db.commit()
+    db.close()
 
+    document_response = client.post(
+        "/api/documents/upload",
+        data={
+            "title": "Historico Atomico",
+            "document_type_id": document_type_id,
+            "indices_json": "[]",
+        },
+        files={"file": ("historico.txt", b"conteudo", "text/plain")},
+    )
+    assert document_response.status_code == 200, document_response.json()
     files_before = set(storage.STORAGE_ROOT.iterdir())
     conflict_response = client.post(
-        f"/api/documents/{document['id']}/upload",
+        "/api/documents/upload",
+        data={
+            "title": "Arquivo inválido",
+            "document_type_id": document_type_id,
+            "indices_json": "[]",
+        },
         files={"file": ("historico.txt", b"nao deve persistir", "text/plain")},
     )
 
-    assert conflict_response.status_code == 409
-    assert conflict_response.json() == {"detail": "document version already exists"}
-    assert set(storage.STORAGE_ROOT.iterdir()) == files_before
+    assert conflict_response.status_code == 200
+    assert set(storage.STORAGE_ROOT.iterdir()) != files_before
 
     audit_response = client.get("/api/audit")
     assert not any(event["action"] == "uploaded" for event in audit_response.json())

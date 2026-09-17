@@ -1,8 +1,18 @@
-def test_create_dynamic_aspect_global(client, admin_token_headers):
+from uuid import uuid4
+
+from fastapi.testclient import TestClient
+from app.auth import get_current_active_user
+from app.database import SessionLocal
+from app.models import Institution, User
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_create_dynamic_aspect_global():
     # Admin_global creating a global aspect
     response = client.post(
         "/api/ecm/dictionary/aspects",
-        headers=admin_token_headers,
         json={
             "name": "custom:financeiro",
             "title": "Financeiro",
@@ -20,7 +30,6 @@ def test_create_dynamic_aspect_global(client, admin_token_headers):
     # Add a property to it
     prop_response = client.post(
         f"/api/ecm/dictionary/aspects/{aspect_id}/properties",
-        headers=admin_token_headers,
         json={
             "name": "custom:valor",
             "title": "Valor R$",
@@ -33,11 +42,34 @@ def test_create_dynamic_aspect_global(client, admin_token_headers):
     assert prop_data["name"] == "custom:valor"
     assert prop_data["data_type"] == "float"
     
-def test_create_dynamic_aspect_institution(client, admin_instituicao_token_headers):
+def test_create_dynamic_aspect_institution():
     # Admin_instituicao creating a local aspect
+    institution_id = str(uuid4())
+    with SessionLocal() as db:
+        db.add(Institution(
+            id=institution_id,
+            name="IES ECM",
+            cnpj="91.000.000/0001-00",
+            legal_name="IES ECM Ltda",
+        ))
+        db.add(User(
+            id=str(uuid4()),
+            username="ecm_admin",
+            hashed_password="teste",
+            role="admin_instituicao",
+            institution_id=institution_id,
+        ))
+        db.commit()
+
+    app.dependency_overrides[get_current_active_user] = lambda: User(
+        id="ecm-admin-test",
+        username="ecm_admin",
+        hashed_password="teste",
+        role="admin_instituicao",
+        institution_id=institution_id,
+    )
     response = client.post(
         "/api/ecm/dictionary/aspects",
-        headers=admin_instituicao_token_headers,
         json={
             "name": "custom:local",
             "title": "Local Aspect",

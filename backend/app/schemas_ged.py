@@ -47,6 +47,7 @@ class GEDDocumentCreate(GEDDocumentBase):
 class GEDDocumentResponse(GEDDocumentBase):
     id: str
     file_path: str
+    file_hash: Optional[str] = None
     status: GEDDocumentStatus
     extracted_metadata: Optional[str] = None
     created_at: datetime

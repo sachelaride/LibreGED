@@ -29,10 +29,10 @@ async function todasPaginasAdmin(caminho) {
     } while (pagina <= dados.pages);
     return itens;
 }
-function modalAdmin(titulo) {
-    document.getElementById('modal-cadastro-admin')?.remove();
+function modalAdmin(titulo, id = 'modal-cadastro-admin') {
+    document.getElementById(id)?.remove();
     const camada = document.createElement('div');
-    camada.id = 'modal-cadastro-admin'; camada.className = 'modal-overlay active';
+    camada.id = id; camada.className = 'modal-overlay active';
     camada.innerHTML = `<div class="modal-content glass-panel" style="width:min(950px,95vw);max-height:90vh;overflow:auto;padding:24px">
         <h2>${escaparAdmin(titulo)}</h2><div class="conteudo-admin"></div>
         <p class="erro-admin" role="alert" style="color:#d33"></p>
@@ -164,51 +164,177 @@ async function carregarIndicesVinculados(tipoId) {
     } catch (erro) { painel.append(erro.message); }
 }
 async function abrirPermissoesDocumentais(usuario) {
-    const modal = modalAdmin(`Tipos documentais e privilégios: ${usuario.username}`);
+    const modal = modalAdmin(`Tipos de documento: ${usuario.username}`);
     const conteudo = modal.querySelector('.conteudo-admin'); conteudo.textContent = 'Carregando...';
     try {
         const dados = await requisicaoAdmin(`/users/${usuario.id}/document-permissions`);
-        const vinculos = new Map(dados.vinculos.map(v => [v.document_type_id, new Set(v.permissions)]));
-        conteudo.innerHTML = `<p>Vincule um tipo e marque as ações permitidas. Sem marcação, a operação fica bloqueada.</p>
-            <label>Buscar tipo documental<input type="search" class="buscar-tipo"></label>
-            <div style="overflow:auto;max-height:55vh"><table class="data-table"><thead><tr><th>Vinculado</th><th>Tipo documental</th>
-            ${Object.values(dados.acoes).map(nome => `<th>${escaparAdmin(nome)}</th>`).join('')}</tr></thead><tbody></tbody></table></div>
-            <button class="btn-primary salvar-permissoes">Salvar permissões</button>`;
-        const corpo = conteudo.querySelector('tbody');
-        for (const tipo of dados.tipos) {
-            const linha = document.createElement('tr'); linha.dataset.nome = tipo.name.toLocaleLowerCase();
-            const vinculado = document.createElement('input'); vinculado.type = 'checkbox'; vinculado.checked = vinculos.has(tipo.id);
-            vinculado.setAttribute('aria-label', `Vincular ${tipo.name}`);
-            const primeira = document.createElement('td'); primeira.append(vinculado); linha.append(primeira);
-            const nome = document.createElement('td'); nome.textContent = tipo.name + (tipo.is_active ? '' : ' (inativo)'); linha.append(nome);
-            vinculado.onchange = () => {
-                if (vinculado.checked) vinculos.set(tipo.id, new Set()); else vinculos.delete(tipo.id);
-                linha.querySelectorAll('[data-acao]').forEach(campo => { campo.checked = false; campo.disabled = !vinculado.checked; });
-            };
-            for (const [acao, rotulo] of Object.entries(dados.acoes)) {
-                const celula = document.createElement('td'), campo = document.createElement('input');
-                campo.type = 'checkbox'; campo.dataset.acao = acao; campo.checked = vinculos.get(tipo.id)?.has(acao) || false;
-                campo.disabled = !vinculado.checked; campo.setAttribute('aria-label', `${rotulo}: ${tipo.name}`);
-                campo.onchange = () => campo.checked ? vinculos.get(tipo.id).add(acao) : vinculos.get(tipo.id).delete(acao);
-                celula.append(campo); linha.append(celula);
+        const vinculos = new Map(dados.vinculos.map(v => [v.document_type_id, {
+            allowed: new Set(v.permissions || []),
+            denied: new Set(v.denied_permissions || [])
+        }]));
+        conteudo.innerHTML = `<p>Vincule os tipos documentais ao usuário. Em cada tipo vinculado, clique em <strong>Configurar permissões</strong> para escolher o que ele pode fazer.</p>
+            <input type="search" class="buscar-tipo" placeholder="Pesquisar tipo documental">
+            <div class="privilege-transfer" style="display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch;min-height:360px">
+                <section class="glass-panel" style="padding:12px"><h4>Disponíveis</h4><div class="tipos-disponiveis"></div></section>
+                <div style="display:flex;flex-direction:column;justify-content:center;gap:8px">
+                    <button type="button" class="btn-secondary btn-small mover-tipo-direita" title="Vincular selecionados">›</button>
+                    <button type="button" class="btn-secondary btn-small mover-tipo-esquerda" title="Desvincular selecionados">‹</button>
+                </div>
+                <section class="glass-panel" style="padding:12px"><h4>Vinculados</h4><div class="tipos-vinculados"></div></section>
+            </div>
+            <button class="btn-primary salvar-permissoes">Salvar vínculos e permissões</button>`;
+        const disponiveis = conteudo.querySelector('.tipos-disponiveis');
+        const vinculados = conteudo.querySelector('.tipos-vinculados');
+        const criarLinhaTipo = (tipo, ligado) => {
+            const linha = document.createElement('div');
+            linha.className = 'privilege-transfer-row';
+            linha.dataset.nome = tipo.name.toLocaleLowerCase();
+            linha.style.cssText = 'display:flex;gap:8px;align-items:center;padding:9px 6px;border-bottom:1px solid rgba(148,163,184,.25)';
+            const estado = vinculos.get(tipo.id);
+            const permitidas = estado ? estado.allowed.size : 0;
+            const negadas = estado ? estado.denied.size : 0;
+            linha.innerHTML = `<input type="checkbox" data-tipo-id="${tipo.id}">
+                <span style="flex:1">${escaparAdmin(tipo.name)}${tipo.is_active ? '' : ' (inativo)'}
+                    ${ligado ? `<small class="resumo-permissoes" style="display:block;color:#64748b">${permitidas} permitida(s) · ${negadas} negada(s)</small>` : ''}
+                </span>`;
+            if (ligado) {
+                linha.title = 'Use o botão Configurar permissões para escolher as ações';
+                const configurar = botaoAdmin('Configurar permissões', () => abrirAcoesTipo(tipo));
+                configurar.classList.add('configurar-permissoes');
+                linha.append(configurar);
             }
-            corpo.append(linha);
-        }
+            return linha;
+        };
+        const renderTipos = () => {
+            disponiveis.innerHTML = ''; vinculados.innerHTML = '';
+            dados.tipos.forEach(tipo => {
+                (vinculos.has(tipo.id) ? vinculados : disponiveis).append(criarLinhaTipo(tipo, vinculos.has(tipo.id)));
+            });
+        };
+        renderTipos();
         conteudo.querySelector('.buscar-tipo').oninput = evento => {
             const busca = evento.target.value.toLocaleLowerCase();
-            corpo.querySelectorAll('tr').forEach(linha => linha.hidden = !linha.dataset.nome.includes(busca));
+            conteudo.querySelectorAll('.privilege-transfer-row').forEach(linha => {
+                linha.hidden = !linha.dataset.nome.includes(busca);
+            });
+        };
+        const moverTipos = (origem, destino) => {
+            conteudo.querySelectorAll(`${origem} input[data-tipo-id]:checked`).forEach(campo => {
+                const tipoId = campo.dataset.tipoId;
+                if (destino === '.tipos-vinculados') {
+                    if (!vinculos.has(tipoId)) vinculos.set(tipoId, {allowed: new Set(), denied: new Set()});
+                } else {
+                    vinculos.delete(tipoId);
+                }
+            });
+            renderTipos();
+        };
+        conteudo.querySelector('.mover-tipo-direita').onclick = () => moverTipos('.tipos-disponiveis', '.tipos-vinculados');
+        conteudo.querySelector('.mover-tipo-esquerda').onclick = () => moverTipos('.tipos-vinculados', '.tipos-disponiveis');
+        const abrirAcoesTipo = tipo => {
+            const acaoModal = modalAdmin(`Conceder privilégios: ${tipo.name}`, 'modal-privilegios-acoes');
+            acaoModal.querySelector('.conteudo-admin').innerHTML = `
+                <p>Vincule as ações permitidas ou negadas para este tipo documental.</p>
+                <div class="privilege-actions" style="display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch;min-height:360px">
+                    <section class="glass-panel" style="padding:12px"><h4>Ações disponíveis</h4>
+                        <div style="display:flex;gap:6px;margin-bottom:8px">
+                            <button type="button" class="btn-secondary btn-small selecionar-acoes-disponiveis">Selecionar todas</button>
+                            <button type="button" class="btn-secondary btn-small limpar-acoes-disponiveis">Limpar</button>
+                        </div>
+                        <div class="acoes-disponiveis"></div>
+                    </section>
+                    <div style="display:flex;flex-direction:column;justify-content:center;gap:8px">
+                        <button type="button" class="btn-secondary btn-small mover-acao-direita" title="Vincular ações selecionadas">›</button>
+                        <button type="button" class="btn-secondary btn-small mover-acao-esquerda" title="Desvincular ações selecionadas">‹</button>
+                    </div>
+                    <section class="glass-panel" style="padding:12px"><h4>Ações vinculadas</h4>
+                        <div style="display:flex;gap:6px;margin-bottom:8px">
+                            <button type="button" class="btn-secondary btn-small selecionar-acoes-vinculadas">Selecionar todas</button>
+                            <button type="button" class="btn-secondary btn-small limpar-acoes-vinculadas">Limpar</button>
+                        </div>
+                        <div class="acoes-vinculadas"></div>
+                    </section>
+                </div>
+                <button type="button" class="btn-primary salvar-acoes">Salvar ações</button>`;
+            const estado = vinculos.get(tipo.id) || {allowed: new Set(), denied: new Set()};
+            const disponiveisAcoes = acaoModal.querySelector('.acoes-disponiveis');
+            const vinculadasAcoes = acaoModal.querySelector('.acoes-vinculadas');
+            const acoesVinculadas = new Set([...estado.allowed, ...estado.denied]);
+            const criarLinhaAcao = (acao, rotulo, ligado) => {
+                const linha = document.createElement('div');
+                linha.style.cssText = ligado
+                    ? 'display:grid;grid-template-columns:20px 1fr 110px;gap:6px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(148,163,184,.25)'
+                    : 'display:flex;gap:8px;align-items:center;padding:9px 6px;border-bottom:1px solid rgba(148,163,184,.25)';
+                const atual = estado.allowed.has(acao) ? 'allow' : 'deny';
+                linha.innerHTML = `<input type="checkbox" data-acao="${escaparAdmin(acao)}"><span style="flex:1">${escaparAdmin(rotulo)}</span>
+                    ${ligado ? '<select><option value="allow">Permitido</option><option value="deny">Negado</option></select>' : ''}`;
+                if (ligado) linha.querySelector('select').value = atual;
+                (ligado ? vinculadasAcoes : disponiveisAcoes).append(linha);
+                linha.dataset.acao = acao;
+                return linha;
+            };
+            const renderAcoes = () => {
+                disponiveisAcoes.innerHTML = '';
+                vinculadasAcoes.innerHTML = '';
+                Object.entries(dados.acoes).forEach(([acao, rotulo]) => {
+                    criarLinhaAcao(acao, rotulo, acoesVinculadas.has(acao));
+                });
+            };
+            renderAcoes();
+            const moverAcoes = (origem, destino) => {
+                acaoModal.querySelectorAll(`${origem} input[data-acao]:checked`).forEach(campo => {
+                    if (destino === '.acoes-vinculadas') {
+                        acoesVinculadas.add(campo.dataset.acao);
+                        if (!estado.allowed.has(campo.dataset.acao) && !estado.denied.has(campo.dataset.acao)) {
+                            estado.allowed.add(campo.dataset.acao);
+                        }
+                    } else {
+                        acoesVinculadas.delete(campo.dataset.acao);
+                        estado.allowed.delete(campo.dataset.acao);
+                        estado.denied.delete(campo.dataset.acao);
+                    }
+                });
+                renderAcoes();
+            };
+            acaoModal.querySelector('.mover-acao-direita').onclick = () => moverAcoes('.acoes-disponiveis', '.acoes-vinculadas');
+            acaoModal.querySelector('.mover-acao-esquerda').onclick = () => moverAcoes('.acoes-vinculadas', '.acoes-disponiveis');
+            const selecionarAcoes = (painel, marcado) => {
+                acaoModal.querySelectorAll(`${painel} input[data-acao]`).forEach(campo => campo.checked = marcado);
+            };
+            acaoModal.querySelector('.selecionar-acoes-disponiveis').onclick = () => selecionarAcoes('.acoes-disponiveis', true);
+            acaoModal.querySelector('.limpar-acoes-disponiveis').onclick = () => selecionarAcoes('.acoes-disponiveis', false);
+            acaoModal.querySelector('.selecionar-acoes-vinculadas').onclick = () => selecionarAcoes('.acoes-vinculadas', true);
+            acaoModal.querySelector('.limpar-acoes-vinculadas').onclick = () => selecionarAcoes('.acoes-vinculadas', false);
+            acaoModal.querySelector('.salvar-acoes').onclick = () => {
+                estado.allowed.clear(); estado.denied.clear();
+                acaoModal.querySelectorAll('.acoes-vinculadas input[data-acao]').forEach(campo => {
+                    const linha = campo.parentElement;
+                    const valor = linha.querySelector('select').value;
+                    if (valor === 'allow') estado.allowed.add(linha.dataset.acao);
+                    if (valor === 'deny') estado.denied.add(linha.dataset.acao);
+                });
+                vinculos.set(tipo.id, estado);
+                acaoModal.remove();
+                renderTipos();
+            };
+            if (usuario.role === 'admin_global') {
+                acaoModal.querySelectorAll('input,select,button:not(.fechar-admin)').forEach(elemento => elemento.disabled = true);
+            }
         };
         conteudo.querySelector('.salvar-permissoes').onclick = async evento => {
             evento.target.disabled = true;
             try {
                 await requisicaoAdmin(`/users/${usuario.id}/document-permissions`, 'PUT', {
-                    vinculos: [...vinculos].map(([document_type_id, acoes]) => ({document_type_id, permissions: [...acoes]}))
-                }); modal.remove();
+                    vinculos: [...vinculos].map(([document_type_id, estado]) => ({
+                        document_type_id, permissions: [...estado.allowed], denied_permissions: [...estado.denied]
+                    }))
+                });
+                modal.remove();
             } catch (erro) { modal.querySelector('.erro-admin').textContent = erro.message; }
             finally { evento.target.disabled = false; }
         };
         if (usuario.role === 'admin_global') {
-            conteudo.querySelectorAll('input,button').forEach(elemento => elemento.disabled = true);
+            conteudo.querySelectorAll('.mover-tipo-direita,.mover-tipo-esquerda,.salvar-permissoes').forEach(elemento => elemento.disabled = true);
             modal.querySelector('.erro-admin').textContent = 'O administrador global possui acesso integral.';
         }
     } catch (erro) { conteudo.textContent = erro.message; }

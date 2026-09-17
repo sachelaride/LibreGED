@@ -1,163 +1,77 @@
 from fastapi.testclient import TestClient
 
+from app.database import SessionLocal
 from app.main import app
+from app.models_ged_config import DocumentType
+
 
 client = TestClient(app)
 
 
-def test_advanced_search_documents():
-    """Testar busca avançada com filtros múltiplos."""
-    # Criar instituição
+def create_document_type(name: str) -> str:
+    document_type_id = name.lower().replace(" ", "-")
+    with SessionLocal() as db:
+        db.add(
+            DocumentType(
+                id=document_type_id,
+                name=name,
+                is_active=True,
+                storage_area_id="default",
+                storage_partition_id="default",
+            )
+        )
+        db.commit()
+    return document_type_id
+
+
+def upload(document_type_id: str, title: str, content: bytes):
+    return client.post(
+        "/api/documents/upload",
+        data={
+            "title": title,
+            "document_type_id": document_type_id,
+            "indices_json": "[]",
+        },
+        files={"file": ("documento.txt", content, "text/plain")},
+    )
+
+
+def test_document_search_uses_current_ged_contract():
     institution = client.post(
         "/api/institutions",
         json={
-            "name": "IES Búsca",
+            "name": "IES Busca",
             "cnpj": "20.000.000/0001-00",
-            "legal_name": "IES Búsca Ltda",
-        },
-    ).json()
-
-    # Criar dois alunos
-    student1 = client.post(
-        "/api/students",
-        json={
-            "institution_id": institution["id"],
-            "full_name": "Carlos Silva",
-            "birth_date": "2010-05-15",
-            "cpf": "44455566677",
-            "email": "carlos@email.com",
-        },
-    ).json()
-
-    student2 = client.post(
-        "/api/students",
-        json={
-            "institution_id": institution["id"],
-            "full_name": "Ana Rosa",
-            "birth_date": "2011-06-20",
-            "cpf": "55566677788",
-            "email": "ana@email.com",
-        },
-    ).json()
-
-    # Criar matrículas
-    enrollment1 = client.post(
-        "/api/enrollments",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student1["id"],
-            "course_name": "Ensino Médio",
-            "class_name": "3A",
-            "year": 2026,
-            "status": "active",
-        },
-    ).json()
-
-    enrollment2 = client.post(
-        "/api/enrollments",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student2["id"],
-            "course_name": "Fundamental II",
-            "class_name": "9B",
-            "year": 2026,
-            "status": "active",
-        },
-    ).json()
-
-    # Criar documentos
-    doc1 = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student1["id"],
-            "enrollment_id": enrollment1["id"],
-            "document_type": "diploma",
-            "title": "Diploma Ensino Médio 2024",
-            "status": "signed",
-        },
-    ).json()
-
-    doc2 = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student1["id"],
-            "enrollment_id": enrollment1["id"],
-            "document_type": "historico",
-            "title": "Histórico Carlos 2024",
-            "status": "validated",
-        },
-    ).json()
-
-    doc3 = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student2["id"],
-            "enrollment_id": enrollment2["id"],
-            "document_type": "diploma",
-            "title": "Diploma Fundamental II",
-            "status": "pending",
-        },
-    ).json()
-
-    # Teste 1: Buscar por nome do aluno
-    response = client.post(
-        "/api/documents/advanced-search",
-        json={"student_name": "Carlos Silva"},
-    )
-    assert response.status_code == 200
-    results = response.json()
-    assert len(results) >= 2  # Carlos tem 2 documentos
-    assert any("Carlos" in r.get("student_name", "") for r in results)
-
-    # Teste 2: Buscar por tipo de documento
-    response = client.post(
-        "/api/documents/advanced-search",
-        json={"document_type": "diploma"},
-    )
-    assert response.status_code == 200
-    results = response.json()
-    assert len(results) >= 2  # 2 diplomas (um signed, um pending)
-
-    # Teste 3: Buscar por status
-    response = client.post(
-        "/api/documents/advanced-search",
-        json={"status": "signed"},
-    )
-    assert response.status_code == 200
-    results = response.json()
-    assert len(results) >= 1
-    assert all(r.get("status") == "signed" for r in results)
-
-    # Teste 4: Buscar combinado (aluno + tipo)
-    response = client.post(
-        "/api/documents/advanced-search",
-        json={
-            "student_name": "Carlos Silva",
-            "document_type": "historico",
+            "legal_name": "IES Busca Ltda",
         },
     )
-    assert response.status_code == 200
-    results = response.json()
-    assert len(results) >= 1
-    assert any(r.get("document_type") == "historico" for r in results)
+    assert institution.status_code == 200, institution.json()
 
-    # Teste 5: Buscar com query full-text
-    response = client.post(
-        "/api/documents/advanced-search",
-        json={"query": "Carlos"},
+    document_type_id = create_document_type("Diploma")
+    first = upload(
+        document_type_id,
+        "Diploma de Carlos Silva",
+        b"conteudo academico de Carlos",
     )
-    assert response.status_code == 200
-    results = response.json()
-    assert len(results) >= 1
+    second = upload(
+        document_type_id,
+        "Historico de Ana Rosa",
+        b"conteudo academico de Ana",
+    )
+    assert first.status_code == 200, first.json()
+    assert second.status_code == 200, second.json()
 
-    # Teste 6: Buscar por instituição
-    response = client.post(
-        "/api/documents/advanced-search",
-        json={"institution_id": institution["id"]},
-    )
+    response = client.get("/api/documents/search", params={"q": "Carlos"})
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["title"] == "Diploma de Carlos Silva"
+    assert payload["items"][0]["status"] == "PENDENTE_VALIDACAO"
+
+    response = client.get("/api/documents/search", params={"q": "Diploma"})
+    assert response.status_code == 200, response.json()
+    assert response.json()["total"] == 1
+
+    response = client.get("/api/documents/search", params={"q": "inexistente"})
     assert response.status_code == 200
-    results = response.json()
-    assert len(results) >= 3  # Todos os 3 documentos
+    assert response.json()["total"] == 0

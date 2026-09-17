@@ -81,6 +81,7 @@ class GEDDocument(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     title = Column(String, nullable=False) # e.g., "RG - Joao", "Comprovante Residencia"
     file_path = Column(String, nullable=False)
+    file_hash = Column(String(64), nullable=True, index=True)
     
     status = Column(Enum(GEDDocumentStatus), default=GEDDocumentStatus.RASCUNHO, nullable=False)
     academic_phase = Column(Enum(GEDAcademicPhase), nullable=True) # Which phase does this belong to
@@ -178,3 +179,19 @@ class SignatureLog(Base):
     created_at = Column(DateTime, default=utc_now)
     
     document = relationship("GEDDocument")
+
+class SignatureRequest(Base):
+    __tablename__ = "ged_signature_requests"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id = Column(String, ForeignKey("ged_documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    signer_id = Column(String, ForeignKey("ged_signers.id"), nullable=False, index=True)
+    
+    order = Column(Integer, nullable=False, default=1)
+    status = Column(String, nullable=False, default="PENDING") # PENDING, SIGNED, REJECTED
+    
+    requested_at = Column(DateTime, default=utc_now)
+    signed_at = Column(DateTime, nullable=True)
+
+    document = relationship("GEDDocument")
+    signer = relationship("Signer")

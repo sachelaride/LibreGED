@@ -138,6 +138,24 @@ h1, h2, h3, h4, h5, h6, .logo h2 {
     font-size: 20px;
 }
 
+.workflow-icon {
+    display: inline-flex;
+    width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+}
+
+.workflow-icon svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+}
+
 .menu-item:hover, .menu-item.active {
     background: rgba(79, 70, 229, 0.15);
     color: var(--primary);

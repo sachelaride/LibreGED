@@ -2,7 +2,8 @@ from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.storage import save_file, load_file
-from app.models_ged import Signer, GEDDocument, GEDDocumentStatus, DocumentTransitionHistory, SignatureLog
+from app.models_ged import Signer, GEDDocument, GEDDocumentStatus, DocumentTransitionHistory, SignatureLog, SignatureRequest
+from app.models_ged_config import DocumentType
 from app.schemas_ged import SignerResponse, SignerCreate
 from app.digital_signature import sign_xml_document, sign_pdf_document, get_cert_info_from_p12, get_file_hash
 import uuid
@@ -46,6 +47,46 @@ class SignRequest(BaseModel):
     password: str
     comments: str = "Assinatura Digital ICP-Brasil / PAdES-XMLDSig"
 
+@router.post("/api/documents/{document_id}/request-signatures", tags=["Assinaturas Híbridas"])
+def request_signatures(document_id: str, db: Session = Depends(get_db), usuario: User = Depends(get_current_active_user)):
+    doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
+    if not doc:
+        raise HTTPException(404, "Documento não encontrado.")
+    exigir_documento(db, usuario, doc, "assinar")
+    
+    doc_type = db.query(DocumentType).filter(DocumentType.id == doc.category_id).first()
+    if not doc_type or not doc_type.signature_rule:
+        raise HTTPException(400, "O tipo documental não possui regras de assinatura configuradas.")
+        
+    rule = doc_type.signature_rule
+    signatures_needed = rule.get("signatures", [])
+    if not signatures_needed:
+        raise HTTPException(400, "Nenhuma assinatura configurada na regra.")
+        
+    # Limpa requests anteriores se estiver re-solicitando
+    db.query(SignatureRequest).filter(SignatureRequest.document_id == document_id, SignatureRequest.status == "PENDING").delete()
+    
+    created = []
+    for sig in signatures_needed:
+        role = sig.get("role")
+        order = sig.get("order", 1)
+        signer = db.query(Signer).filter(Signer.role == role, Signer.is_active == 1).first()
+        if not signer:
+            db.rollback()
+            raise HTTPException(400, f"Nenhum signatário ativo encontrado para o cargo: {role}")
+            
+        req = SignatureRequest(
+            document_id=document_id,
+            signer_id=signer.id,
+            order=order,
+            status="PENDING"
+        )
+        db.add(req)
+        created.append(req)
+        
+    db.commit()
+    return {"message": "Solicitações criadas", "count": len(created)}
+
 @router.post("/api/documents/{document_id}/sign", tags=["Assinaturas Híbridas"])
 def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(get_db),
                   usuario: User = Depends(get_current_active_user)):
@@ -69,16 +110,9 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
         
     sig_type = "XMLDSig" if is_xml else "PAdES"
     
-    # Absolute paths
-    from app.config import UPLOAD_DIR
-    import urllib.parse
-    
-    file_name = doc.file_path.split("/")[-1].split("\\")[-1]
-    
-    # We must properly decode the filename in case it has URL encoding
-    decoded_file_name = urllib.parse.unquote(file_name)
-    real_doc_path = os.path.join(UPLOAD_DIR, decoded_file_name)
-    real_p12_path = os.path.join(UPLOAD_DIR, signer.certificate_path)
+    # Storage persists absolute paths for both the document and certificate.
+    real_doc_path = os.path.abspath(doc.file_path)
+    real_p12_path = os.path.abspath(signer.certificate_path)
     
     if not os.path.exists(real_doc_path):
         raise HTTPException(500, f"Arquivo físico {real_doc_path} não encontrado no disco.")
@@ -89,14 +123,41 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
     original_hash = get_file_hash(real_doc_path)
     
     try:
-        cert_sub, cert_iss = get_cert_info_from_p12(real_p12_path, payload.password)
-    except Exception as e:
+        cert_sub, cert_iss, not_valid_before, not_valid_after = get_cert_info_from_p12(real_p12_path, payload.password)
+    except (OSError, ValueError, TypeError) as exc:
         raise HTTPException(400, "Senha incorreta ou certificado inválido.")
         
+    # Verificar validade
+    now = datetime.now(UTC).replace(tzinfo=None)
+    if not_valid_before and now < not_valid_before.replace(tzinfo=None):
+        raise HTTPException(400, "Certificado digital ainda não é válido.")
+    if not_valid_after:
+        # Algumas versões retornam aware, outras naive. Garante naive para comparar
+        nva = not_valid_after.replace(tzinfo=None) if not_valid_after.tzinfo else not_valid_after
+        if now > nva:
+            raise HTTPException(400, "Certificado digital expirado.")
+            
+    # Verificar a Ordem (SignatureRequest)
+    # Se existirem requests para este documento, temos que seguir a ordem.
+    requests = db.query(SignatureRequest).filter(
+        SignatureRequest.document_id == doc.id,
+        SignatureRequest.status == "PENDING"
+    ).order_by(SignatureRequest.order.asc()).all()
+    
+    current_req = None
+    if requests:
+        first_pending_order = requests[0].order
+        current_req = next((r for r in requests if r.signer_id == signer.id), None)
+        if not current_req:
+            raise HTTPException(403, "O signatário informado não possui solicitação pendente para este documento.")
+        if current_req.order > first_pending_order:
+            raise HTTPException(403, "Não é o turno deste signatário. Aguarde os signatários anteriores.")
+            
     # Criar SignatureLog PENDING
+    persisted_user_id = db.query(User.id).filter(User.id == usuario.id).scalar()
     sig_log = SignatureLog(
         document_id=doc.id,
-        user_id=usuario.id,
+        user_id=persisted_user_id,
         signature_type=sig_type,
         original_file_hash=original_hash,
         certificate_subject=cert_sub,
@@ -123,6 +184,10 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
         sig_log.status = "SUCCESS"
         sig_log.tsa_timestamp = datetime.now(UTC).replace(tzinfo=None)
         
+        if current_req:
+            current_req.status = "SIGNED"
+            current_req.signed_at = sig_log.tsa_timestamp
+            
     except Exception as e:
         sig_log.status = "FAILED"
         sig_log.error_message = str(e)
@@ -137,6 +202,7 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
         document_id=doc.id,
         from_status=old_status,
         to_status=GEDDocumentStatus.ASSINADO,
+        changed_by_user_id=persisted_user_id,
         comments=payload.comments
     )
     db.add(transition)

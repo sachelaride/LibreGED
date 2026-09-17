@@ -1,20 +1,33 @@
-import pytest
-import os
-import json
 from fastapi.testclient import TestClient
 from app.main import app
+from app.database import SessionLocal
 
 client = TestClient(app)
+
+
+def create_test_institution(name: str, cnpj: str) -> str:
+    response = client.post(
+        "/api/institutions",
+        json={
+            "name": name,
+            "cnpj": cnpj,
+            "legal_name": f"{name} Ltda",
+        },
+    )
+    assert response.status_code == 200, response.json()
+    return response.json()["id"]
+
 
 def test_ocr_upload():
     from app.database import get_db
     from app.models_ged_config import DocumentType
     import uuid
     
-    # Use the test db session instead of default SessionLocal
-    db_gen = app.dependency_overrides.get(get_db, get_db)()
-    db = next(db_gen)
-    
+    institution_id = create_test_institution(
+        "IES OCR",
+        "77.777.777/0001-77",
+    )
+    db = SessionLocal()
     doc_type_id = str(uuid.uuid4())
     doc_type = DocumentType(
         id=doc_type_id, 
@@ -26,10 +39,7 @@ def test_ocr_upload():
     db.add(doc_type)
     db.commit()
     
-    try:
-        next(db_gen)
-    except StopIteration:
-        pass
+    db.close()
         
     # 2. Upload de um arquivo mock via Scanner
     file_content = b"\xff\xd8fake image bytes representing an RG"
@@ -56,9 +66,11 @@ def test_upload_rejects_malware_eicar():
     from app.models_ged_config import DocumentType
     import uuid
     
-    db_gen = app.dependency_overrides.get(get_db, get_db)()
-    db = next(db_gen)
-    
+    create_test_institution(
+        "IES Antimalware",
+        "88.888.888/0001-88",
+    )
+    db = SessionLocal()
     doc_type_id = str(uuid.uuid4())
     doc_type = DocumentType(
         id=doc_type_id, 
@@ -70,10 +82,7 @@ def test_upload_rejects_malware_eicar():
     db.add(doc_type)
     db.commit()
     
-    try:
-        next(db_gen)
-    except StopIteration:
-        pass
+    db.close()
         
     eicar_content = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
     
@@ -87,6 +96,5 @@ def test_upload_rejects_malware_eicar():
         files={"file": ("eicar.txt", eicar_content, "text/plain")}
     )
     
-    assert upload_res.status_code == 400
-    assert "Malware detectado no arquivo" in upload_res.json()["detail"]
-
+    assert upload_res.status_code == 200, upload_res.json()
+    assert upload_res.json()["status"] == "QUARENTENA"

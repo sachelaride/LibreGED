@@ -77,6 +77,18 @@ def _validate_content(extension: str, content: bytes) -> None:
             raise HTTPException(status_code=422, detail="invalid PDF signature")
         return
 
+    if extension in [".jpg", ".jpeg"]:
+        # Basic check for JPEG magic number (FF D8).
+        if not content.startswith(b"\xff\xd8"):
+            raise HTTPException(status_code=422, detail="invalid JPEG signature")
+        return
+
+    if extension == ".png":
+        # Basic check for PNG magic number (89 50 4E 47 0D 0A 1A 0A).
+        if not content.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise HTTPException(status_code=422, detail="invalid PNG signature")
+        return
+
     text = _decode_text(content)
     if extension == ".txt":
         if "\x00" in text:
@@ -88,18 +100,6 @@ def _validate_content(extension: str, content: bytes) -> None:
             json.loads(text)
         except json.JSONDecodeError as error:
             raise HTTPException(status_code=422, detail="invalid JSON content") from error
-        return
-
-    if extension in [".jpg", ".jpeg"]:
-        # Basic check for JPEG magic number (FF D8)
-        if not content.startswith(b"\xff\xd8"):
-            raise HTTPException(status_code=422, detail="invalid JPEG signature")
-        return
-        
-    if extension == ".png":
-        # Basic check for PNG magic number (89 50 4E 47 0D 0A 1A 0A)
-        if not content.startswith(b"\x89PNG\r\n\x1a\n"):
-            raise HTTPException(status_code=422, detail="invalid PNG signature")
         return
 
     upper_text = text.upper()

@@ -1,10 +1,22 @@
 import pytest
 from fastapi.testclient import TestClient
+
 from app.main import app
+from app.database import SessionLocal
+from app.models import Institution
 
 client = TestClient(app)
 
 def test_erp_ingestion_idempotency():
+    with SessionLocal() as db:
+        db.add(Institution(
+            id="inst-123",
+            name="IES ERP",
+            cnpj="21.000.000/0001-00",
+            legal_name="IES ERP Ltda",
+        ))
+        db.commit()
+
     payload = {
         "aluno": {
             "nome": "Maria Silva",

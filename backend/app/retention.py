@@ -4,6 +4,8 @@ from typing import List, Dict
 from sqlalchemy.orm import Session
 
 from app import models
+from app.models_ged import GEDDocument, GEDDocumentStatus
+from app.models_ged_config import DocumentType
 
 
 class DocumentLifecycle(str, Enum):
@@ -47,20 +49,18 @@ class RetentionService:
     @staticmethod
     def mark_for_archival(db: Session, document_id: str, reason: str = "retenção expirada") -> bool:
         """Marcar documento para arquivamento."""
-        document = db.query(models.Document).filter(models.Document.id == document_id).first()
+        document = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
         if document is None:
             return False
 
         # Só arquivar se já estava validado/assinado
-        if document.status not in ["validated", "signed"]:
+        if document.status not in (GEDDocumentStatus.VALIDO, GEDDocumentStatus.ASSINADO):
             return False
 
-        document.status = "archived"
-        db.commit()
+        document.status = GEDDocumentStatus.ARQUIVADO.value
 
         # Auditoria
         audit = models.AuditEvent(
-            id=str(len(db.query(models.AuditEvent).all()) + 1),
             document_id=document_id,
             entity="document",
             entity_id=document_id,
@@ -78,21 +78,32 @@ class RetentionService:
         violations = []
         now = datetime.now(UTC).replace(tzinfo=None)
 
-        for doc in db.query(models.Document).all():
-            if doc.status in ["draft", "pending", "rejected"]:
+        for doc in db.query(GEDDocument).all():
+            if doc.status in (
+                GEDDocumentStatus.RASCUNHO,
+                GEDDocumentStatus.PENDENTE_VALIDACAO,
+                GEDDocumentStatus.REJEITADO,
+                GEDDocumentStatus.QUARENTENA,
+            ):
                 # Documentos não finalizados não contam para retenção
                 continue
 
-            expiry_date = RetentionService.calculate_expiry_date(doc.created_at, doc.document_type)
+            document_type = db.get(DocumentType, doc.category_id)
+            document_type_name = document_type.name if document_type else "tipo_unknown"
+            retention_years = (
+                int(document_type.retention_years)
+                if document_type is not None and document_type.retention_years is not None
+                else DEFAULT_RETENTION_YEARS
+            )
+            expiry_date = doc.created_at + timedelta(days=365 * retention_years)
             days_until_expiry = (expiry_date - now).days
 
             if days_until_expiry < 0:
                 # Documento expirou e deve ser arquivado
                 violations.append({
                     "document_id": doc.id,
-                    "student_name": db.query(models.Student).filter(models.Student.id == doc.student_id).first().full_name if db.query(models.Student).filter(models.Student.id == doc.student_id).first() else "Unknown",
-                    "document_type": doc.document_type,
-                    "status": doc.status,
+                    "document_type": document_type_name,
+                    "status": doc.status.value,
                     "created_at": doc.created_at.isoformat(),
                     "expiry_date": expiry_date.isoformat(),
                     "days_overdue": abs(days_until_expiry),
@@ -102,9 +113,8 @@ class RetentionService:
                 # Documento vai expirar em menos de 30 dias
                 violations.append({
                     "document_id": doc.id,
-                    "student_name": db.query(models.Student).filter(models.Student.id == doc.student_id).first().full_name if db.query(models.Student).filter(models.Student.id == doc.student_id).first() else "Unknown",
-                    "document_type": doc.document_type,
-                    "status": doc.status,
+                    "document_type": document_type_name,
+                    "status": doc.status.value,
                     "created_at": doc.created_at.isoformat(),
                     "expiry_date": expiry_date.isoformat(),
                     "days_until_expiry": days_until_expiry,
@@ -156,27 +166,38 @@ class RetentionService:
 
         now = datetime.now(UTC).replace(tzinfo=None)
 
-        for doc in db.query(models.Document).all():
+        for doc in db.query(GEDDocument).all():
             # Por status
-            status = doc.status
+            status = doc.status.value
             if status not in stats["by_status"]:
                 stats["by_status"][status] = 0
             stats["by_status"][status] += 1
 
             # Por tipo
-            doc_type = doc.document_type
+            document_type = db.get(DocumentType, doc.category_id)
+            doc_type = document_type.name if document_type else "tipo_unknown"
             if doc_type not in stats["by_type"]:
                 stats["by_type"][doc_type] = 0
             stats["by_type"][doc_type] += 1
 
             # Por estado de retenção
-            if doc.status == "archived":
+            if doc.status == GEDDocumentStatus.ARQUIVADO:
                 stats["by_retention_status"]["archived"] += 1
-            elif doc.status in ["draft", "pending", "rejected"]:
+            elif doc.status in (
+                GEDDocumentStatus.RASCUNHO,
+                GEDDocumentStatus.PENDENTE_VALIDACAO,
+                GEDDocumentStatus.REJEITADO,
+                GEDDocumentStatus.QUARENTENA,
+            ):
                 # Não contam
                 pass
             else:
-                expiry_date = RetentionService.calculate_expiry_date(doc.created_at, doc.document_type)
+                retention_years = (
+                    int(document_type.retention_years)
+                    if document_type is not None and document_type.retention_years is not None
+                    else DEFAULT_RETENTION_YEARS
+                )
+                expiry_date = doc.created_at + timedelta(days=365 * retention_years)
                 days_until_expiry = (expiry_date - now).days
 
                 if days_until_expiry < 0:

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Any
 import datetime
 
 # --- States ---
@@ -10,6 +10,7 @@ class WorkflowStateBase(BaseModel):
     ui_pos_x: Optional[int] = None
     ui_pos_y: Optional[int] = None
     node_type: Optional[str] = "task"
+    config: Optional[dict[str, Any]] = None
 
 class WorkflowStateCreate(WorkflowStateBase):
     pass
@@ -21,6 +22,7 @@ class WorkflowStateUpdate(BaseModel):
     ui_pos_x: Optional[int] = None
     ui_pos_y: Optional[int] = None
     node_type: Optional[str] = None
+    config: Optional[dict[str, Any]] = None
 
 class WorkflowStateResponse(WorkflowStateBase):
     id: str
@@ -80,6 +82,18 @@ class WorkflowResponse(WorkflowBase):
     class Config:
         from_attributes = True
 
+
+class WorkflowVersionResponse(BaseModel):
+    id: str
+    workflow_id: str
+    version_number: int
+    status: str
+    created_at: datetime.datetime
+    published_at: Optional[datetime.datetime] = None
+
+    class Config:
+        from_attributes = True
+
 # --- Instances ---
 class DocumentWorkflowInstanceBase(BaseModel):
     document_id: str
@@ -101,7 +115,9 @@ class DocumentWorkflowInstanceResponse(DocumentWorkflowInstanceBase):
 class WorkflowTaskBase(BaseModel):
     name: str
     description: Optional[str] = None
-    assignee_id: str
+    assignee_id: Optional[str] = None
+    assignee_group_id: Optional[str] = None
+    assignee_role: Optional[str] = None
     due_date: Optional[datetime.datetime] = None
 
 class WorkflowTaskCreate(WorkflowTaskBase):

@@ -1,3 +1,13 @@
+function obterUsuarioAtual() {
+    try {
+        const token = localStorage.getItem('ged_token');
+        return token && typeof parseJwt === 'function' ? parseJwt(token) : null;
+    } catch (erro) {
+        console.error('Não foi possível ler o usuário atual.', erro);
+        return null;
+    }
+}
+
 async function openUserModal() {
     let instSelectHtml = '';
     let campusSelectHtml = '';
@@ -25,15 +35,6 @@ async function openUserModal() {
             console.error("Erro ao carregar instituições:", e);
         }
 
-        function obterUsuarioAtual() {
-            try {
-                const token = localStorage.getItem('ged_token');
-                return token && typeof parseJwt === 'function' ? parseJwt(token) : null;
-            } catch (erro) {
-                console.error('Não foi possível ler o usuário atual.', erro);
-                return null;
-            }
-        }
     }
 
     campusSelectHtml = `
@@ -147,23 +148,87 @@ async function loadUsers() {
             
             const btnEdit = document.createElement('button');
             btnEdit.className = 'btn-primary btn-small';
-            btnEdit.innerHTML = '<i class="fa-solid fa-pen"></i>';
-            btnEdit.title = "Editar Usuário";
+            btnEdit.textContent = 'Editar';
+            btnEdit.title = 'Editar usuário';
             btnEdit.onclick = () => openEditUserModal(u);
+
+            const btnPassword = document.createElement('button');
+            btnPassword.className = 'btn-secondary btn-small';
+            btnPassword.textContent = 'Trocar senha';
+            btnPassword.title = 'Trocar senha do usuário';
+            btnPassword.onclick = () => openChangePasswordModal(u);
             
             const btnToggle = document.createElement('button');
             btnToggle.className = u.is_active ? 'btn-danger btn-small' : 'btn-success btn-small';
-            btnToggle.innerHTML = u.is_active ? '<i class="fa-solid fa-ban"></i>' : '<i class="fa-solid fa-check"></i>';
-            btnToggle.title = u.is_active ? "Bloquear" : "Desbloquear";
+            btnToggle.textContent = u.is_active ? 'Bloquear' : 'Desbloquear';
+            btnToggle.title = u.is_active ? 'Bloquear usuário' : 'Desbloquear usuário';
             btnToggle.onclick = () => toggleUserStatus(u.id, !u.is_active);
             
             tdActions.appendChild(btnPriv);
             tdActions.appendChild(btnEdit);
+            tdActions.appendChild(btnPassword);
             tdActions.appendChild(btnToggle);
             tbody.appendChild(tr);
         });
     } catch(e) {
         tbody.innerHTML = `<tr><td colspan="4" style="color:red">Erro: ${e.message}</td></tr>`;
+    }
+
+    function openChangePasswordModal(user) {
+        document.getElementById('modal-change-password')?.remove();
+        const html = `
+            <div class="modal-overlay active" id="modal-change-password">
+                <div class="modal-content glass-panel" style="width:400px;padding:30px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                        <h2>Trocar senha</h2>
+                        <button class="btn-close" type="button" onclick="document.getElementById('modal-change-password').remove()">✖</button>
+                    </div>
+                    <p>Usuário: <strong>${user.username}</strong></p>
+                    <form id="change-password-form">
+                        <div class="form-group">
+                            <label for="change-password">Nova senha</label>
+                            <input type="password" id="change-password" minlength="8" autocomplete="new-password" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="change-password-confirm">Confirmar nova senha</label>
+                            <input type="password" id="change-password-confirm" minlength="8" autocomplete="new-password" required>
+                        </div>
+                        <p id="change-password-error" style="color:#b91c1c" role="alert"></p>
+                        <button class="btn-primary w-100" type="submit">Salvar nova senha</button>
+                    </form>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+        document.getElementById('change-password-form').onsubmit = evento => changeUserPassword(evento, user.id);
+    }
+
+    async function changeUserPassword(evento, userId) {
+        evento.preventDefault();
+        const erro = document.getElementById('change-password-error');
+        const password = document.getElementById('change-password').value;
+        const confirmation = document.getElementById('change-password-confirm').value;
+        if (password !== confirmation) {
+            erro.textContent = 'As senhas não conferem.';
+            return;
+        }
+        const botao = evento.target.querySelector('button[type="submit"]');
+        botao.disabled = true;
+        try {
+            const response = await fetch(`${API_URL}/users/${userId}/password`, {
+                method: 'PUT',
+                headers: {...getAuthHeaders(), 'Content-Type': 'application/json'},
+                body: JSON.stringify({password})
+            });
+            if (!response.ok) {
+                const detalhe = await response.json().catch(() => ({}));
+                throw new Error(detalhe.detail || 'Não foi possível trocar a senha.');
+            }
+            document.getElementById('modal-change-password').remove();
+            alert('Senha alterada com sucesso.');
+        } catch (error) {
+            erro.textContent = error.message;
+            botao.disabled = false;
+        }
     }
 }
 

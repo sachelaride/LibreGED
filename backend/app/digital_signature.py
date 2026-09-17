@@ -29,7 +29,15 @@ def get_cert_info_from_p12(p12_path: str, password: str):
     subject = certificate.subject.rfc4514_string()
     issuer = certificate.issuer.rfc4514_string()
     
-    return subject, issuer
+    # Extract validity (using naive datetimes as returned by older cryptography, or UTC in newer ones)
+    try:
+        not_valid_before = certificate.not_valid_before_utc
+        not_valid_after = certificate.not_valid_after_utc
+    except AttributeError:
+        not_valid_before = certificate.not_valid_before
+        not_valid_after = certificate.not_valid_after
+    
+    return subject, issuer, not_valid_before, not_valid_after
 
 def load_p12_certificate(p12_path: str, password: str):
     with open(p12_path, "rb") as f:

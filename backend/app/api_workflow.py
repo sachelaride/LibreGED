@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
+import json
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -11,12 +13,219 @@ from app.schemas_workflow import (
     WorkflowTransitionCreate, WorkflowTransitionUpdate, WorkflowTransitionResponse,
     DocumentWorkflowInstanceCreate, DocumentWorkflowInstanceResponse,
     WorkflowTaskResponse, TaskCompletionRequest
+    , WorkflowVersionResponse
 )
 from app.schemas_pagination import PaginatedResponse
 import math
 from datetime import datetime
 
 router = APIRouter()
+
+
+def _is_service_task(node_type: str | None) -> bool:
+    """Accept the current frontend name and the legacy backend name."""
+    return node_type in {"task_service", "service_task"}
+
+
+def _workflow_snapshot(workflow):
+    return {
+        "name": workflow.name,
+        "internal_name": workflow.internal_name,
+        "is_active": workflow.is_active,
+        "states": [
+            {
+                "id": state.id,
+                "label": state.label,
+                "is_initial": state.is_initial,
+                "is_completion": state.is_completion,
+                "node_type": state.node_type,
+                "ui_pos_x": state.ui_pos_x,
+                "ui_pos_y": state.ui_pos_y,
+                "config": state.config,
+            }
+            for state in workflow.states
+        ],
+        "transitions": [
+            {
+                "origin_state_id": transition.origin_state_id,
+                "destination_state_id": transition.destination_state_id,
+                "label": transition.label,
+                "action_code": transition.action_code,
+                "condition_key": transition.condition_key,
+                "condition_value": transition.condition_value,
+                "priority": transition.priority,
+                "is_default": transition.is_default,
+                "allowed_roles": transition.allowed_roles,
+            }
+            for transition in workflow.transitions
+        ],
+    }
+
+
+@router.get("/workflows/{workflow_id}/export", tags=["Admin - Workflows"])
+def export_workflow(workflow_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    workflow = db.get(models_workflow.Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Workflow não encontrado")
+    snapshot = _workflow_snapshot(workflow)
+    snapshot["format"] = "libreged-workflow"
+    snapshot["format_version"] = 1
+    return JSONResponse(content=snapshot, headers={"Content-Disposition": f'attachment; filename="{workflow.internal_name}.json"'})
+
+
+@router.get("/workflows/{workflow_id}/versions", response_model=List[WorkflowVersionResponse], tags=["Admin - Workflows"])
+def list_workflow_versions(workflow_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    if not db.get(models_workflow.Workflow, workflow_id):
+        raise HTTPException(status_code=404, detail="Workflow não encontrado")
+    return db.query(models_workflow.WorkflowVersion).filter_by(workflow_id=workflow_id).order_by(
+        models_workflow.WorkflowVersion.version_number.desc()
+    ).all()
+
+
+@router.post("/workflows/{workflow_id}/versions/publish", response_model=WorkflowVersionResponse, tags=["Admin - Workflows"])
+def publish_workflow_version(workflow_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    workflow = db.get(models_workflow.Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Workflow não encontrado")
+    number = (db.query(models_workflow.WorkflowVersion).filter_by(workflow_id=workflow_id).count() or 0) + 1
+    db.query(models_workflow.WorkflowVersion).filter_by(workflow_id=workflow_id, status="PUBLISHED").update({"status": "ARCHIVED"})
+    version = models_workflow.WorkflowVersion(
+        workflow_id=workflow_id,
+        version_number=number,
+        status="PUBLISHED",
+        snapshot_json=json.dumps(_workflow_snapshot(workflow), ensure_ascii=False),
+        created_by_user_id=current_user.id,
+        published_at=datetime.utcnow(),
+    )
+    db.add(version)
+    db.commit()
+    db.refresh(version)
+    return version
+
+
+@router.post("/workflows/{workflow_id}/versions/{version_number}/restore", response_model=WorkflowVersionResponse, tags=["Admin - Workflows"])
+def restore_workflow_version(
+    workflow_id: str,
+    version_number: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_admin),
+):
+    workflow = db.get(models_workflow.Workflow, workflow_id)
+    version = db.query(models_workflow.WorkflowVersion).filter_by(
+        workflow_id=workflow_id, version_number=version_number
+    ).first()
+    if workflow is None or version is None:
+        raise HTTPException(status_code=404, detail="Workflow ou versão não encontrados")
+    snapshot = json.loads(version.snapshot_json)
+    db.query(models_workflow.WorkflowTransition).filter_by(workflow_id=workflow_id).delete()
+    db.query(models_workflow.WorkflowState).filter_by(workflow_id=workflow_id).delete()
+    db.flush()
+    id_map = {}
+    for item in snapshot.get("states", []):
+        state = models_workflow.WorkflowState(
+            workflow_id=workflow_id,
+            label=item["label"],
+            is_initial=bool(item.get("is_initial", False)),
+            is_completion=bool(item.get("is_completion", False)),
+            node_type=item.get("node_type") or "task",
+            ui_pos_x=item.get("ui_pos_x"),
+            ui_pos_y=item.get("ui_pos_y"),
+            config_json=json.dumps(item.get("config") or {}, ensure_ascii=False),
+        )
+        db.add(state)
+        id_map[item.get("id")] = state
+    db.flush()
+    for item in snapshot.get("transitions", []):
+        origin = id_map.get(item.get("origin_state_id"))
+        destination = id_map.get(item.get("destination_state_id"))
+        if origin and destination:
+            db.add(models_workflow.WorkflowTransition(
+                workflow_id=workflow_id,
+                origin_state_id=origin.id,
+                destination_state_id=destination.id,
+                label=item["label"],
+                action_code=item.get("action_code"),
+                condition_key=item.get("condition_key"),
+                condition_value=item.get("condition_value"),
+                priority=item.get("priority", 0),
+                is_default=bool(item.get("is_default", False)),
+                allowed_roles=item.get("allowed_roles"),
+            ))
+    db.query(models_workflow.WorkflowVersion).filter_by(workflow_id=workflow_id, status="PUBLISHED").update({"status": "ARCHIVED"})
+    new_number = db.query(models_workflow.WorkflowVersion).filter_by(workflow_id=workflow_id).count() + 1
+    restored = models_workflow.WorkflowVersion(
+        workflow_id=workflow_id,
+        version_number=new_number,
+        status="PUBLISHED",
+        snapshot_json=json.dumps(_workflow_snapshot(workflow), ensure_ascii=False),
+        created_by_user_id=current_user.id,
+        published_at=datetime.utcnow(),
+    )
+    db.add(restored)
+    db.commit()
+    db.refresh(restored)
+    return restored
+
+
+@router.post("/workflows/import", response_model=WorkflowResponse, tags=["Admin - Workflows"])
+async def import_workflow(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_admin),
+):
+    try:
+        payload = json.loads((await file.read()).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=422, detail="Arquivo de workflow JSON inválido") from exc
+    if payload.get("format") not in (None, "libreged-workflow"):
+        raise HTTPException(status_code=422, detail="Formato de workflow não reconhecido")
+    name = payload.get("name")
+    internal_name = payload.get("internal_name")
+    if not name or not internal_name:
+        raise HTTPException(status_code=422, detail="Nome e nome interno são obrigatórios")
+    if db.query(models_workflow.Workflow).filter(
+        (models_workflow.Workflow.name == name) | (models_workflow.Workflow.internal_name == internal_name)
+    ).first():
+        raise HTTPException(status_code=409, detail="Já existe workflow com este nome")
+    workflow = models_workflow.Workflow(name=name, internal_name=internal_name, is_active=bool(payload.get("is_active", True)))
+    db.add(workflow)
+    db.flush()
+    id_map = {}
+    for item in payload.get("states", []):
+        state = models_workflow.WorkflowState(
+            workflow_id=workflow.id,
+            label=item["label"],
+            is_initial=bool(item.get("is_initial", False)),
+            is_completion=bool(item.get("is_completion", False)),
+            node_type=item.get("node_type") or "task",
+            ui_pos_x=item.get("ui_pos_x"),
+            ui_pos_y=item.get("ui_pos_y"),
+            config_json=json.dumps(item.get("config") or {}, ensure_ascii=False),
+        )
+        db.add(state)
+        id_map[item.get("id")] = state
+    db.flush()
+    for item in payload.get("transitions", []):
+        origin = id_map.get(item.get("origin_state_id"))
+        destination = id_map.get(item.get("destination_state_id"))
+        if not origin or not destination:
+            continue
+        db.add(models_workflow.WorkflowTransition(
+            workflow_id=workflow.id,
+            origin_state_id=origin.id,
+            destination_state_id=destination.id,
+            label=item["label"],
+            action_code=item.get("action_code"),
+            condition_key=item.get("condition_key"),
+            condition_value=item.get("condition_value"),
+            priority=item.get("priority", 0),
+            is_default=bool(item.get("is_default", False)),
+            allowed_roles=item.get("allowed_roles"),
+        ))
+    db.commit()
+    db.refresh(workflow)
+    return workflow
+
 
 # --- WORKFLOWS ---
 @router.get("/workflows", response_model=PaginatedResponse[WorkflowResponse], tags=["Admin - Workflows"])
@@ -96,7 +305,8 @@ def create_state(workflow_id: str, state_in: WorkflowStateCreate, db: Session = 
         is_completion=state_in.is_completion,
         ui_pos_x=state_in.ui_pos_x,
         ui_pos_y=state_in.ui_pos_y,
-        node_type=state_in.node_type
+        node_type=state_in.node_type,
+        config_json=json.dumps(state_in.config or {}, ensure_ascii=False),
     )
     db.add(state)
     db.commit()
@@ -122,6 +332,8 @@ def update_state(workflow_id: str, state_id: str, state_in: WorkflowStateUpdate,
     if state_in.ui_pos_x is not None: state.ui_pos_x = state_in.ui_pos_x
     if state_in.ui_pos_y is not None: state.ui_pos_y = state_in.ui_pos_y
     if state_in.node_type is not None: state.node_type = state_in.node_type
+    if state_in.config is not None:
+        state.config_json = json.dumps(state_in.config, ensure_ascii=False)
     db.commit()
     db.refresh(state)
     return state
@@ -311,9 +523,13 @@ def get_my_tasks(
     db: Session = Depends(get_db),
     user: models.User = Depends(auth.get_current_active_user)
 ):
-    tasks = db.query(models_workflow.WorkflowTask).filter_by(
-        assignee_id=user.id,
-        status="PENDING"
+    from sqlalchemy import or_
+    tasks = db.query(models_workflow.WorkflowTask).filter(
+        models_workflow.WorkflowTask.status == "PENDING",
+        or_(
+            models_workflow.WorkflowTask.assignee_id == user.id,
+            models_workflow.WorkflowTask.assignee_role == user.role
+        )
     ).all()
     return tasks
 
@@ -328,7 +544,7 @@ def complete_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
         
-    if task.assignee_id != user.id and user.role != "admin_global":
+    if task.assignee_id != user.id and task.assignee_role != user.role and user.role != "admin_global":
         raise HTTPException(status_code=403, detail="You can only complete your own tasks")
         
     if task.status != "PENDING":
@@ -380,6 +596,33 @@ def complete_task(
     task.status = "COMPLETED"
     task.completed_at = datetime.now()
     instance.current_state_id = new_state.id
+    
+    # Criar nova tarefa se o estado não for final
+    if not new_state.is_completion:
+        if _is_service_task(new_state.node_type):
+            # Auto-executa a service task
+            print(f"Executando Service Task: {new_state.label} para o doc {instance.document_id}")
+            st_task = models_workflow.WorkflowTask(
+                instance_id=instance.id,
+                name=new_state.label,
+                description="Execução automatizada (Service Task)",
+                status="COMPLETED",
+                completed_at=datetime.now()
+            )
+            db.add(st_task)
+            
+            # TODO: Auto-avançar o fluxo após service task seria ideal, 
+            # mas simplificamos logando a ação por agora.
+        else:
+            # Tarefa manual normal
+            next_task = models_workflow.WorkflowTask(
+                instance_id=instance.id,
+                name=new_state.label,
+                description="Aguardando ação do usuário",
+                assignee_role=transition.allowed_roles.split(",")[0].strip() if transition.allowed_roles else None,
+                status="PENDING"
+            )
+            db.add(next_task)
     previous_status = documento_autorizado.status
     if new_state.is_completion:
         documento_autorizado.status = GEDDocumentStatus.VALIDO
@@ -440,6 +683,27 @@ def execute_transition(
     
     if doc and new_state and new_state.is_completion:
         doc.status = GEDDocumentStatus.VALIDO
+        
+    if not new_state.is_completion:
+        if _is_service_task(new_state.node_type):
+            print(f"Executando Service Task: {new_state.label} para o doc {instance.document_id}")
+            st_task = models_workflow.WorkflowTask(
+                instance_id=instance.id,
+                name=new_state.label,
+                description="Execução automatizada (Service Task)",
+                status="COMPLETED",
+                completed_at=datetime.now()
+            )
+            db.add(st_task)
+        else:
+            next_task = models_workflow.WorkflowTask(
+                instance_id=instance.id,
+                name=new_state.label,
+                description="Aguardando ação do usuário",
+                assignee_role=transition.allowed_roles.split(",")[0].strip() if transition.allowed_roles else None,
+                status="PENDING"
+            )
+            db.add(next_task)
         
     if doc:
         hist = DocumentTransitionHistory(

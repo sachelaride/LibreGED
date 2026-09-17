@@ -167,3 +167,6 @@ class AuditEvent(Base):
     created_at = Column(DateTime, default=utc_now, index=True)
 
 from app import models_config
+
+# Import visual representation models so they are registered with Base metadata.
+from app import models_representation

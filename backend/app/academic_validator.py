@@ -47,7 +47,10 @@ def validate_documents(req: ValidationRequest) -> List[str]:
     # 3. Validação de Carga Horária
     if hist and curr:
         try:
-            ch_hist = int(hist.documentoHistoricoEscolarFinal.historicoEscolar.cargaHorariaCursoIntegralizada.cargaHorariaIntegralizadaHoraRelogio)
+            ch_hist = int(
+                hist.documentoHistoricoEscolarFinal.historicoEscolar
+                .cargaHorariaCursoIntegralizada.horaRelogio
+            )
             ch_minima_curr = sum(
                 int(crit.cargasHorariasCriterio.cargaHorariaMinima) 
                 for crit in curr.criterioIntegralizacaoRotulos

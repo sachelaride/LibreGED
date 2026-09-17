@@ -8,7 +8,6 @@ from app import models
 from app.auth import get_current_active_user
 from app.models_xsd import SchemaVersion
 from app.xsd_validator import validate_xml_against_xsd
-import os
 
 router = APIRouter(tags=["GED - Validações"])
 
@@ -45,30 +44,17 @@ def validate_xml_agnostic(
             errors=[f"Nenhum Schema 'Vigente' encontrado para o documento: {payload.document_type_code}"]
         )
     
-    # 2. Salvar arquivo temporário do XML (xsd_validator precisa de arquivo físico na implementação atual)
-    # Mas como validate_xml_against_xsd aceita o arquivo XML para validar, 
-    # teremos que ver se a assinatura dele permite receber string.
-    # Vou escrever um arquivo temporário.
-    import tempfile
-    
-    xml_fd, xml_path = tempfile.mkstemp(suffix=".xml")
-    with os.fdopen(xml_fd, 'w', encoding='utf-8') as f:
-        f.write(payload.xml_content)
-        
-    try:
-        # Pega o XSD da pasta local
-        xsd_path = os.path.join(os.path.dirname(__file__), "..", "schemas", schema.code + ".xsd")
-        
-        # Fallback para o XSD mock se não existir o real
-        if not os.path.exists(xsd_path):
-            xsd_path = os.path.join(os.path.dirname(__file__), "..", "schemas", "mock_diploma.xsd")
-            
-        validation_result = validate_xml_against_xsd(xml_path, xsd_path)
-        
-        return XSDValidatorResponse(
-            valid=validation_result["valid"],
-            schema_code=schema.code,
-            errors=validation_result.get("errors", [])
+    schema_filename = f"{schema.code}.xsd"
+    valid, errors = validate_xml_against_xsd(payload.xml_content, schema_filename)
+    if schema.code == "mock_diploma" and not valid:
+        # Keep the local mock schema available under the administrative code.
+        valid, errors = validate_xml_against_xsd(
+            payload.xml_content,
+            "mock_diploma.xsd",
         )
-    finally:
-        os.remove(xml_path)
+
+    return XSDValidatorResponse(
+        valid=valid,
+        schema_code=schema.code,
+        errors=errors,
+    )

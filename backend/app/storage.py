@@ -8,7 +8,13 @@ from app.models_storage import StorageRule
 STORAGE_ROOT = Path(__file__).resolve().parent.parent / "storage"
 STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 
-def save_file(file_name: str, content: bytes, db: Session = None, rule_name: str = None) -> str:
+def save_file(
+    file_name: str,
+    content: bytes,
+    db: Session = None,
+    rule_name: str = None,
+    partition_name: str = None,
+) -> str:
     safe_name = Path(file_name).name
     if not safe_name or safe_name != file_name:
         raise ValueError("file_name must not contain path components")
@@ -19,7 +25,7 @@ def save_file(file_name: str, content: bytes, db: Session = None, rule_name: str
         # Find active rule
         query = db.query(StorageRule).filter(StorageRule.is_active == True)
         if rule_name:
-            query = query.filter(StorageRule.name == rule_name)
+            query = query.filter((StorageRule.id == rule_name) | (StorageRule.name == rule_name))
         
         rule = query.first()
         
@@ -69,6 +75,13 @@ def save_file(file_name: str, content: bytes, db: Session = None, rule_name: str
                 db.commit()
                 
                 target_dir = STORAGE_ROOT / rule.base_path
+                target_dir.mkdir(parents=True, exist_ok=True)
+
+            if partition_name:
+                safe_partition = Path(partition_name).name
+                if safe_partition != partition_name or safe_partition in {"", ".", ".."}:
+                    raise ValueError("partition_name must be a single safe directory name")
+                target_dir = target_dir / safe_partition
                 target_dir.mkdir(parents=True, exist_ok=True)
 
     target = target_dir / safe_name

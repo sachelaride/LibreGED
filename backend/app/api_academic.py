@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.database import get_db
 from app import models
+from app.models_ged import GEDDocument
+from app.models_xsd import SchemaVersion
 from app.auth import get_current_active_user
 
 class XmlGenerationRequest(BaseModel):
@@ -77,13 +79,34 @@ def generate_xml_for_document(
     current_user: models.User = Depends(get_current_active_user)
 ):
     # Validar documento
-    document = db.query(models.Document).filter(models.Document.id == document_id).first()
+    document = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
         
     # Verificar permissão do documento
     from app.auth import verify_document_ownership
     verify_document_ownership(current_user, document)
+
+    if not payload.schema_version:
+        from app.main import add_audit
+        add_audit(
+            db,
+            "document",
+            document_id,
+            "xml_generation_blocked",
+            "Schema version is required; inference is forbidden.",
+            current_user.id,
+        )
+        db.commit()
+        raise HTTPException(409, "schema version inference is forbidden")
+
+    schema = db.query(SchemaVersion).filter(
+        SchemaVersion.code == payload.schema_version,
+        SchemaVersion.environment == payload.environment,
+        SchemaVersion.status == "approved",
+    ).first()
+    if not schema:
+        raise HTTPException(409, "schema version is not approved")
 
     generated_xml = ""
     # Selecionar o gerador correto de acordo com o tipo
@@ -132,10 +155,13 @@ def generate_visual_representation(
     current_user: models.User = Depends(get_current_active_user)
 ):
     # Essa rota geraria o RVDD (Representação Visual do Diploma Digital) ou HTML do histórico.
-    document = db.query(models.Document).filter(models.Document.id == document_id).first()
+    document = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-        
+
+    from app.auth import verify_document_ownership
+    verify_document_ownership(current_user, document)
+
     from app.rvdd_generator import generate_rvdd_html
     html_content = generate_rvdd_html(document_id, payload.get("student_name", "Aluno"), payload.get("course_name", "Curso"))
     

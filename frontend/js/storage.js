@@ -9,6 +9,7 @@ async function loadStorageRules() {
         });
         if(!response.ok) throw new Error("Erro ao carregar regras de armazenamento");
         
+        const rawData = await response.json();
         const rules = rawData.items ? rawData.items : rawData;
         window.storageRulesData = rules;
         tbody.innerHTML = '';
@@ -39,7 +40,7 @@ async function loadStorageRules() {
             tbody.appendChild(tr);
         });
     } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="6" style="color:#fbbf24">${error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="color:#fbbf24">${error.message}</td></tr>`;
     }
 }
 

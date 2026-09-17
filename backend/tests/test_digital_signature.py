@@ -9,6 +9,9 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
 import datetime
 from app.main import app
+from app.database import SessionLocal
+from app.models_ged_config import DocumentType
+import uuid
 
 client = TestClient(app)
 
@@ -53,6 +56,32 @@ def test_xmldsig_flow():
     p12_password = "teste"
     p12_bytes = generate_test_p12(p12_password.encode())
     
+    institution_res = client.post(
+        "/api/institutions",
+        json={
+            "name": "IES Assinatura",
+            "cnpj": "61.000.000/0001-00",
+            "legal_name": "IES Assinatura Ltda",
+        },
+    )
+    assert institution_res.status_code == 200, institution_res.json()
+    institution_id = institution_res.json()["id"]
+
+    db = SessionLocal()
+    document_type_id = str(uuid.uuid4())
+    db.add(
+        DocumentType(
+            id=document_type_id,
+            name="XML para Assinatura",
+            storage_area_id="dummy_area",
+            storage_partition_id="dummy_partition",
+            is_active=True,
+            signature_rule={"signatures": [{"role": "Reitor", "order": 1}]},
+        )
+    )
+    db.commit()
+    db.close()
+
     # 2. Upload do Signatário
     signer_res = client.post(
         "/api/signers",
@@ -63,42 +92,33 @@ def test_xmldsig_flow():
         },
         files={"p12_file": ("test.p12", p12_bytes, "application/x-pkcs12")}
     )
-    # Se já existir o CPF por causa de lixo no DB
-    if signer_res.status_code == 409 or signer_res.status_code == 500:
-        pass # Ignora erro de duplicate key para o teste
-    else:
-        assert signer_res.status_code == 200
-        signer_id = signer_res.json()["id"]
+    assert signer_res.status_code == 200, signer_res.json()
+    signer_id = signer_res.json()["id"]
 
-        # 3. Criar uma Categoria
-        cat_res = client.post("/api/ged/categories", json={
-            "index_code": "0099",
-            "name": "Doc para Assinar",
-            "description": "Teste"
-        })
-        if cat_res.status_code == 200:
-            cat_id = cat_res.json()["id"]
-        else:
-            cat_id = "qualquer_coisa" # mock fallback
-
-        # 4. Criar um documento
-        doc_res = client.post("/api/ged/documents", json={
+    # 3. Criar o documento pelo fluxo GED atual.
+    doc_res = client.post(
+        "/api/documents/upload",
+        data={
             "title": "Diploma do Aluno",
-            "category_id": cat_id,
-            "academic_phase": "DIPLOMACAO"
-        })
-        
-        if doc_res.status_code == 200:
-            doc_id = doc_res.json()["id"]
-            
-            # 5. Assinar
-            sign_res = client.post(
-                f"/api/documents/{doc_id}/sign",
-                json={
-                    "signer_id": signer_id,
-                    "password": p12_password,
-                    "comments": "Assinado pelo Reitor"
-                }
-            )
-            assert sign_res.status_code == 200
-            assert "Signature" in sign_res.json()["signed_xml"]
+            "document_type_id": document_type_id,
+            "indices_json": "[]",
+        },
+        files={"file": ("diploma.xml", b"<Diploma><Aluno>Joao</Aluno></Diploma>", "application/xml")},
+    )
+    assert doc_res.status_code == 200, doc_res.json()
+    doc_id = doc_res.json()["id"]
+
+    # 4. Assinar
+    sign_res = client.post(
+        f"/api/documents/{doc_id}/sign",
+        json={
+            "signer_id": signer_id,
+            "password": p12_password,
+            "comments": "Assinado pelo Reitor",
+        },
+    )
+    assert sign_res.status_code == 200, sign_res.json()
+    assert sign_res.json()["type"] == "XMLDSig"
+    signatures_res = client.get(f"/api/documents/{doc_id}/signatures")
+    assert signatures_res.status_code == 200
+    assert signatures_res.json()[0]["status"] == "SUCCESS"

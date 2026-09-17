@@ -17,6 +17,9 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     campus_id: Optional[str] = None
 
+class UserPasswordUpdate(BaseModel):
+    password: str
+
 class PermissionGroupCreate(BaseModel):
     name: str
     institution_id: str

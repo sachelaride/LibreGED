@@ -16,7 +16,7 @@ class InstitutionUpdate(BaseModel):
 
 class InstitutionResponse(InstitutionBase):
     id: str
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

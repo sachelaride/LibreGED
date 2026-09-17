@@ -10,7 +10,7 @@ from app.models import Campus
 from app import auth
 from app.schemas_users import (
     UserCreate, UserResponse, PermissionGroupCreate, PermissionGroupUpdate,
-    PermissionGroupPermission,
+    PermissionGroupPermission, UserPasswordUpdate,
 )
 from app.schemas_pagination import PaginatedResponse
 import math
@@ -132,6 +132,27 @@ def update_user(
     db.refresh(user)
     return user
 
+@router.put("/users/{user_id}/password", status_code=204, tags=["Admin - Users"])
+def update_user_password(
+    user_id: str,
+    password_in: UserPasswordUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.role_checker(["admin_global", "admin_instituicao"]))
+):
+    if len(password_in.password) < 8:
+        raise HTTPException(status_code=422, detail="A senha deve ter pelo menos 8 caracteres.")
+
+    user = db.query(models.User).filter_by(id=user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if current_user.role != "admin_global" and (
+        user.institution_id != current_user.institution_id or user.role == "admin_global"
+    ):
+        raise HTTPException(status_code=403, detail="Não permitido")
+
+    user.hashed_password = auth.get_password_hash(password_in.password)
+    db.commit()
+
 @router.delete("/users/{user_id}", tags=["Admin - Users"])
 def delete_user(
     user_id: str,
@@ -195,7 +216,8 @@ def consultar_permissoes(usuario_id: str, db: Session = Depends(get_db),
     return {
         "acoes": ACOES,
         "tipos": [{"id": t.id, "name": t.name, "is_active": t.is_active} for t in tipos],
-        "vinculos": [{"document_type_id": v.document_type_id, "permissions": v.permissions} for v in vinculos],
+        "vinculos": [{"document_type_id": v.document_type_id, "permissions": v.permissions,
+                      "denied_permissions": v.denied_permissions} for v in vinculos],
     }
 
 

@@ -37,6 +37,7 @@ from app.curriculo_generator import generate_curriculo_xml
 from app.academic_validator import ValidationRequest, validate_documents
 from app.schemas_ged import GEDDocumentCreate, GEDDocumentResponse, DocumentStatusUpdate, DocumentTransitionResponse, DocumentCategoryCreate, DocumentCategoryResponse
 from app.models_ged import GEDDocument, DocumentCategory, DocumentTransitionHistory, GEDDocumentStatus
+from app import models_ged_config
 from app.ocr_engine import DocumentAnalyzer
 
 tags_metadata = [
@@ -127,7 +128,10 @@ async def storage_reconciliation_task():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Para desenvolvimento local
+    allow_origins=[
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -145,12 +149,12 @@ AdminOnly = Depends(role_checker(["admin_global"]))
 InstitutionRoles = Depends(role_checker(["admin_global", "admin_instituicao", "operador", "leitor", "auditor"]))
 
 from app import api_admin, api_users, api_institutions, api_ged_upload, api_ecm, api_sites, api_health
-from app import api_storage_config, api_ged_config, api_workflow, api_templates, api_search, api_erp_ingestion, api_digital_signature, api_academic, api_xsd, api_academic_dossier, api_validator, api_quarantine, api_integration, api_dashboard
+from app import api_storage_config, api_ged_config, api_workflow, api_templates, api_search, api_erp_ingestion, api_digital_signature, api_academic, api_xsd, api_academic_dossier, api_validator, api_quarantine, api_integration, api_dashboard, api_representation
 from app import api_ecm_dictionary, api_public
 
 app.include_router(api_admin.router)
 app.include_router(api_users.router, prefix="/api")
-app.include_router(api_institutions.router, prefix="/api")
+app.include_router(api_institutions.router)
 
 app.include_router(api_ged_upload.router)
 app.include_router(api_ecm.router)
@@ -170,6 +174,7 @@ app.include_router(api_validator.router)
 app.include_router(api_quarantine.router)
 app.include_router(api_integration.router)
 app.include_router(api_dashboard.router)
+app.include_router(api_representation.router)
 from app import api_document_operations
 app.include_router(api_document_operations.router)
 app.include_router(api_public.router)
@@ -620,19 +625,27 @@ def get_document_lifecycle(
     current_user: models.User = Depends(get_current_active_user)
 ):
     """Obter informaÃƒÂ§ÃƒÂµes de ciclo de vida de um documento especÃƒÂ­fico."""
-    document = db.query(models.Document).filter(models.Document.id == document_id).first()
+    document = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
     if document is None:
         return {"detail": "document not found"}
         
     from app.auth import verify_document_ownership
     verify_document_ownership(current_user, document)
     
-    retention_years = RetentionService.get_retention_period(document.document_type)
-    expiry_date = RetentionService.calculate_expiry_date(document.created_at, document.document_type)
+    document_type = db.query(models_ged_config.DocumentType).filter(
+        models_ged_config.DocumentType.id == document.category_id
+    ).first()
+    document_type_name = document_type.name if document_type else "tipo_unknown"
+    retention_years = (
+        int(document_type.retention_years)
+        if document_type is not None and document_type.retention_years is not None
+        else 5
+    )
+    expiry_date = document.created_at + timedelta(days=365 * retention_years)
     days_remaining = (expiry_date - datetime.now(UTC).replace(tzinfo=None)).days
     
     action_required = "NONE"
-    if document.status == "archived":
+    if document.status == GEDDocumentStatus.ARQUIVADO:
         action_required = "NONE"
     elif days_remaining < 0:
         action_required = "ARCHIVE"
@@ -641,8 +654,8 @@ def get_document_lifecycle(
     
     lifecycle = DocumentLifecycleInfo(
         document_id=document_id,
-        status=document.status,
-        document_type=document.document_type,
+        status=document.status.value,
+        document_type=document_type_name,
         created_at=document.created_at,
         expiry_date=expiry_date.isoformat(),
         days_remaining=days_remaining,
@@ -673,4 +686,3 @@ def add_audit(db: Session, entity: str, entity_id: str, action: str, details: st
         hash_signature=signature,
     )
     db.add(audit_event)
-

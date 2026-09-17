@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.database import SessionLocal
+from app.models_ged_config import DocumentType
 
 client = TestClient(app)
 
@@ -78,18 +80,27 @@ def test_create_student_guardian_enrollment_and_document():
     assert enrollment["student_id"] == student_id
     assert enrollment["course_name"] == "Ensino Fundamental I"
 
+    document_type_id = "matricula"
+    with SessionLocal() as db:
+        db.add(DocumentType(
+            id=document_type_id,
+            name="Matrícula",
+            is_active=True,
+            storage_area_id="default",
+            storage_partition_id="default",
+        ))
+        db.commit()
+
     document_response = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution_id,
-            "student_id": student_id,
-            "enrollment_id": enrollment["id"],
-            "document_type": "matricula",
+        "/api/documents/upload",
+        data={
             "title": "Contrato de matrícula",
-            "status": "pending",
+            "document_type_id": document_type_id,
+            "indices_json": "[]",
         },
+        files={"file": ("matricula.txt", b"contrato de matricula", "text/plain")},
     )
     assert document_response.status_code == 200
     document = document_response.json()
     assert document["title"] == "Contrato de matrícula"
-    assert document["student_id"] == student_id
+    assert document["status"] == "PENDENTE_VALIDACAO"

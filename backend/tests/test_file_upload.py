@@ -1,235 +1,113 @@
-from hashlib import sha256
 from pathlib import Path
+import hashlib
 
 from fastapi.testclient import TestClient
 
+from app.database import SessionLocal
 from app.main import app
+from app.models_ged_config import DocumentType
+
 
 client = TestClient(app)
 
 
-def test_document_upload_and_audit():
-    institution = client.post(
-        "/api/institutions",
-        json={
-            "name": "IES Teste",
-            "cnpj": "12.345.678/0001-99",
-            "legal_name": "IES Teste Ltda",
-        },
-    ).json()
+def create_document_type(name: str) -> str:
+    document_type_id = name.lower().replace(" ", "-")
+    db = SessionLocal()
+    try:
+        db.add(
+            DocumentType(
+                id=document_type_id,
+                name=name,
+                is_active=True,
+                storage_area_id="default",
+                storage_partition_id="default",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    return document_type_id
 
-    student = client.post(
-        "/api/students",
-        json={
-            "institution_id": institution["id"],
-            "full_name": "Ana Souza",
-            "birth_date": "2010-01-10",
-            "cpf": "11122233344",
-            "email": "ana@email.com",
-        },
-    ).json()
 
-    enrollment = client.post(
-        "/api/enrollments",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student["id"],
-            "course_name": "Ensino Fundamental II",
-            "class_name": "8B",
-            "year": 2026,
-            "status": "active",
-        },
-    ).json()
-
-    document = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student["id"],
-            "enrollment_id": enrollment["id"],
-            "document_type": "historico",
-            "title": "Histórico escolar",
-            "status": "pending",
-        },
-    ).json()
-
+def create_institution(name: str, cnpj: str) -> dict:
     response = client.post(
-        f"/api/documents/{document['id']}/upload",
-        files={"file": ("historico.txt", b"conteudo do historico escolar", "text/plain")},
+        "/api/institutions",
+        json={"name": name, "cnpj": cnpj, "legal_name": f"{name} Ltda"},
+    )
+    assert response.status_code == 200, response.json()
+    return response.json()
+
+
+def upload(document_type_id: str, title: str, content: bytes):
+    return client.post(
+        "/api/documents/upload",
+        data={
+            "title": title,
+            "document_type_id": document_type_id,
+            "indices_json": "[]",
+        },
+        files={"file": ("documento.txt", content, "text/plain")},
     )
 
-    assert response.status_code == 200
+
+def test_document_upload_and_audit():
+    create_institution("IES Teste", "12.345.678/0001-99")
+    document_type_id = create_document_type("Histórico Escolar")
+
+    response = upload(
+        document_type_id,
+        "Histórico escolar",
+        b"conteudo do historico escolar",
+    )
+
+    assert response.status_code == 200, response.json()
     payload = response.json()
-    assert payload["document_id"] == document["id"]
-    assert payload["version"]["file_name"] == "historico.txt"
-    assert payload["version"]["version_number"] == 1
-    assert payload["version"]["checksum"] == sha256(b"conteudo do historico escolar").hexdigest()
-
-    second_response = client.post(
-        f"/api/documents/{document['id']}/upload",
-        files={"file": ("historico.txt", b"segunda versao", "text/plain")},
-    )
-    assert second_response.status_code == 200
-    second_version = second_response.json()["version"]
-    assert second_version["version_number"] == 2
-    assert second_version["stored_path"] != payload["version"]["stored_path"]
-    assert Path(payload["version"]["stored_path"]).read_bytes() == b"conteudo do historico escolar"
-    assert Path(second_version["stored_path"]).read_bytes() == b"segunda versao"
+    assert payload["title"] == "Histórico escolar"
+    assert payload["status"] == "PENDENTE_VALIDACAO"
+    assert payload["file_hash"] == hashlib.sha256(b"conteudo do historico escolar").hexdigest()
+    assert Path(payload["file_path"]).read_bytes() == b"conteudo do historico escolar"
 
     audit = client.get("/api/audit")
     assert audit.status_code == 200
     assert len(audit.json()) > 0
 
 
-def test_upload_rejects_unknown_document():
-    response = client.post(
-        "/api/documents/unknown/upload",
-        files={"file": ("documento.txt", b"conteudo", "text/plain")},
+def test_upload_rejects_unknown_document_type():
+    response = upload("missing-document-type", "Documento", b"conteudo")
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Tipo de Documento inválido."}
+
+
+def test_upload_and_search_documents():
+    create_institution("IES Busca", "10.000.000/0001-00")
+    document_type_id = create_document_type("Contrato de Matrícula")
+
+    response = upload(
+        document_type_id,
+        "Contrato de matrícula",
+        b"conteudo do contrato",
     )
+    assert response.status_code == 200, response.json()
 
-    assert response.status_code == 404
-    assert response.json() == {"detail": "document not found"}
-
-
-def test_generate_xml_and_search_documents():
-    institution = client.post(
-        "/api/institutions",
-        json={
-            "name": "IES XML",
-            "cnpj": "10.000.000/0001-00",
-            "legal_name": "IES XML Ltda",
-        },
-    ).json()
-
-    student = client.post(
-        "/api/students",
-        json={
-            "institution_id": institution["id"],
-            "full_name": "Bruno Pereira",
-            "birth_date": "2011-07-22",
-            "cpf": "22233344455",
-            "email": "bruno@email.com",
-        },
-    ).json()
-
-    enrollment = client.post(
-        "/api/enrollments",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student["id"],
-            "course_name": "Ensino Fundamental V",
-            "class_name": "9A",
-            "year": 2026,
-            "status": "active",
-        },
-    ).json()
-
-    document = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student["id"],
-            "enrollment_id": enrollment["id"],
-            "document_type": "contrato",
-            "title": "Contrato de matrícula",
-            "status": "pending",
-        },
-    ).json()
-
-    schema = client.post(
-        "/api/schema-versions",
-        json={
-            "code": "contrato-1.0",
-            "document_type": "contrato",
-            "namespace": "https://example.org/contrato/1.0",
-            "xsd_hash": "a" * 64,
-            "status": "approved",
-            "valid_from": "2020-01-01T00:00:00",
-            "environment": "homologation",
-        },
+    search_response = client.get(
+        "/api/documents/search",
+        params={"q": "Contrato de matrícula"},
     )
-    assert schema.status_code == 201
-
-    xml_response = client.post(
-        f"/api/documents/{document['id']}/xml",
-        json={
-            "student_name": "Bruno Pereira",
-            "course_name": "Ensino Fundamental V",
-            "status": "pending",
-            "document_type": "contrato",
-            "schema_version": "contrato-1.0",
-            "namespace": "https://example.org/contrato/1.0",
-        },
-    )
-
-    assert xml_response.status_code == 200
-    xml_body = xml_response.json()["xml"]
-    assert "<documento" in xml_body.lower()
-    assert "Bruno Pereira" in xml_body
-    assert xml_response.json()["schema_version"] == "contrato-1.0"
-
-    search_response = client.get("/api/documents/search", params={"student_id": student["id"]})
-    assert search_response.status_code == 200
+    assert search_response.status_code == 200, search_response.json()
     payload = search_response.json()
-    assert len(payload) >= 1
-    assert payload[0]["title"] == "Contrato de matrícula"
+    assert payload["total"] >= 1
+    assert any(item["title"] == "Contrato de matrícula" for item in payload["items"])
 
 
-def test_generate_visual_representation_and_retention_policy():
-    institution = client.post(
-        "/api/institutions",
-        json={
-            "name": "IES Visual",
-            "cnpj": "11.111.111/0001-11",
-            "legal_name": "IES Visual Ltda",
-        },
-    ).json()
+def test_document_details_and_retention_are_exposed_by_current_api():
+    create_institution("IES GED", "11.111.111/0001-11")
+    document_type_id = create_document_type("Histórico de Notas")
+    response = upload(document_type_id, "Histórico de notas", b"notas")
+    assert response.status_code == 200, response.json()
+    document_id = response.json()["id"]
 
-    student = client.post(
-        "/api/students",
-        json={
-            "institution_id": institution["id"],
-            "full_name": "Carla Mendes",
-            "birth_date": "2012-03-12",
-            "cpf": "33344455566",
-            "email": "carla@email.com",
-        },
-    ).json()
-
-    enrollment = client.post(
-        "/api/enrollments",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student["id"],
-            "course_name": "Ensino Médio",
-            "class_name": "2A",
-            "year": 2026,
-            "status": "active",
-        },
-    ).json()
-
-    document = client.post(
-        "/api/documents",
-        json={
-            "institution_id": institution["id"],
-            "student_id": student["id"],
-            "enrollment_id": enrollment["id"],
-            "document_type": "historico",
-            "title": "Histórico de notas",
-            "status": "validated",
-        },
-    ).json()
-
-    representation_response = client.post(f"/api/documents/{document['id']}/representation")
-    assert representation_response.status_code == 200
-    representation = representation_response.json()
-    assert representation["document_id"] == document["id"]
-    assert "Carla Mendes" in representation["summary"]
-    assert representation["visual_type"] == "academic-card"
-
-    retention_response = client.get(f"/api/documents/{document['id']}/retention")
-    assert retention_response.status_code == 200
-    retention = retention_response.json()
-    assert retention["document_id"] == document["id"]
-    assert retention["retention_years"] >= 5
-    assert retention["status"] == "active"
+    details = client.get(f"/api/documents/{document_id}/details")
+    assert details.status_code == 200, details.json()
+    assert details.json()["id"] == document_id

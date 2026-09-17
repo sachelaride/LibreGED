@@ -2,7 +2,6 @@ import uuid
 from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Integer
 from sqlalchemy.orm import relationship
 from app.models import Base, utc_now
-from app.models_ecm import Node
 
 class AcademicDossier(Base):
     __tablename__ = "academic_dossiers"
@@ -27,16 +26,16 @@ class DossierDocument(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     dossier_id = Column(String, ForeignKey("academic_dossiers.id"), nullable=False, index=True)
-    document_id = Column(String, ForeignKey("ecm_nodes.id"), nullable=False)
+    document_id = Column(String, ForeignKey("ged_documents.id"), nullable=False)
     document_type_code = Column(String, nullable=False) # e.g. RG, CPF, HISTORICO
-    
+
     # Frozen snapshot data
-    file_hash = Column(String, nullable=False) 
+    file_hash = Column(String, nullable=False)
     version_number = Column(Integer, nullable=False, default=1)
     added_at = Column(DateTime, default=utc_now)
 
     dossier = relationship("AcademicDossier", back_populates="documents")
-    document = relationship("Node")
+    document = relationship("GEDDocument")
 
 
 class AcademicValidation(Base):

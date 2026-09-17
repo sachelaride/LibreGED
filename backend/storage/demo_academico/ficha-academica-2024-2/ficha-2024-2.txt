@@ -1,0 +1,6 @@
+DEMO-ACADEMICO
+Aluno: Ana Beatriz Demonstracao
+CPF: 99999999999
+Curso: Pedagogia
+Semestre: 2024.2
+Tipo: DEMO Ficha acadêmica - 2024.2

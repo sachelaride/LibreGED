@@ -30,19 +30,30 @@ async function loadInstitutions() {
     const tbody = document.getElementById('table-institutions-body');
     if (!tbody) return;
     
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">Carregando...</td></tr>';
     
     try {
         const response = await fetch(`${API_URL}/institutions`, { headers: getAuthHeaders() });
         const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.detail || `Falha ao carregar instituições (${response.status})`);
+        }
+
+        // Accept both the paginated contract and the legacy list response while
+        // deployments are upgraded independently.
+        const institutions = Array.isArray(data) ? data : data.items;
+        if (!Array.isArray(institutions)) {
+            throw new Error('Resposta inválida da API de instituições.');
+        }
+
         tbody.innerHTML = '';
         
-        if (data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Nenhuma instituição encontrada.</td></tr>';
+        if (institutions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">Nenhuma instituição encontrada.</td></tr>';
             return;
         }
         
-        data.items.forEach(inst => {
+        institutions.forEach(inst => {
             const tr = document.createElement('tr');
             // Safe JSON stringify for the button onclick
             const instJson = JSON.stringify(inst).replace(/"/g, '&quot;');
@@ -59,7 +70,7 @@ async function loadInstitutions() {
             tbody.appendChild(tr);
         });
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="4" style="color:red">Erro: ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="color:red">Erro: ${e.message}</td></tr>`;
     }
 }
 

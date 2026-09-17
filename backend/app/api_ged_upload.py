@@ -9,11 +9,13 @@ from app.schemas_ged import GEDDocumentResponse
 from app.search import SearchService
 import uuid
 import json
+import hashlib
 from pathlib import Path
 
 from app.auth import get_current_active_user, check_document_type_access
 from app.models import User, InstitutionSettings
 from app.config_manager import config_manager
+import os
 
 router = APIRouter()
 
@@ -71,8 +73,14 @@ async def upload_document(
     file_ext = file.filename.split(".")[-1] if file.filename else "pdf"
     safe_name = f"{uuid.uuid4()}.{file_ext}"
     
-    # Em um sistema real, o save_file usaria doc_type.storage_area_id e partition_id
-    saved_path = save_file(safe_name, content, db=db, rule_name=doc_type.storage_area_id)
+    saved_path = save_file(
+        safe_name,
+        content,
+        db=db,
+        rule_name=doc_type.storage_area_id,
+        partition_name=doc_type.storage_partition_id,
+    )
+    file_hash = hashlib.sha256(content).hexdigest()
 
     # O modelo legado de GED exige uma categoria própria para a FK do documento.
     category = db.query(DocumentCategory).filter(DocumentCategory.id == doc_type.id).first()
@@ -86,6 +94,7 @@ async def upload_document(
     db_doc = GEDDocument(
         title=title,
         file_path=saved_path,
+        file_hash=file_hash,
         category_id=doc_type.id, # Backward compatibility for existing schemas
         status=initial_doc_status,
         institution_id=current_user.institution_id,
@@ -103,6 +112,16 @@ async def upload_document(
             index_id=indice.id,
             value=valor,
         ))
+
+    from app.main import add_audit
+    add_audit(
+        db,
+        "document",
+        db_doc.id,
+        "created",
+        "GED document uploaded.",
+        persisted_user_id,
+    )
         
     # Inicializar o Workflow se não estiver na quarentena
     if doc_type.workflow_id and initial_doc_status != GEDDocumentStatus.QUARENTENA:
@@ -138,7 +157,17 @@ async def upload_document(
         )
         db.add(transition)
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        # Compensação: remover o arquivo físico que foi salvo
+        if os.path.exists(saved_path):
+            try:
+                os.remove(saved_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"Erro interno ao salvar documento: {str(e)}")
     db.refresh(db_doc)
     
     # Manter compatibilidade com o serviço de busca PostgreSQL.

@@ -52,10 +52,21 @@
                     <span class="icon">🗄️</span> Armazenamento
                 </a>
                 <a href="#" class="menu-item role-admin-global" data-target="workflows">
-                    <span class="icon">🔄</span> Workflows
+                    <span class="icon workflow-icon" aria-hidden="true">
+                        <svg viewBox="0 0 32 32" role="img" aria-label="Fluxo">
+                            <rect x="2.5" y="11" width="8" height="8" rx="2"></rect>
+                            <rect x="21.5" y="2.5" width="8" height="8" rx="2"></rect>
+                            <rect x="21.5" y="21.5" width="8" height="8" rx="2"></rect>
+                            <path d="M10.5 15h5a3 3 0 0 0 3-3V8.5h3"></path>
+                            <path d="M10.5 15h5a3 3 0 0 1 3 3v5.5h3"></path>
+                        </svg>
+                    </span> Workflows
                 </a>
                 <a href="#" class="menu-item role-admin-global" data-target="templates-html">
                     <span class="icon">📄</span> Templates (RVDD)
+                </a>
+                <a href="#" class="menu-item role-admin-global" data-target="representation-services">
+                    <span class="icon">🖼️</span> Representação Visual XML
                 </a>
 
                 <!-- Gestor da Instituição Somente -->
@@ -225,7 +236,7 @@
                                 </tr>
                             </thead>
                             <tbody id="table-rules-body">
-                                <tr><td colspan="6" style="text-align:center;">Carregando...</td></tr>
+                                <tr><td colspan="7" style="text-align:center;">Carregando...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -297,6 +308,12 @@
                             <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                                 <h4>Editor: <span id="current-workflow-name" style="color:var(--primary);">Selecione um workflow</span></h4>
                                 <div>
+                                    <button class="btn-secondary btn-small" id="btn-organize-workflow" disabled onclick="organizeCurrentWorkflow()">Organizar fluxo</button>
+                                    <button class="btn-secondary btn-small" id="btn-export-workflow" disabled onclick="exportCurrentWorkflow()">Baixar JSON</button>
+                                    <button class="btn-secondary btn-small" id="btn-publish-workflow" disabled onclick="publishCurrentWorkflow()">Publicar versão</button>
+                                    <button class="btn-secondary btn-small" id="btn-versions-workflow" disabled onclick="restoreWorkflowVersion()">Versões</button>
+                                    <button class="btn-secondary btn-small" id="btn-import-workflow" onclick="document.getElementById('workflow-import-file').click()">Importar JSON</button>
+                                    <input type="file" id="workflow-import-file" accept="application/json,.json" hidden onchange="importWorkflowFile(this.files[0])">
                                     <button class="btn-secondary btn-small" id="btn-add-state" disabled onclick="openStateModal()" style="display:none;">+ Estado (Nó)</button>
                                     <span id="editor-hint" style="font-size:12px; color:var(--text-muted);">Arraste ou clique em um elemento do painel esquerdo para criar um nó</span>
                                 </div>
@@ -365,7 +382,7 @@
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label id="lbl-pass">Senha / Secret Key</label>
-                        <input type="password" id="rule-network-password" placeholder="">
+                        <input type="password" id="rule-network-password" placeholder="" autocomplete="current-password">
                     </div>
                 </div>
             </div>
@@ -415,9 +432,9 @@
 
     <!-- Modal Novo Workflow -->
                 <div class="modal-overlay" id="modal-workflow">
-                    <div class="modal-content glass-panel" style="width: 400px; padding: 30px;">
+                    <div class="modal-content glass-panel" style="width: 520px; max-width: calc(100vw - 32px); padding: 30px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                            <h2>Novo Workflow</h2>
+                            <h2 id="workflow-modal-title">Novo Workflow</h2>
                             <button class="btn-close" onclick="document.getElementById('modal-workflow').classList.remove('active')">✖</button>
                         </div>
                         <form onsubmit="event.preventDefault(); saveWorkflow();">
@@ -437,9 +454,9 @@
                 
                 <!-- Modal Novo Estado -->
                 <div class="modal-overlay" id="modal-state">
-                    <div class="modal-content glass-panel" style="width: 400px; padding: 30px;">
+                    <div class="modal-content glass-panel" style="width: 460px; max-width: calc(100vw - 32px); padding: 30px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                            <h2>Novo Estado</h2>
+                            <h2 id="state-modal-title">Novo Estado</h2>
                             <button class="btn-close" onclick="document.getElementById('modal-state').classList.remove('active')">✖</button>
                         </div>
                         <form onsubmit="event.preventDefault(); saveState();">
@@ -455,6 +472,19 @@
                                 <input type="checkbox" id="state-completion" style="width: auto;">
                                 <label for="state-completion" style="margin-bottom: 0;">Estado Final (Conclusão)</label>
                             </div>
+                            <div class="form-group">
+                                <label>Ação executada pelo elemento</label>
+                                <input type="text" id="state-action-code" placeholder="Ex.: SEND_EMAIL, REQUEST_SIGNATURE">
+                            </div>
+                            <div class="form-group">
+                                <label>Destinatários / responsáveis</label>
+                                <input type="text" id="state-recipients" placeholder="E-mails, usuários ou papéis separados por vírgula">
+                            </div>
+                            <div class="form-group">
+                                <label>Detalhes da execução</label>
+                                <textarea id="state-execution-details" rows="3" placeholder="Ex.: enviar para secretaria@exemplo.br, solicitar assinatura do reitor"></textarea>
+                            </div>
+                            <input type="hidden" id="state-id">
                             <button type="submit" class="btn-primary w-100 mt-20">Salvar</button>
                         </form>
                     </div>
@@ -533,7 +563,7 @@
                                 <div style="flex:1; border-right: 1px solid rgba(255,255,255,0.1); padding-right:10px; overflow-y:auto;">
                                     <h5>Índices Vinculados</h5>
                                     <table class="data-table mt-10">
-                                        <thead><tr><th>Índice</th><th>Obrigatório</th></tr></thead>
+                                        <thead><tr><th>Índice</th><th>Tipo</th><th>Obrigatório</th><th>Ações</th></tr></thead>
                                         <tbody id="table-mapped-indices-body"></tbody>
                                     </table>
                                 </div>
@@ -570,6 +600,76 @@
                         </table>
                     </div>
                 </section>
+
+                <!-- View: Serviços de Representação Visual -->
+                <section id="view-representation-services" class="view" style="display: none;">
+                    <div style="display: flex; gap: 15px; min-height: 520px;">
+                        <div class="glass-panel" style="flex: 0 0 420px; padding: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h3>Serviços</h3>
+                                <button class="btn-primary btn-small" onclick="openRepresentationServiceModal()">+ Novo</button>
+                            </div>
+                            <table class="data-table">
+                                <thead><tr><th>Nome</th><th>Tipo</th><th>Status</th></tr></thead>
+                                <tbody id="table-representation-services-body">
+                                    <tr><td colspan="3" style="text-align:center">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="glass-panel" style="flex: 1; padding: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h3 id="representation-selected-name">Selecione um serviço</h3>
+                                <button class="btn-primary btn-small" id="btn-new-representation-version" onclick="openRepresentationVersionModal()" disabled>+ Nova versão</button>
+                            </div>
+                            <p class="text-muted" style="font-size: 13px;">As versões publicadas são usadas na transformação XML → representação visual. Versões antigas permanecem arquivadas para auditoria.</p>
+                            <table class="data-table">
+                                <thead><tr><th>Versão</th><th>Revisão</th><th>Hash</th><th>Status</th><th>Ação</th></tr></thead>
+                                <tbody id="table-representation-versions-body">
+                                    <tr><td colspan="5" style="text-align:center">Nenhum serviço selecionado.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Modal Serviço de Representação -->
+                <div class="modal-overlay" id="modal-representation-service">
+                    <div class="modal-content glass-panel" style="max-width: 560px; padding: 30px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                            <h2>Novo serviço de representação</h2>
+                            <button class="btn-close" onclick="closeRepresentationModal('modal-representation-service')">✖</button>
+                        </div>
+                        <div class="form-group"><label>Código interno</label><input id="representation-code" placeholder="diploma-rvdd"></div>
+                        <div class="form-group"><label>Nome</label><input id="representation-name" placeholder="Diploma Digital"></div>
+                        <div class="form-group">
+                            <label>Tipo de documento</label>
+                            <select id="representation-document-type">
+                                <option value="diploma">Diploma</option>
+                                <option value="historico_final">Histórico Final</option>
+                                <option value="historico_parcial">Histórico Parcial</option>
+                                <option value="curriculo">Currículo</option>
+                            </select>
+                        </div>
+                        <button class="btn-primary w-100" onclick="saveRepresentationService()">Salvar serviço</button>
+                    </div>
+                </div>
+
+                <!-- Modal Versão XSLT -->
+                <div class="modal-overlay" id="modal-representation-version">
+                    <div class="modal-content glass-panel" style="max-width: 800px; padding: 30px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                            <h2>Nova versão XSLT</h2>
+                            <button class="btn-close" onclick="closeRepresentationModal('modal-representation-version')">✖</button>
+                        </div>
+                        <div class="form-group"><label>Rótulo da versão</label><input id="representation-version-label" placeholder="v1.05"></div>
+                        <div class="form-group"><label>Arquivo XSLT (opcional)</label><input type="file" id="representation-xslt-file" accept=".xsl,.xslt,text/xml,application/xml"></div>
+                        <div class="form-group">
+                            <label>Conteúdo XSLT</label>
+                            <textarea id="representation-xslt-content" style="width:100%;height:260px;font-family:monospace;background:#111;color:#0f0;border:1px solid #4ade80;padding:10px;border-radius:4px;" placeholder="Cole o XSLT ou selecione um arquivo acima"></textarea>
+                        </div>
+                        <button class="btn-primary w-100" onclick="saveRepresentationVersion()">Salvar versão como rascunho</button>
+                    </div>
+                </div>
 
                 <!-- Modal Template -->
                 <div class="modal-overlay" id="modal-template">
@@ -669,16 +769,15 @@
                                 <label for="dt-legal-hold" style="margin-bottom: 0;">Legal Hold (Congelamento Jurídico)</label>
                             </div>
                             <div class="form-group mt-20">
-                                <label>Área de Armazenamento (Regra de Storage)</label>
+                                <label>Local de armazenamento (regra Local, Amazon, Azure ou outro)</label>
                                 <select id="dt-area" onchange="loadPartitionsForArea(this.value)">
                                     <option value="">-- Selecione (Opcional) --</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Partição Lógica</label>
-                                <select id="dt-partition">
-                                    <option value="">-- Selecione uma Área Primeiro --</option>
-                                </select>
+                                <label>Partição / subdiretório do tipo documental</label>
+                                <input type="text" id="dt-partition" placeholder="Ex.: diplomas, contratos, historicos">
+                                <small style="color:#888;">Será criada como subdiretório dentro do local escolhido.</small>
                             </div>
                             <button type="submit" class="btn-primary w-100 mt-20">Salvar Tipo</button>
                         </form>
@@ -785,10 +884,11 @@
                                     <th>Nome</th>
                                     <th>Tipo de Dado</th>
                                     <th>Status</th>
+                                    <th>Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="table-indices-body">
-                                <tr><td colspan="3" style="text-align:center">Carregando...</td></tr>
+                                <tr><td colspan="4" style="text-align:center">Carregando...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -867,11 +967,11 @@
                             </div>
                             <div class="form-group">
                                 <label>Base URL / Endpoint</label>
-                                <input type="text" id="int-base-url" placeholder="https://api.exemplo.com">
+                                <input type="text" id="int-base-url" placeholder="https://api.exemplo.com" autocomplete="url">
                             </div>
                             <div class="form-group">
                                 <label>Token / Senha / Secret</label>
-                                <input type="password" id="int-secret">
+                                <input type="password" id="int-secret" autocomplete="new-password">
                                 <small style="color:#aaa;" id="int-secret-help">Será criptografado no banco de dados.</small>
                             </div>
                             <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
@@ -940,7 +1040,7 @@
 
     <!-- Scripts -->
     <script>
-        const API_URL = 'http://localhost:8000/api';
+        const API_URL = `http://${window.location.hostname || 'localhost'}:8000/api`;
         function getAuthHeaders() {
             return { 'Authorization': 'Bearer ' + localStorage.getItem('ged_token') };
         }
@@ -998,17 +1098,19 @@
                 if(target === 'ingestions') loadIngestions();
                 if(target === 'quarantine') loadQuarantine();
                 if(target === 'audit') loadAuditEvents();
+                if(target === 'representation-services') loadRepresentationServices();
             });
         });
     </script>
     <script src="js/storage.js?v=2"></script>
     <script src="js/admin_institutions.js"></script>
-    <script src="js/admin_users.js?v=2"></script>
+    <script src="js/admin_users.js?v=5"></script>
     <script src="js/admin_instituicao.js"></script>
     <script src="js/admin_templates.js"></script>
+    <script src="js/admin_representation.js"></script>
     <script src="js/admin_ged_config.js"></script>
-    <script src="js/admin_privilegios.js?v=2"></script>
-    <script src="js/admin_workflows.js"></script>
+    <script src="js/admin_privilegios.js?v=3"></script>
+    <script src="js/admin_workflows.js?v=4"></script>
     <script src="js/admin_ingestions.js"></script>
     <script src="js/admin_quarantine.js"></script>
     <script src="js/admin_integrations.js"></script>

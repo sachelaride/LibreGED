@@ -25,17 +25,25 @@ class ConfigManager:
             config_dict = {
                 "max_upload_size_mb": settings.max_upload_size_mb,
                 "allowed_mime_types": settings.allowed_mime_types,
-                "antimalware_enabled": settings.antimalware_enabled,
-                "quarantine_enabled": settings.quarantine_enabled,
-                "quarantine_policy": settings.quarantine_policy
+                # Older rows may contain NULL because these columns were added
+                # as nullable; missing security settings must fail closed.
+                "antimalware_enabled": (
+                    True if settings.antimalware_enabled is None
+                    else settings.antimalware_enabled
+                ),
+                "quarantine_enabled": (
+                    True if settings.quarantine_enabled is None
+                    else settings.quarantine_enabled
+                ),
+                "quarantine_policy": settings.quarantine_policy or "manual",
             }
         else:
-            # Fallback default se não existir no banco
+            # Secure defaults when settings have not been provisioned yet.
             config_dict = {
                 "max_upload_size_mb": 10,
                 "allowed_mime_types": "application/pdf,image/png,image/jpeg",
-                "antimalware_enabled": False,
-                "quarantine_enabled": False,
+                "antimalware_enabled": True,
+                "quarantine_enabled": True,
                 "quarantine_policy": "manual"
             }
             

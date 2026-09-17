@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:8000/api';
+const API_URL = `http://${window.location.hostname || 'localhost'}:8000/api`;
 
 document.addEventListener('DOMContentLoaded', () => {
     // Check Authentication state on load

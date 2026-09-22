@@ -20,11 +20,16 @@ def get_file_hash(file_path: str) -> str:
 def get_cert_info_from_p12(p12_path: str, password: str):
     with open(p12_path, "rb") as f:
         p12_data = f.read()
+    return get_cert_info_from_p12_bytes(p12_data, password)
+
+def get_cert_info_from_p12_bytes(p12_data: bytes, password: str):
     
     private_key, certificate, _ = pkcs12.load_key_and_certificates(
         p12_data, 
         password.encode() if password else None
     )
+    if private_key is None or certificate is None:
+        raise ValueError("O arquivo não contém chave privada e certificado.")
     
     subject = certificate.subject.rfc4514_string()
     issuer = certificate.issuer.rfc4514_string()

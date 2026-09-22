@@ -12,6 +12,7 @@ import json
 import shutil
 import uuid
 from pathlib import Path
+from sqlalchemy import text
 
 from app import auth, models
 from app.database import SessionLocal
@@ -224,19 +225,24 @@ def seed(db: object) -> None:
 
 def remove(db: object) -> None:
     demo_type_ids = [
-        row.id for row in db.query(DocumentType.id).filter(DocumentType.name.like(f"{PREFIX}%")).all()
+        row.id for row in db.query(DocumentType.id).filter(DocumentType.name.like("DEMO%")).all()
     ]
+    db.execute(
+        text("UPDATE ged_document_type_versions SET created_by = NULL WHERE created_by = :user_id"),
+        {"user_id": USER_ID},
+    )
     student = db.get(models.Student, STUDENT_ID)
     if student:
         db.query(GEDDocument).filter_by(student_id=student.id).delete(synchronize_session=False)
     db.query(models.Enrollment).filter_by(student_id=STUDENT_ID).delete(synchronize_session=False)
     if student:
         db.delete(student)
+        db.flush()
     if demo_type_ids:
         db.query(DocumentTypeIndex).filter(DocumentTypeIndex.document_type_id.in_(demo_type_ids)).delete(synchronize_session=False)
         db.query(DocumentTypeVersion).filter(DocumentTypeVersion.document_type_id.in_(demo_type_ids)).delete(synchronize_session=False)
         db.query(UserDocumentType).filter(UserDocumentType.document_type_id.in_(demo_type_ids)).delete(synchronize_session=False)
-    db.query(DocumentType).filter(DocumentType.name.like(f"{PREFIX}%")).delete(synchronize_session=False)
+    db.query(DocumentType).filter(DocumentType.name.like("DEMO%")).delete(synchronize_session=False)
     db.query(DocumentCategory).filter(DocumentCategory.name.like(f"{PREFIX}%")).delete(synchronize_session=False)
     db.query(GedIndex).filter(GedIndex.name.like(f"{PREFIX}%")).delete(synchronize_session=False)
     db.query(StorageRule).filter(StorageRule.name.like(f"{PREFIX}%")).delete(synchronize_session=False)

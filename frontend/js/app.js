@@ -62,13 +62,34 @@ document.addEventListener('DOMContentLoaded', () => {
     menuItems.forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
+            const target = item.getAttribute('data-target');
+            const currentTarget = document.querySelector('.menu-item.active')?.getAttribute('data-target');
+
+            if (typeof workflowDirty !== 'undefined' && workflowDirty && target !== currentTarget && target !== 'workflows') {
+                const shouldContinue = window.confirm('Há alterações não salvas no workflow atual. Deseja sair sem salvar?');
+                if (!shouldContinue) {
+                    return;
+                }
+                if (typeof resetWorkflowDirty === 'function') {
+                    resetWorkflowDirty();
+                }
+            }
+
+            document.querySelector('.content-area')?.scrollTo({top: 0, left: 0, behavior: 'auto'});
+            document.querySelector('.main-content')?.scrollTo({top: 0, left: 0, behavior: 'auto'});
+            window.scrollTo({top: 0, left: 0, behavior: 'auto'});
             
+            if (target !== 'workflows') {
+                document.body.classList.remove('workflow-editor-fullscreen');
+                const workflowButton = document.getElementById('btn-toggle-fullscreen');
+                if (workflowButton) workflowButton.textContent = 'Tela cheia';
+            }
+
             menuItems.forEach(m => m.classList.remove('active'));
             views.forEach(v => v.classList.remove('active'));
             
             item.classList.add('active');
             
-            const target = item.getAttribute('data-target');
             document.getElementById(`view-${target}`).classList.add('active');
             document.getElementById('page-title').innerText = item.innerText;
             
@@ -76,6 +97,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadDocuments();
             } else if (target === 'storage') {
                 loadStorageAreas();
+            } else if (target === 'workflows') {
+                if (typeof toggleWorkflowListPanel === 'function') {
+                    toggleWorkflowListPanel(false);
+                }
+                if (typeof loadWorkflows === 'function') {
+                    loadWorkflows();
+                }
             }
         });
     });

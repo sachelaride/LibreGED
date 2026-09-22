@@ -33,7 +33,7 @@ function modalAdmin(titulo, id = 'modal-cadastro-admin') {
     document.getElementById(id)?.remove();
     const camada = document.createElement('div');
     camada.id = id; camada.className = 'modal-overlay active';
-    camada.innerHTML = `<div class="modal-content glass-panel" style="width:min(950px,95vw);max-height:90vh;overflow:auto;padding:24px">
+    camada.innerHTML = `<div class="modal-content glass-panel" style="width:min(950px,100%);max-height:none;overflow:visible;padding:24px">
         <h2>${escaparAdmin(titulo)}</h2><div class="conteudo-admin"></div>
         <p class="erro-admin" role="alert" style="color:#d33"></p>
         <button type="button" class="btn-secondary fechar-admin">Cancelar</button></div>`;

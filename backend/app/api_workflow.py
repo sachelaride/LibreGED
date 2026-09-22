@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 import json
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from app.database import get_db
@@ -238,13 +239,38 @@ def get_workflows(page: int = 1, size: int = 50, db: Session = Depends(get_db), 
 
 @router.post("/workflows", response_model=WorkflowResponse, tags=["Admin - Workflows"])
 def create_workflow(wkf_in: WorkflowCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    duplicate_name = db.query(models_workflow.Workflow).filter(
+        models_workflow.Workflow.name == wkf_in.name
+    ).first()
+    if duplicate_name:
+        raise HTTPException(
+            status_code=409,
+            detail="Já existe um workflow com este nome.",
+        )
+
+    duplicate_internal_name = db.query(models_workflow.Workflow).filter(
+        models_workflow.Workflow.internal_name == wkf_in.internal_name
+    ).first()
+    if duplicate_internal_name:
+        raise HTTPException(
+            status_code=409,
+            detail="Já existe um workflow com este nome interno.",
+        )
+
     wkf = models_workflow.Workflow(
         name=wkf_in.name,
         internal_name=wkf_in.internal_name,
         is_active=wkf_in.is_active
     )
     db.add(wkf)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Já existe um workflow com este nome ou nome interno.",
+        ) from exc
     db.refresh(wkf)
     
     from app.main import add_audit
@@ -257,12 +283,30 @@ def update_workflow(workflow_id: str, wkf_in: WorkflowCreate, db: Session = Depe
     wkf = db.query(models_workflow.Workflow).filter_by(id=workflow_id).first()
     if not wkf:
         raise HTTPException(status_code=404, detail="Workflow não encontrado")
+
+    duplicate = db.query(models_workflow.Workflow).filter(
+        models_workflow.Workflow.id != workflow_id,
+        (models_workflow.Workflow.name == wkf_in.name)
+        | (models_workflow.Workflow.internal_name == wkf_in.internal_name),
+    ).first()
+    if duplicate:
+        raise HTTPException(
+            status_code=409,
+            detail="Já existe outro workflow com este nome ou nome interno.",
+        )
     
     wkf.name = wkf_in.name
     wkf.internal_name = wkf_in.internal_name
     wkf.is_active = wkf_in.is_active
     
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Já existe outro workflow com este nome ou nome interno.",
+        ) from exc
     db.refresh(wkf)
     
     from app.main import add_audit
@@ -524,13 +568,25 @@ def get_my_tasks(
     user: models.User = Depends(auth.get_current_active_user)
 ):
     from sqlalchemy import or_
-    tasks = db.query(models_workflow.WorkflowTask).filter(
-        models_workflow.WorkflowTask.status == "PENDING",
+    from app.models_workflow import WorkflowTask, DocumentWorkflowInstance
+    from app.models_ged import GEDDocument
+    
+    query = db.query(WorkflowTask).join(
+        DocumentWorkflowInstance, DocumentWorkflowInstance.id == WorkflowTask.instance_id
+    ).join(
+        GEDDocument, GEDDocument.id == DocumentWorkflowInstance.document_id
+    ).filter(
+        WorkflowTask.status == "PENDING",
         or_(
-            models_workflow.WorkflowTask.assignee_id == user.id,
-            models_workflow.WorkflowTask.assignee_role == user.role
+            WorkflowTask.assignee_id == user.id,
+            WorkflowTask.assignee_role == user.role
         )
-    ).all()
+    )
+    
+    if user.role != "admin_global":
+        query = query.filter(GEDDocument.institution_id == user.institution_id)
+        
+    tasks = query.all()
     return tasks
 
 @router.put("/workflows/tasks/{task_id}/complete", tags=["Workflows - Execution"])

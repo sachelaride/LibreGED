@@ -36,6 +36,7 @@ function openSignerModal() {
     document.getElementById('sig-name').value = '';
     document.getElementById('sig-role').value = '';
     document.getElementById('sig-cpf').value = '';
+    document.getElementById('sig-password').value = '';
     document.getElementById('sig-p12').value = '';
     document.getElementById('modal-signer').classList.add('active');
 }
@@ -44,10 +45,11 @@ async function saveSigner() {
     const name = document.getElementById('sig-name').value;
     const role = document.getElementById('sig-role').value;
     const cpf = document.getElementById('sig-cpf').value;
+    const password = document.getElementById('sig-password').value;
     const fileInput = document.getElementById('sig-p12');
     
-    if(!name || !role || !cpf || fileInput.files.length === 0) {
-        alert("Preencha todos os campos e anexe o certificado .p12");
+    if(!name || !role || !cpf || !password || fileInput.files.length === 0) {
+        alert("Preencha todos os campos, informe a senha e anexe o certificado .p12/.pfx");
         return;
     }
     
@@ -55,6 +57,7 @@ async function saveSigner() {
     formData.append('name', name);
     formData.append('role', role);
     formData.append('cpf', cpf);
+    formData.append('password', password);
     formData.append('p12_file', fileInput.files[0]);
     
     try {

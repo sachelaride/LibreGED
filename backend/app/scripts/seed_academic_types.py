@@ -25,7 +25,7 @@ def get_or_create_index(db, name: str, type_: str, options: list = None, mask: s
         db.refresh(index)
     return index
 
-def get_or_create_document_type(db, name: str, indices_map: list):
+def get_or_create_document_type(db, name: str, indices_map: list, group_id: str = "acad_dossier"):
     doc_type = db.query(DocumentType).filter_by(name=name).first()
     if not doc_type:
         doc_type = DocumentType(
@@ -35,7 +35,7 @@ def get_or_create_document_type(db, name: str, indices_map: list):
             # Placeholder, in a real system this would map to a known workflow ID if applicable
             workflow_id=None,
             # We enforce grouping for academic dossiers, using a convention
-            group_id="acad_dossier", 
+            group_id=group_id,
             retention_years=5,
             legal_hold=False,
             active_version=1
@@ -82,10 +82,23 @@ def run():
         idx_cpf = get_or_create_index(db, "CPF", "Caractere", mask="###.###.###-##")
         idx_nome = get_or_create_index(db, "Nome", "Caractere")
         idx_rgm = get_or_create_index(db, "RGM / Matrícula", "Caractere")
+        idx_rg = get_or_create_index(db, "RG", "Caractere")
         idx_cod_mec = get_or_create_index(db, "Código e-MEC do Curso", "Caractere")
         idx_data_emissao = get_or_create_index(db, "Data de Emissão", "Data")
         idx_curso = get_or_create_index(db, "Curso", "Caractere")
         idx_processo = get_or_create_index(db, "Número do Processo", "Caractere")
+
+        print("Criando grupo exemplo de Documentos Pessoais...")
+        get_or_create_document_type(db, "Documento Pessoal - Identidade", [
+            {"index": idx_nome, "is_required": True},
+            {"index": idx_rg, "is_required": True},
+            {"index": idx_cpf, "is_required": True},
+            {"index": idx_rgm, "is_required": False},
+        ], group_id="pessoal")
+        get_or_create_document_type(db, "Documento Pessoal - CPF", [
+            {"index": idx_nome, "is_required": True},
+            {"index": idx_cpf, "is_required": True},
+        ], group_id="pessoal")
         
         print("Criando Tipos Documentais Acadêmicos MEC...")
         

@@ -34,6 +34,7 @@ async function loadStorageRules() {
                 <td>${isActive}</td>
                 <td>
                     <button class="btn-secondary btn-small" onclick="editStorageRule('${rule.id}')">Editar</button>
+                    <button class="btn-secondary btn-small" onclick="duplicateStorageRule('${rule.id}')">Duplicar</button>
                     <button class="btn-secondary btn-small" onclick="deleteStorageRule('${rule.id}')" style="background:#ef4444;border-color:#ef4444;">Excluir</button>
                 </td>
             `;
@@ -288,5 +289,28 @@ async function deleteStorageRule(id) {
         }
     } catch(e) {
         alert("Erro de conexão.");
+    }
+}
+
+async function duplicateStorageRule(id) {
+    if (!confirm("Duplicar esta regra de armazenamento? A cópia será criada inativa para você revisar o local antes de ativá-la.")) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/storage-rules/${id}/duplicate`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || "Erro ao duplicar regra.");
+        }
+
+        await loadStorageRules();
+        alert("Regra duplicada. Edite o nome e o local da cópia antes de ativá-la.");
+    } catch (error) {
+        alert(error.message);
     }
 }

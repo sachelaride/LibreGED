@@ -581,9 +581,10 @@ def verify_audit_chain(db: Session = Depends(get_db), current_user: models.User 
 
 # ==================== Retention Management ====================
 @app.get("/api/documents/retention/check")
-def check_retention_violations(db: Session = Depends(get_db)):
-    """Verificar quais documentos violam a polÃƒÂ­tica de retenÃƒÂ§ÃƒÂ£o."""
-    violations = RetentionService.check_retention_compliance(db)
+def check_retention_violations(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    """Verificar quais documentos violam a política de retenção."""
+    institution_id = current_user.institution_id if current_user.role != "admin_global" else None
+    violations = RetentionService.check_retention_compliance(db, institution_id=institution_id)
     return {
         "total_violations": len(violations),
         "violations": violations,
@@ -591,9 +592,10 @@ def check_retention_violations(db: Session = Depends(get_db)):
 
 
 @app.post("/api/documents/retention/cleanup")
-def execute_retention_cleanup(payload: RetentionCleanupRequest, db: Session = Depends(get_db)):
+def execute_retention_cleanup(payload: RetentionCleanupRequest, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
     """Executar limpeza de documentos expirados."""
-    result = RetentionService.execute_retention_cleanup(db, dry_run=payload.dry_run)
+    institution_id = current_user.institution_id if current_user.role != "admin_global" else None
+    result = RetentionService.execute_retention_cleanup(db, dry_run=payload.dry_run, institution_id=institution_id)
     
     if not payload.dry_run:
         add_audit(
@@ -601,7 +603,8 @@ def execute_retention_cleanup(payload: RetentionCleanupRequest, db: Session = De
             "system",
             "retention_cleanup",
             "retention_cleanup_executed",
-            f"Arquivados {result['to_archive']} documentos expirados"
+            f"Arquivados {result['to_archive']} documentos expirados",
+            current_user.id
         )
         db.commit()
     
@@ -609,9 +612,10 @@ def execute_retention_cleanup(payload: RetentionCleanupRequest, db: Session = De
 
 
 @app.get("/api/documents/retention/stats")
-def get_retention_statistics(db: Session = Depends(get_db)):
-    """Obter estatÃƒÂ­sticas sobre o ciclo de vida dos documentos."""
-    stats = RetentionService.get_lifecycle_statistics(db)
+def get_retention_statistics(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
+    """Obter estatísticas sobre o ciclo de vida dos documentos."""
+    institution_id = current_user.institution_id if current_user.role != "admin_global" else None
+    stats = RetentionService.get_lifecycle_statistics(db, institution_id=institution_id)
     return {
         "timestamp": datetime.now(UTC).isoformat(),
         "statistics": stats,

@@ -48,9 +48,10 @@
         <nav class="sidebar glass-panel">
             <div class="logo">
                 <h2>Libre<span>GED</span></h2>
+                <button class="sidebar-toggle" type="button" aria-label="Recolher menu" title="Recolher menu">‹</button>
             </div>
             
-            <div style="flex-grow: 1; padding: 20px 0;">
+            <div class="sidebar-nav-content">
                 <a href="#dashboard" class="menu-item active" data-target="dashboard">
                     <i class="fa-solid fa-chart-line" style="margin-right: 12px; font-size:18px;"></i>
                     Meu Dashboard
@@ -65,7 +66,31 @@
                 </a>
                 <a href="#search" class="menu-item" data-target="search">
                     <i class="fa-solid fa-magnifying-glass" style="margin-right: 12px; font-size:18px;"></i>
-                    Busca de Documentos
+                    Pesquisa Avançada
+                </a>
+                <a href="#tasks" class="menu-item" data-target="tasks">
+                    <i class="fa-solid fa-list-check" style="margin-right: 12px; font-size:18px;"></i>
+                    Monitor de Tarefas
+                </a>
+                <a href="#flow" class="menu-item" data-target="flow">
+                    <i class="fa-solid fa-diagram-project" style="margin-right: 12px; font-size:18px;"></i>
+                    Monitor de Fluxo
+                </a>
+                <a href="#new-flow" class="menu-item" data-target="new-flow">
+                    <i class="fa-solid fa-code-branch" style="margin-right: 12px; font-size:18px;"></i>
+                    Novo Fluxo
+                </a>
+                <a href="#new-task" class="menu-item" data-target="new-task">
+                    <i class="fa-solid fa-square-plus" style="margin-right: 12px; font-size:18px;"></i>
+                    Nova Tarefa
+                </a>
+                <a href="#reports" class="menu-item" data-target="reports">
+                    <i class="fa-solid fa-chart-column" style="margin-right: 12px; font-size:18px;"></i>
+                    Relatórios
+                </a>
+                <a href="#insights" class="menu-item" data-target="insights">
+                    <i class="fa-solid fa-lightbulb" style="margin-right: 12px; font-size:18px;"></i>
+                    Insights
                 </a>
                 <a href="#academic" class="menu-item" data-target="academic">
                     <i class="fa-solid fa-graduation-cap" style="margin-right: 12px; font-size:18px;"></i>
@@ -78,14 +103,7 @@
             </div>
 
             <div class="sidebar-footer">
-                <div class="user-info">
-                    <div class="avatar" id="user-avatar">?</div>
-                    <div class="details">
-                        <div class="name" id="user-name">Usuário</div>
-                        <div class="role" id="user-role">Secretaria</div>
-                    </div>
-                </div>
-                <div class="mt-20">
+                <div>
                     <button class="btn-secondary w-100" onclick="logout()">
                         <i class="fa-solid fa-right-from-bracket" style="margin-right:8px;"></i> Sair
                     </button>
@@ -97,15 +115,39 @@
         <main class="main-content">
             <header class="topbar glass-panel">
                 <h1 id="page-title">Busca Global</h1>
-                <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">
-                    <i class="fa-solid fa-sun" aria-hidden="true"></i><span>Tema claro</span>
-                </button>
+                <div class="account-menu">
+                    <button class="account-trigger" type="button" aria-label="Abrir menu do usuário" aria-expanded="false">
+                        <span class="account-avatar" id="top-user-avatar">?</span>
+                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                    </button>
+                    <div class="account-dropdown" hidden>
+                        <div class="account-dropdown-user">
+                            <strong id="top-user-name">Usuário</strong>
+                            <small id="top-user-role">Secretaria</small>
+                        </div>
+                        <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">
+                            <i class="fa-solid fa-sun" aria-hidden="true"></i><span>Tema claro</span>
+                        </button>
+                        <button class="account-action" id="btn-logout" type="button">
+                            <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sair
+                        </button>
+                    </div>
+                </div>
             </header>
 
             <div class="content-area">
                 
                 <!-- View: Dashboard -->
                 <section id="view-dashboard" class="view active">
+                    <div class="glass-panel" style="padding: 18px; margin-bottom: 20px; display:flex; justify-content:space-between; align-items:center; gap:15px;">
+                        <div>
+                            <h3>Novo Documento para indexar</h3>
+                            <p class="text-muted" style="margin-top:5px;">Envie um documento, escolha o OCR e associe aluno, grupo e tipo documental.</p>
+                        </div>
+                        <button class="btn-primary" type="button" onclick="openNewDocumentForIndex()">
+                            <i class="fa-solid fa-file-circle-plus"></i> Novo Documento
+                        </button>
+                    </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <!-- Dashlet: Minhas Tarefas -->
                         <div class="glass-panel" style="padding: 20px; min-height: 300px;">
@@ -199,9 +241,9 @@
                         </div>
 
                         <!-- Document Details Modal -->
-                        <div id="document-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; justify-content:center; align-items:center;">
-                            <div class="glass-panel" style="width: 500px; max-width: 90%; max-height: 90vh; overflow-y:auto; padding:30px; position:relative;">
-                                <button onclick="document.getElementById('document-modal').style.display='none'" style="position:absolute; top:20px; right:20px; background:none; border:none; color:#fff; font-size:20px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+                        <div id="document-modal" class="document-page-panel">
+                            <div class="glass-panel document-page-content">
+                                <button onclick="closeDocumentDetails()" style="position:absolute; top:20px; right:20px; background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer;" aria-label="Fechar detalhes"><i class="fa-solid fa-xmark"></i></button>
                                 
                                 <h3 id="doc-modal-title" style="margin-bottom:20px; color:var(--primary); word-wrap:break-word;">Detalhes do Arquivo</h3>
                                 
@@ -327,16 +369,128 @@
                             </div>
                             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
                                 <input type="text" id="search-student" class="form-control" placeholder="Aluno / student_id" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
-                                <input type="text" id="search-group" class="form-control" placeholder="Grupo / turma" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                <select id="search-group" class="form-control" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                    <option value="">Grupo documental</option>
+                                </select>
                                 <select id="search-document-type" class="form-control" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
                                     <option value="">Tipo documental</option>
                                 </select>
+                                <select id="search-index" class="form-control" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                    <option value="">Índice cadastrado</option>
+                                </select>
+                                <input type="text" id="search-index-value" class="form-control" placeholder="Valor do índice (CPF, RGM...)" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                            </div>
+                            <div id="search-indexes-help" class="search-indexes-help text-muted" aria-live="polite">
+                                Selecione um grupo ou tipo para ver os índices disponíveis.
                             </div>
                         </div>
                         <div id="search-summary" class="search-summary" aria-live="polite"></div>
                         <div id="search-results" style="margin-top: 40px; width: 100%; max-width: 900px; text-align:left;">
                             <p class="text-muted" style="text-align:center;">Digite um termo para começar a busca.</p>
                         </div>
+                    </div>
+                </section>
+
+                <!-- View: Monitor de Tarefas -->
+                <section id="view-tasks" class="view">
+                    <div class="glass-panel" style="padding: 30px; min-height: 400px;">
+                        <div class="section-heading">
+                            <div>
+                                <h2>Monitor de Tarefas</h2>
+                                <p class="text-muted">Acompanhe tarefas pendentes atribuídas a você ou ao seu perfil.</p>
+                            </div>
+                            <button class="btn-secondary" type="button" onclick="loadTaskMonitor()">
+                                <i class="fa-solid fa-rotate"></i> Atualizar
+                            </button>
+                        </div>
+                        <div id="task-monitor-summary" class="search-summary" aria-live="polite"></div>
+                        <div id="task-monitor-list" class="operation-list">
+                            <p class="text-muted">Carregando tarefas...</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- View: Monitor de Fluxo -->
+                <section id="view-flow" class="view">
+                    <div class="glass-panel" style="padding: 30px; min-height: 400px;">
+                        <div class="section-heading">
+                            <div>
+                                <h2>Monitor de Fluxo</h2>
+                                <p class="text-muted">Consulte os modelos de fluxo disponíveis para iniciar documentos.</p>
+                            </div>
+                            <button class="btn-secondary" type="button" onclick="loadFlowMonitor()">
+                                <i class="fa-solid fa-rotate"></i> Atualizar
+                            </button>
+                        </div>
+                        <div id="flow-monitor-list" class="operation-list">
+                            <p class="text-muted">Carregando fluxos...</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- View: Novo Fluxo -->
+                <section id="view-new-flow" class="view">
+                    <div class="glass-panel operation-form-panel">
+                        <h2>Novo Fluxo</h2>
+                        <p class="text-muted">O fluxo é iniciado a partir de um documento já indexado.</p>
+                        <form id="new-flow-form" onsubmit="event.preventDefault(); startFlowFromForm();">
+                            <label for="new-flow-document-id">ID do documento</label>
+                            <input id="new-flow-document-id" class="form-control" required placeholder="Cole o ID do documento">
+                            <label for="new-flow-workflow-id">ID do modelo de fluxo</label>
+                            <input id="new-flow-workflow-id" class="form-control" required placeholder="Cole o ID do workflow">
+                            <label for="new-flow-state-id">Estado inicial</label>
+                            <input id="new-flow-state-id" class="form-control" required placeholder="Cole o ID do estado inicial">
+                            <button class="btn-primary" type="submit"><i class="fa-solid fa-play"></i> Iniciar fluxo</button>
+                        </form>
+                        <div id="new-flow-feedback" class="operation-feedback" aria-live="polite"></div>
+                    </div>
+                </section>
+
+                <!-- View: Nova Tarefa -->
+                <section id="view-new-task" class="view">
+                    <div class="glass-panel operation-form-panel">
+                        <h2>Nova Tarefa</h2>
+                        <p class="text-muted">As tarefas são criadas pelo estado inicial ou pelas transições do workflow.</p>
+                        <div class="quick-action-grid">
+                            <button class="btn-primary" type="button" onclick="window.location.hash='new-flow'">
+                                <i class="fa-solid fa-code-branch"></i> Iniciar fluxo que gera tarefa
+                            </button>
+                            <button class="btn-secondary" type="button" onclick="window.location.hash='tasks'">
+                                <i class="fa-solid fa-list-check"></i> Ver minhas tarefas
+                            </button>
+                        </div>
+                        <div class="operation-feedback">A criação manual isolada de tarefa não está disponível na API operacional; isso evita tarefas sem documento e sem workflow.</div>
+                    </div>
+                </section>
+
+                <!-- View: Relatórios -->
+                <section id="view-reports" class="view">
+                    <div class="glass-panel operation-form-panel">
+                        <h2>Relatórios</h2>
+                        <p class="text-muted">Acesse relatórios operacionais a partir dos filtros documentais.</p>
+                        <div class="quick-action-grid">
+                            <button class="btn-primary" type="button" onclick="window.location.hash='search'">
+                                <i class="fa-solid fa-file-lines"></i> Relatório por documentos
+                            </button>
+                            <button class="btn-secondary" type="button" onclick="window.location.hash='tasks'">
+                                <i class="fa-solid fa-list-check"></i> Relatório de tarefas
+                            </button>
+                        </div>
+                        <div id="reports-feedback" class="operation-feedback">Use a Pesquisa Avançada para aplicar filtros e exportar os resultados quando o módulo de exportação estiver habilitado.</div>
+                    </div>
+                </section>
+
+                <!-- View: Insights -->
+                <section id="view-insights" class="view">
+                    <div class="glass-panel operation-form-panel">
+                        <h2>Insights</h2>
+                        <p class="text-muted">Indicadores rápidos baseados nos dados operacionais disponíveis.</p>
+                        <div id="insights-grid" class="quick-action-grid">
+                            <div class="insight-card"><strong id="insight-task-count">-</strong><span>Tarefas pendentes</span></div>
+                            <div class="insight-card"><strong id="insight-flow-count">-</strong><span>Fluxos disponíveis</span></div>
+                            <div class="insight-card"><strong id="insight-upload-count">-</strong><span>Arquivos na fila de upload</span></div>
+                        </div>
+                        <button class="btn-secondary" type="button" onclick="loadInsights()"><i class="fa-solid fa-rotate"></i> Atualizar indicadores</button>
                     </div>
                 </section>
 
@@ -432,18 +586,69 @@
 
         // Setup User Info
         if(payload) {
-            document.getElementById('user-name').innerText = payload.sub || 'Usuário';
-            document.getElementById('user-avatar').innerText = (payload.sub || 'U').charAt(0).toUpperCase();
+            document.getElementById('top-user-name').innerText = payload.sub || 'Usuário';
+            document.getElementById('top-user-avatar').innerText = (payload.sub || 'U').charAt(0).toUpperCase();
         }
+        document.getElementById('top-user-role').innerText = payload?.role || 'Secretaria';
+
+        function configurarMenuUsuario() {
+            const menu = document.querySelector('.account-menu');
+            const trigger = menu?.querySelector('.account-trigger');
+            const dropdown = menu?.querySelector('.account-dropdown');
+            if (!menu || !trigger || !dropdown) return;
+            trigger.addEventListener('click', () => {
+                const aberto = dropdown.hidden;
+                dropdown.hidden = !aberto;
+                trigger.setAttribute('aria-expanded', String(aberto));
+            });
+            document.addEventListener('click', evento => {
+                if (!menu.contains(evento.target)) {
+                    dropdown.hidden = true;
+                    trigger.setAttribute('aria-expanded', 'false');
+                }
+            });
+        }
+        configurarMenuUsuario();
 
         function logout() {
             localStorage.removeItem('ged_token');
             window.location.href = 'login.html';
         }
 
+        function configurarBarraLateral() {
+            const container = document.querySelector('.app-container');
+            const sidebar = document.querySelector('.sidebar');
+            const toggle = sidebar?.querySelector('.sidebar-toggle');
+            if (!container || !sidebar || !toggle) return;
+            const recolhida = localStorage.getItem('ged_sidebar_collapsed') === 'true';
+            container.classList.toggle('sidebar-collapsed', recolhida);
+            toggle.textContent = recolhida ? '›' : '‹';
+            toggle.setAttribute('aria-label', recolhida ? 'Expandir menu' : 'Recolher menu');
+            toggle.title = recolhida ? 'Expandir menu' : 'Recolher menu';
+            sidebar.querySelectorAll('.menu-item').forEach(item => {
+                item.setAttribute('aria-label', item.textContent.trim());
+            });
+            toggle.addEventListener('click', () => {
+                const ativo = container.classList.toggle('sidebar-collapsed');
+                localStorage.setItem('ged_sidebar_collapsed', String(ativo));
+                toggle.textContent = ativo ? '›' : '‹';
+                toggle.setAttribute('aria-label', ativo ? 'Expandir menu' : 'Recolher menu');
+                toggle.title = ativo ? 'Expandir menu' : 'Recolher menu';
+            });
+        }
+        configurarBarraLateral();
+
+        function rolarPaginaParaOTopo() {
+            const area = document.querySelector('.content-area');
+            if (area) area.scrollTo({top: 0, left: 0, behavior: 'auto'});
+            document.querySelector('.main-content')?.scrollTo({top: 0, left: 0, behavior: 'auto'});
+            window.scrollTo({top: 0, left: 0, behavior: 'auto'});
+        }
+
         // Router (Hash Based)
         function handleRoute() {
             const hash = window.location.hash.substring(1) || 'dashboard';
+            rolarPaginaParaOTopo();
             
             // Update menu
             document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
@@ -471,6 +676,9 @@
             if(hash === 'dashboard' && typeof loadDashboard === 'function') loadDashboard();
             if(hash === 'sites' && typeof loadSites === 'function') loadSites();
             if(hash === 'library' && typeof loadLibrary === 'function') loadLibrary(currentFolderId);
+            if(hash === 'tasks' && typeof loadTaskMonitor === 'function') loadTaskMonitor();
+            if(hash === 'flow' && typeof loadFlowMonitor === 'function') loadFlowMonitor();
+            if(hash === 'insights' && typeof loadInsights === 'function') loadInsights();
         }
 
         window.addEventListener('hashchange', handleRoute);

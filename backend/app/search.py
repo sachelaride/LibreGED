@@ -5,7 +5,8 @@ from typing import Dict, List
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.models_ged import GEDDocument
+from app.models_ged import GEDDocument, GEDDocumentIndexValue
+from app.models_ged_config import GedIndex, DocumentType
 
 
 class SearchService:
@@ -50,6 +51,8 @@ class SearchService:
         student_id: str = None,
         group_id: str = None,
         document_type_id: str = None,
+        index_id: str = None,
+        index_value: str = None,
     ) -> Dict:
         if page < 1 or size < 1:
             return {"items": [], "total": 0, "page": page, "size": size, "pages": 0}
@@ -57,7 +60,7 @@ class SearchService:
         normalized_query = (query_string or "").strip()
         if user and user.role != "admin_global" and allowed_document_type_ids == []:
             return {"items": [], "total": 0, "page": page, "size": size, "pages": 0}
-        if not normalized_query and not student_id and not group_id and not document_type_id:
+        if not normalized_query and not student_id and not group_id and not document_type_id and not index_id and not index_value:
             return {"items": [], "total": 0, "page": page, "size": size, "pages": 0}
 
         query = db.query(GEDDocument).filter(
@@ -86,12 +89,25 @@ class SearchService:
             query = query.filter(
                 or_(
                     GEDDocument.extracted_metadata.ilike(f'%{group_id}%'),
-                    GEDDocument.title.ilike(f'%{group_id}%')
+                    GEDDocument.title.ilike(f'%{group_id}%'),
+                    GEDDocument.category_id.in_(
+                        db.query(DocumentType.id).filter(DocumentType.group_id == group_id)
+                    ),
                 )
             )
 
         if document_type_id:
             query = query.filter(GEDDocument.category_id == document_type_id)
+
+        if index_id:
+            query = query.join(
+                GEDDocumentIndexValue,
+                GEDDocumentIndexValue.document_id == GEDDocument.id,
+            ).filter(GEDDocumentIndexValue.index_id == index_id)
+            if index_value:
+                query = query.filter(
+                    GEDDocumentIndexValue.value.ilike(f"%{index_value.strip()}%")
+                )
 
         if user and user.role != "admin_global":
             if user.institution_id:
@@ -108,6 +124,29 @@ class SearchService:
             .limit(size)
             .all()
         )
+
+        document_type_ids = {document.category_id for document in documents if document.category_id}
+        document_types = {
+            item.id: item
+            for item in db.query(DocumentType).filter(
+                DocumentType.id.in_(document_type_ids)
+            ).all()
+        } if document_type_ids else {}
+        document_ids = [document.id for document in documents]
+        index_rows = (
+            db.query(GEDDocumentIndexValue, GedIndex)
+            .join(GedIndex, GedIndex.id == GEDDocumentIndexValue.index_id)
+            .filter(GEDDocumentIndexValue.document_id.in_(document_ids))
+            .all()
+            if document_ids else []
+        )
+        indices_by_document = {}
+        for value_row, index in index_rows:
+            indices_by_document.setdefault(value_row.document_id, []).append({
+                "id": index.id,
+                "name": index.name,
+                "value": value_row.value,
+            })
 
         hits = []
         for document in documents:
@@ -127,6 +166,16 @@ class SearchService:
                 "is_official": document.is_official,
                 "student_id": document.student_id,
                 "group_id": metadata.get("group_id"),
+                "document_type": (
+                    {
+                        "id": document_type.id,
+                        "name": document_type.name,
+                        "group_id": document_type.group_id,
+                    }
+                    if (document_type := document_types.get(document.category_id))
+                    else None
+                ),
+                "indices": indices_by_document.get(document.id, []),
                 "status": document.status.value if hasattr(document.status, "value") else document.status,
                 "snippet": searchable_text[:180],
                 "ocr_engine": metadata.get("ocr_engine", "none"),

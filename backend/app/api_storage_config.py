@@ -68,6 +68,46 @@ def update_rule(rule_id: str, payload: StorageRuleCreate, db: Session = Depends(
     
     return rule
 
+@router.post("/api/storage-rules/{rule_id}/duplicate", response_model=StorageRuleResponse, tags=["Storage Config"])
+def duplicate_rule(rule_id: str, db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):
+    source = db.query(StorageRule).filter(StorageRule.id == rule_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Regra de armazenamento não encontrada")
+
+    duplicate = StorageRule(
+        name=f"{source.name} - Cópia",
+        document_type_id=source.document_type_id,
+        storage_type=source.storage_type,
+        base_path=f"{source.base_path}_copia",
+        max_files_per_folder=source.max_files_per_folder,
+        max_gb_per_folder=source.max_gb_per_folder,
+        enable_duplication=source.enable_duplication,
+        secondary_storage_type=source.secondary_storage_type,
+        secondary_base_path=(
+            f"{source.secondary_base_path}_copia"
+            if source.secondary_base_path
+            else None
+        ),
+        network_domain=source.network_domain,
+        network_user=source.network_user,
+        network_password=source.network_password,
+        is_active=False,
+    )
+    db.add(duplicate)
+    db.commit()
+    db.refresh(duplicate)
+
+    from app.main import add_audit
+    add_audit(
+        db,
+        "storage_rule",
+        duplicate.id,
+        "duplicated",
+        f"Storage rule {source.id} duplicated as {duplicate.id}",
+        user.id,
+    )
+    return duplicate
+
 @router.delete("/api/storage-rules/{rule_id}", status_code=204, tags=["Storage Config"])
 def delete_rule(rule_id: str, db: Session = Depends(get_db), user: User = Depends(role_checker(["admin_global"]))):
     rule = db.query(StorageRule).filter(StorageRule.id == rule_id).first()

@@ -174,12 +174,40 @@ async function loadDocTypes() {
                 <td>
                     <button class="btn-secondary btn-small" onclick="selectDocType('${dt.id}', '${dt.name}')">Detalhes</button>
                     <button class="btn-primary btn-small" onclick="editDocType('${dt.id}', '${dt.name}', '${dt.group_id || ''}', ${dt.retention_years}, ${dt.legal_hold}, '${dt.storage_area_id || ''}', '${dt.storage_partition_id || ''}', '${dt.workflow_id || ''}')">Editar</button>
+                    <button class="btn-danger btn-small" onclick="deleteDocType('${dt.id}', '${dt.name}')">Excluir</button>
                 </td>
             `;
             tbody.appendChild(tr);
         });
     } catch(e) {
         tbody.innerHTML = `<tr><td colspan="3" style="color:red">Erro: ${e.message}</td></tr>`;
+    }
+
+}
+
+async function deleteDocType(id, name) {
+    if (!confirm(`Excluir o tipo "${name}" e todos os documentos vinculados? Esta ação não pode ser desfeita.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/document-types/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        if (!response.ok && response.status !== 204) {
+            const data = await response.json();
+            throw new Error(data.detail || 'Falha ao excluir tipo documental');
+        }
+        if (currentDocTypeId === id) {
+            currentDocTypeId = null;
+            document.getElementById('current-doctype-name').innerText = 'Nenhum selecionado';
+            document.getElementById('btn-add-index').disabled = true;
+            document.getElementById('btn-add-xsd').disabled = true;
+        }
+        await loadDocTypes();
+    } catch (error) {
+        alert(error.message);
     }
 }
 

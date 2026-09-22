@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
 import uuid
+import io
+import zipfile
+import os
 
 from app.database import get_db
 from app import models
@@ -12,6 +16,10 @@ from app.schemas_academic_dossier import (
     AcademicDossierCreate, AcademicDossierResponse,
     DossierDocumentCreate, AcademicValidationResponse
 )
+from app.pdf_utils import convert_html_to_pdf_libreoffice
+from app.rvdd_generator import generate_rvdd_html
+from app.storage import load_file
+from app.document_permissions import exigir_documento
 
 router = APIRouter(tags=["GED - Vida Acadêmica (Dossiê e Validações)"])
 
@@ -24,6 +32,9 @@ def create_dossier(
     student = db.query(models.Student).filter(models.Student.id == payload.student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
+
+    if current_user.role != "admin_global" and student.institution_id != current_user.institution_id:
+        raise HTTPException(status_code=403, detail="Estudante fora da instituição do usuário.")
 
     enrollment = db.query(models.Enrollment).filter(models.Enrollment.id == payload.enrollment_id).first()
     if not enrollment:
@@ -105,6 +116,9 @@ def validate_dossier(
     if not dossier:
         raise HTTPException(status_code=404, detail="Dossier not found")
 
+    if current_user.role != "admin_global" and dossier.student.institution_id != current_user.institution_id:
+        raise HTTPException(status_code=403, detail="Dossiê fora da instituição do usuário.")
+
     # Clear previous validations
     db.query(AcademicValidation).filter(AcademicValidation.dossier_id == dossier_id).delete()
 
@@ -155,15 +169,7 @@ def validate_dossier(
     return dossier
 
 
-import io
-import zipfile
-import uuid
-import os
-from fastapi.responses import StreamingResponse
-from app.pdf_utils import convert_html_to_pdf_libreoffice
-from app.rvdd_generator import generate_rvdd_html
-from app.storage import load_file
-from app.document_permissions import exigir_documento
+
 
 @router.post("/api/dossiers/{dossier_id}/close", response_model=AcademicDossierResponse)
 def close_dossier(

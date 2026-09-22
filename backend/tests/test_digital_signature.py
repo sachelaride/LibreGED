@@ -88,7 +88,8 @@ def test_xmldsig_flow():
         data={
             "name": "João Reitor",
             "role": "Reitor",
-            "cpf": "11122233344"
+            "cpf": "11122233344",
+            "password": p12_password,
         },
         files={"p12_file": ("test.p12", p12_bytes, "application/x-pkcs12")}
     )

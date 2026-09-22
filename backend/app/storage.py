@@ -8,6 +8,13 @@ from app.models_storage import StorageRule
 STORAGE_ROOT = Path(__file__).resolve().parent.parent / "storage"
 STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 
+def _rule_directory(base_path: str) -> Path:
+    configured_path = Path(base_path)
+    if configured_path.is_absolute():
+        return configured_path
+    return STORAGE_ROOT / configured_path
+
+
 def save_file(
     file_name: str,
     content: bytes,
@@ -67,14 +74,14 @@ def save_file(
                 db.commit()
                 db.refresh(new_rule)
                 
-                target_dir = STORAGE_ROOT / new_rule.base_path
+                target_dir = _rule_directory(new_rule.base_path)
                 target_dir.mkdir(parents=True, exist_ok=True)
             else:
                 rule.current_file_count += 1
                 rule.current_size_bytes += content_size
                 db.commit()
                 
-                target_dir = STORAGE_ROOT / rule.base_path
+                target_dir = _rule_directory(rule.base_path)
                 target_dir.mkdir(parents=True, exist_ok=True)
 
             if partition_name:

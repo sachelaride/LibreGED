@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
+from pathlib import Path
+from sqlalchemy import text
 
 from app.database import get_db
-from app import models, models_ged_config
+from app import models, models_ged, models_ged_config
 from app import auth
 from app.schemas_ged_config import (
     GedIndexCreate, GedIndexResponse,
@@ -272,9 +274,23 @@ def editar_tipo(tipo_id: str, dados: EdicaoTipo, db: Session = Depends(get_db),
 def excluir_tipo(tipo_id: str, db: Session = Depends(get_db),
                  usuario: models.User = Depends(auth.role_checker(["admin_global"]))):
     tipo = obter_registro(db, models_ged_config.DocumentType, tipo_id)
-    if (db.query(GEDDocument).filter_by(category_id=tipo_id).first()
-            or db.query(models_ged_config.UserDocumentType).filter_by(document_type_id=tipo_id).first()):
-        raise HTTPException(409, "Tipo documental em uso. Desative-o para preservar os vínculos.")
+    
+    # Verifica se existem documentos associados
+    em_uso = db.query(GEDDocument).filter_by(category_id=tipo_id).first()
+    if em_uso:
+        raise HTTPException(status_code=409, detail="Tipo documental em uso. Não é possível excluir.")
+    db.query(models_ged_config.DocumentTypeIndex).filter_by(
+        document_type_id=tipo_id
+    ).delete(synchronize_session=False)
+    db.query(models_ged_config.DocumentTypeVersion).filter_by(
+        document_type_id=tipo_id
+    ).delete(synchronize_session=False)
+    db.query(models_ged_config.UserDocumentType).filter_by(
+        document_type_id=tipo_id
+    ).delete(synchronize_session=False)
+    db.query(models_ged.DocumentCategory).filter_by(id=tipo_id).delete(
+        synchronize_session=False
+    )
     auditar(db, usuario, "tipo_documental", tipo_id, "excluir", tipo.name)
     db.delete(tipo)
     concluir_configuracao(db)

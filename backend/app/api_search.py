@@ -8,11 +8,69 @@ from app.schemas_pagination import PaginatedResponse
 
 from app.auth import get_current_active_user
 from app.models import User
-from app.models_ged import GEDDocument
-from app.models_ged_config import UserDocumentType
+from app.models_ged import GEDDocument, GEDDocumentIndexValue
+from app.models_ged_config import (
+    UserDocumentType,
+    GedIndex,
+    DocumentType,
+    DocumentTypeIndex,
+)
 
 router = APIRouter()
 search_service = SearchService()
+
+@router.get("/api/documents/search/types", tags=["GED - Busca Full-Text"])
+def search_document_types(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Retorna os tipos e índices que o usuário pode consultar."""
+    query = db.query(DocumentType).filter(DocumentType.is_active.is_(True))
+    if current_user.role != "admin_global":
+        if not current_user.institution_id:
+            return []
+        allowed_type_ids = [
+            record.document_type_id
+            for record in db.query(UserDocumentType).filter(
+                UserDocumentType.user_id == current_user.id
+            ).all()
+            if "consultar" in (record.permissions or [])
+        ]
+        if not allowed_type_ids:
+            return []
+        query = query.filter(DocumentType.id.in_(allowed_type_ids))
+
+    types = query.order_by(DocumentType.name.asc()).all()
+    type_ids = [item.id for item in types]
+    links = (
+        db.query(DocumentTypeIndex, GedIndex)
+        .join(GedIndex, GedIndex.id == DocumentTypeIndex.index_id)
+        .filter(
+            DocumentTypeIndex.document_type_id.in_(type_ids),
+            GedIndex.is_active.is_(True),
+        )
+        .all()
+        if type_ids else []
+    )
+    indices_by_type = {}
+    for link, index in links:
+        indices_by_type.setdefault(link.document_type_id, []).append({
+            "id": index.id,
+            "name": index.name,
+            "type": index.type,
+            "options": index.options or [],
+            "mask": index.mask,
+        })
+
+    return [
+        {
+            "id": item.id,
+            "name": item.name,
+            "group_id": item.group_id,
+            "indices": indices_by_type.get(item.id, []),
+        }
+        for item in types
+    ]
 
 @router.get("/api/documents/search", tags=["GED - Busca Full-Text"], response_model=PaginatedResponse[Dict[str, Any]])
 def search_documents(
@@ -22,6 +80,8 @@ def search_documents(
     student_id: Optional[str] = None,
     group_id: Optional[str] = None,
     document_type_id: Optional[str] = None,
+    index_id: Optional[str] = None,
+    index_value: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -46,6 +106,8 @@ def search_documents(
         student_id=student_id,
         group_id=group_id,
         document_type_id=document_type_id,
+        index_id=index_id,
+        index_value=index_value,
     )
 
 @router.get("/api/documents/student/{student_id}", tags=["GED - Busca Full-Text"])

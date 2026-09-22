@@ -73,12 +73,16 @@ class RetentionService:
         return True
 
     @staticmethod
-    def check_retention_compliance(db: Session) -> List[Dict]:
+    def check_retention_compliance(db: Session, institution_id: str | None = None) -> List[Dict]:
         """Verificar quais documentos violam a política de retenção."""
         violations = []
         now = datetime.now(UTC).replace(tzinfo=None)
+        
+        query = db.query(GEDDocument)
+        if institution_id:
+            query = query.filter(GEDDocument.institution_id == institution_id)
 
-        for doc in db.query(GEDDocument).all():
+        for doc in query.all():
             if doc.status in (
                 GEDDocumentStatus.RASCUNHO,
                 GEDDocumentStatus.PENDENTE_VALIDACAO,
@@ -124,9 +128,9 @@ class RetentionService:
         return violations
 
     @staticmethod
-    def execute_retention_cleanup(db: Session, dry_run: bool = True) -> Dict:
+    def execute_retention_cleanup(db: Session, dry_run: bool = True, institution_id: str | None = None) -> Dict:
         """Executar limpeza de documentos expirados."""
-        violations = RetentionService.check_retention_compliance(db)
+        violations = RetentionService.check_retention_compliance(db, institution_id)
         archived_count = 0
         warned_count = 0
 
@@ -151,7 +155,7 @@ class RetentionService:
         }
 
     @staticmethod
-    def get_lifecycle_statistics(db: Session) -> Dict:
+    def get_lifecycle_statistics(db: Session, institution_id: str | None = None) -> Dict:
         """Obter estatísticas sobre o ciclo de vida dos documentos."""
         stats = {
             "by_status": {},
@@ -165,8 +169,12 @@ class RetentionService:
         }
 
         now = datetime.now(UTC).replace(tzinfo=None)
+        
+        query = db.query(GEDDocument)
+        if institution_id:
+            query = query.filter(GEDDocument.institution_id == institution_id)
 
-        for doc in db.query(GEDDocument).all():
+        for doc in query.all():
             # Por status
             status = doc.status.value
             if status not in stats["by_status"]:

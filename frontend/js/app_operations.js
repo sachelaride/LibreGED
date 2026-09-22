@@ -1,5 +1,7 @@
 // app_operations.js - Lida com a busca e upload do app.html
 
+let searchDocumentTypes = [];
+
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, character => ({
         '&': '&amp;',
@@ -14,22 +16,94 @@ async function loadSearchDocumentTypes() {
     const selector = document.getElementById('search-document-type');
     if (!selector) return;
     try {
-        const response = await fetch(`${API_URL}/document-types?page=1&size=100`, { headers: getAuthHeaders() });
+        const response = await fetch(`${API_URL}/documents/search/types`, { headers: getAuthHeaders() });
         if (!response.ok) return;
-        const payload = await response.json();
-        const items = payload.items || [];
-        const current = selector.value;
-        selector.innerHTML = '<option value="">Tipo documental</option>';
-        items.filter(item => item.is_active).forEach(item => {
-            const option = document.createElement('option');
-            option.value = item.id;
-            option.textContent = item.name;
-            if (current && current === item.id) option.selected = true;
-            selector.appendChild(option);
-        });
+        const items = await response.json();
+        searchDocumentTypes = Array.isArray(items) ? items : [];
+        loadSearchGroups();
+        loadSearchTypeOptions();
     } catch (e) {
         console.warn('Não foi possível carregar tipos para a busca', e);
     }
+}
+
+function loadSearchTypeOptions() {
+    const selector = document.getElementById('search-document-type');
+    if (!selector) return;
+    const groupId = document.getElementById('search-group')?.value || '';
+    const current = selector.value;
+    const types = searchDocumentTypes.filter(item => !groupId || item.group_id === groupId);
+    selector.innerHTML = '<option value="">Tipo documental</option>';
+    types.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = item.name;
+        selector.appendChild(option);
+    });
+    if (types.some(item => item.id === current)) selector.value = current;
+    updateSearchIndexHelp();
+}
+
+function groupLabel(groupId) {
+    const labels = {
+        pessoal: 'Documentos Pessoais',
+        documentos_pessoais: 'Documentos Pessoais',
+        acad_dossier: 'Documentos Acadêmicos',
+        academico: 'Documentos Acadêmicos',
+        documentos_academicos: 'Documentos Acadêmicos'
+    };
+    return labels[(groupId || '').toLowerCase()] || groupId || 'Sem grupo';
+}
+
+function loadSearchGroups() {
+    const selector = document.getElementById('search-group');
+    if (!selector) return;
+    const groups = [...new Map(
+        searchDocumentTypes
+            .filter(item => item.group_id)
+            .map(item => [item.group_id, groupLabel(item.group_id)])
+    )].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+    const current = selector.value;
+    selector.innerHTML = '<option value="">Grupo documental</option>';
+    groups.forEach(([id, label]) => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = label;
+        selector.appendChild(option);
+    });
+    if (current && groups.some(([id]) => id === current)) selector.value = current;
+    updateSearchIndexHelp();
+}
+
+function updateSearchIndexHelp() {
+    const typeId = document.getElementById('search-document-type')?.value;
+    const groupId = document.getElementById('search-group')?.value;
+    const help = document.getElementById('search-indexes-help');
+    const indexSelector = document.getElementById('search-index');
+    if (!help) return;
+    const types = searchDocumentTypes.filter(item =>
+        (!typeId || item.id === typeId) && (!groupId || item.group_id === groupId)
+    );
+    const indices = [...new Map(
+        types.flatMap(item => (item.indices || []).map(link => {
+            const index = link.index || link;
+            return [index.id, index];
+        }))
+    ).values()];
+    const currentIndex = indexSelector?.value;
+    if (indexSelector) {
+        indexSelector.innerHTML = '<option value="">Índice cadastrado</option>';
+        indices.forEach(index => {
+            const option = document.createElement('option');
+            option.value = index.id;
+            option.textContent = index.name;
+            indexSelector.appendChild(option);
+        });
+        if (indices.some(index => index.id === currentIndex)) indexSelector.value = currentIndex;
+    }
+    help.textContent = indices.length
+        ? `Índices disponíveis: ${indices.map(index => index.name).join(', ')}.`
+        : 'Selecione um grupo ou tipo para ver os índices disponíveis.';
 }
 
 function updateOcrHelp() {
@@ -47,12 +121,14 @@ function updateOcrHelp() {
 }
 
 function clearSearchFilters() {
-    ['search-query', 'search-student', 'search-group'].forEach(id => {
+    ['search-query', 'search-student', 'search-group', 'search-index', 'search-index-value'].forEach(id => {
         const field = document.getElementById(id);
         if (field) field.value = '';
     });
     const typeField = document.getElementById('search-document-type');
     if (typeField) typeField.value = '';
+    loadSearchTypeOptions();
+    updateSearchIndexHelp();
     document.getElementById('search-summary').textContent = '';
     document.getElementById('search-results').innerHTML =
         '<p class="text-muted" style="text-align:center;">Digite um termo ou use filtros para começar a busca.</p>';
@@ -63,10 +139,12 @@ async function performSearch() {
     const studentId = document.getElementById('search-student')?.value || '';
     const groupId = document.getElementById('search-group')?.value || '';
     const docTypeId = document.getElementById('search-document-type')?.value || '';
+    const indexValue = document.getElementById('search-index-value')?.value.trim() || '';
+    const indexId = document.getElementById('search-index')?.value || '';
     const resultsContainer = document.getElementById('search-results');
     const summary = document.getElementById('search-summary');
 
-    if (!query && !studentId && !groupId && !docTypeId) {
+    if (!query && !studentId && !groupId && !docTypeId && !indexId && !indexValue) {
         summary.textContent = '';
         resultsContainer.innerHTML = '<p class="text-muted" style="text-align:center;">Digite um termo ou use filtros para começar a busca.</p>';
         return;
@@ -81,6 +159,8 @@ async function performSearch() {
         if (studentId) params.set('student_id', studentId);
         if (groupId) params.set('group_id', groupId);
         if (docTypeId) params.set('document_type_id', docTypeId);
+        if (indexId) params.set('index_id', indexId);
+        if (indexValue) params.set('index_value', indexValue);
 
         const response = await fetch(`${API_URL}/documents/search?${params.toString()}`, {
             headers: getAuthHeaders()
@@ -111,7 +191,15 @@ async function performSearch() {
                 ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">Aluno: ${escapeHtml(doc.student_id)}</div>`
                 : '';
             const groupText = doc.group_id
-                ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Grupo: ${escapeHtml(doc.group_id)}</div>`
+                ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Grupo: ${escapeHtml(groupLabel(doc.group_id))}</div>`
+                : '';
+            const typeText = doc.document_type?.name
+                ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Tipo: ${escapeHtml(doc.document_type.name)}</div>`
+                : '';
+            const indicesText = (doc.indices || []).length
+                ? `<div class="search-result-indices">${doc.indices.map(index =>
+                    `<span><strong>${escapeHtml(index.name)}:</strong> ${escapeHtml(index.value)}</span>`
+                ).join('')}</div>`
                 : '';
             const ocrIndexed = doc.ocr_status === 'success' || doc.ocr_status === 'indexed';
             const ocrLabel = ocrIndexed
@@ -130,6 +218,8 @@ async function performSearch() {
                         </p>
                         ${studentText}
                         ${groupText}
+                        ${typeText}
+                        ${indicesText}
                         <div class="search-result-snippet">${snippet || 'Sem prévia extraída por OCR.'}</div>
                     </div>
                     <div>
@@ -145,6 +235,7 @@ async function performSearch() {
         summary.textContent = '';
         resultsContainer.innerHTML = `<p style="color:red; text-align:center;">Falha de comunicação: ${e.message}</p>`;
     }
+
 }
 
 function viewDocument(docId) {
@@ -204,6 +295,139 @@ function carregarIndicesUpload() {
         grupo.append(rotulo, campo);
         painel.append(grupo);
     });
+}
+
+function openNewDocumentForIndex() {
+    window.location.hash = 'academic';
+    const nameField = document.getElementById('student-name');
+    if (nameField) nameField.focus();
+}
+
+function renderOperationError(container, message) {
+    container.innerHTML = `<p style="color:var(--accent);">${escapeHtml(message)}</p>`;
+}
+
+async function loadTaskMonitor() {
+    const list = document.getElementById('task-monitor-list');
+    const summary = document.getElementById('task-monitor-summary');
+    if (!list || !summary) return;
+    list.innerHTML = '<p class="text-muted">Carregando tarefas...</p>';
+    summary.textContent = '';
+    try {
+        const response = await fetch(`${API_URL}/workflows/tasks/my-tasks`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            renderOperationError(list, `Não foi possível carregar tarefas (HTTP ${response.status}).`);
+            return;
+        }
+        const tasks = await response.json();
+        summary.textContent = `${tasks.length} tarefa(s) pendente(s)`;
+        if (!tasks.length) {
+            list.innerHTML = '<p class="text-muted">Nenhuma tarefa pendente.</p>';
+            return;
+        }
+        list.innerHTML = tasks.map(task => `
+            <div class="operation-list-item">
+                <div>
+                    <strong>${escapeHtml(task.name)}</strong>
+                    <div class="text-muted">${escapeHtml(task.description || 'Sem descrição')}</div>
+                    <small class="text-muted">Criada em ${escapeHtml(task.created_at || 'data não informada')}</small>
+                </div>
+                <button class="btn-primary btn-small" type="button" onclick="completeTask('${encodeURIComponent(task.id)}')">
+                    Concluir
+                </button>
+            </div>
+        `).join('');
+    } catch (error) {
+        renderOperationError(list, `Falha de comunicação: ${error.message}`);
+    }
+}
+
+async function loadFlowMonitor() {
+    const list = document.getElementById('flow-monitor-list');
+    if (!list) return;
+    list.innerHTML = '<p class="text-muted">Carregando fluxos...</p>';
+    try {
+        const response = await fetch(`${API_URL}/workflows?page=1&size=100`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            renderOperationError(list, `Monitor de fluxo indisponível para este perfil (HTTP ${response.status}).`);
+            document.getElementById('insight-flow-count')?.replaceChildren(document.createTextNode('-'));
+            return;
+        }
+        const payload = await response.json();
+        const flows = payload.items || [];
+        if (!flows.length) {
+            list.innerHTML = '<p class="text-muted">Nenhum fluxo disponível.</p>';
+            return;
+        }
+        list.innerHTML = flows.map(flow => `
+            <div class="operation-list-item">
+                <div>
+                    <strong>${escapeHtml(flow.name)}</strong>
+                    <div class="text-muted">${escapeHtml(flow.internal_name)}</div>
+                </div>
+                <span class="ocr-status-badge ${flow.is_active ? 'ocr-status-indexed' : 'ocr-status-skipped'}">
+                    ${flow.is_active ? 'Ativo' : 'Inativo'}
+                </span>
+            </div>
+        `).join('');
+        const flowCount = document.getElementById('insight-flow-count');
+        if (flowCount) flowCount.textContent = String(flows.length);
+    } catch (error) {
+        renderOperationError(list, `Falha de comunicação: ${error.message}`);
+    }
+}
+
+async function startFlowFromForm() {
+    const feedback = document.getElementById('new-flow-feedback');
+    const payload = {
+        document_id: document.getElementById('new-flow-document-id').value.trim(),
+        workflow_id: document.getElementById('new-flow-workflow-id').value.trim(),
+        current_state_id: document.getElementById('new-flow-state-id').value.trim()
+    };
+    feedback.textContent = 'Iniciando fluxo...';
+    try {
+        const response = await fetch(`${API_URL}/workflows/instances`, {
+            method: 'POST',
+            headers: {
+                ...getAuthHeaders(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            feedback.textContent = data.detail || `Não foi possível iniciar o fluxo (HTTP ${response.status}).`;
+            return;
+        }
+        feedback.textContent = `Fluxo iniciado com sucesso: ${data.id || 'instância criada'}.`;
+        document.getElementById('new-flow-form').reset();
+        window.location.hash = 'tasks';
+    } catch (error) {
+        feedback.textContent = `Falha de comunicação: ${error.message}`;
+    }
+}
+
+async function loadInsights() {
+    const taskCount = document.getElementById('insight-task-count');
+    const flowCount = document.getElementById('insight-flow-count');
+    const uploadCount = document.getElementById('insight-upload-count');
+    if (uploadCount) uploadCount.textContent = String(uploadQueueState.length);
+    try {
+        const response = await fetch(`${API_URL}/workflows/tasks/my-tasks`, {
+            headers: getAuthHeaders()
+        });
+        if (response.ok && taskCount) {
+            const tasks = await response.json();
+            taskCount.textContent = String(tasks.length);
+        }
+    } catch {
+        if (taskCount) taskCount.textContent = '-';
+    }
+    loadFlowMonitor();
 }
 
 let currentStudentId = null;
@@ -802,6 +1026,10 @@ function setupLibraryDropzone() {
 document.addEventListener('DOMContentLoaded', () => {
     loadSearchDocumentTypes();
     updateOcrHelp();
+    document.getElementById('search-document-type')?.addEventListener('change', updateSearchIndexHelp);
+    document.getElementById('search-group')?.addEventListener('change', () => {
+        loadSearchTypeOptions();
+    });
     const searchQuery = document.getElementById('search-query');
     if (searchQuery) {
         searchQuery.addEventListener('keydown', event => {
@@ -832,7 +1060,12 @@ function openDocumentDetails(nodeId) {
     // Para simplificar, vamos assumir que o Workflow Padrão (Revisar & Aprovar) tem id = "1" ou "workflow_uuid".
     // Isso pode requerer um Fetch na API de workflows disponíveis
     
-    document.getElementById('document-modal').style.display = 'flex';
+    document.getElementById('document-modal').classList.add('active');
+    document.getElementById('document-modal').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeDocumentDetails() {
+    document.getElementById('document-modal').classList.remove('active');
 }
 
 function renderDocumentTags(tags) {
@@ -1067,7 +1300,7 @@ async function startWorkflowForDocument() {
         
         if(response.ok) {
             alert(`Processo "${targetWf.name}" iniciado com sucesso! A primeira tarefa foi designada e aparecerá no Dashboard.`);
-            document.getElementById('document-modal').style.display = 'none';
+            closeDocumentDetails();
         } else {
             const data = await response.json();
             alert('Erro ao iniciar fluxo: ' + (data.detail || ''));

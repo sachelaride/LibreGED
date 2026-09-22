@@ -5,7 +5,13 @@ from app.storage import save_file, load_file
 from app.models_ged import Signer, GEDDocument, GEDDocumentStatus, DocumentTransitionHistory, SignatureLog, SignatureRequest
 from app.models_ged_config import DocumentType
 from app.schemas_ged import SignerResponse, SignerCreate
-from app.digital_signature import sign_xml_document, sign_pdf_document, get_cert_info_from_p12, get_file_hash
+from app.digital_signature import (
+    sign_xml_document,
+    sign_pdf_document,
+    get_cert_info_from_p12,
+    get_cert_info_from_p12_bytes,
+    get_file_hash,
+)
 import uuid
 import os
 from pydantic import BaseModel
@@ -22,11 +28,19 @@ async def create_signer(
     name: str = Form(...),
     role: str = Form(...),
     cpf: str = Form(...),
+    password: str = Form(..., min_length=1),
     p12_file: UploadFile = File(...),
     db: Session = Depends(get_db),
     usuario: User = Depends(role_checker(["admin_global"]))
 ):
     content = await p12_file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="O arquivo do certificado está vazio.")
+    try:
+        get_cert_info_from_p12_bytes(content, password)
+    except (ValueError, TypeError, OSError) as exc:
+        raise HTTPException(status_code=422, detail="Senha incorreta ou certificado .p12/.pfx inválido.") from exc
+
     file_ext = p12_file.filename.split(".")[-1] if p12_file.filename else "p12"
     safe_name = f"cert_{uuid.uuid4()}.{file_ext}"
     saved_path = save_file(safe_name, content, db=db)

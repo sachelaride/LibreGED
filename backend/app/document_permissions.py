@@ -12,9 +12,9 @@ ACOES = {
     'consultar': 'Visualizar e pesquisar', 'cadastrar': 'Cadastrar documento',
     'editar': 'Editar documento', 'arquivar': 'Arquivar documento',
     'excluir': 'Excluir documento', 'download': 'Baixar arquivo',
-    'assinar': 'Assinar documento', 'iniciar_fluxo': 'Iniciar fluxo',
+    'assinar': 'Assinar documento', 'iniciar_fluxo': 'Iniciar trânsito',
     'segunda_via': 'Emitir segunda via',
-    'executar_fluxo': 'Executar fluxo', 'liberar_quarentena': 'Liberar quarentena',
+    'executar_fluxo': 'Executar trânsito', 'liberar_quarentena': 'Liberar quarentena',
     'editar_indices': 'Editar índices', 'exportar': 'Exportar documento',
     'imprimir': 'Imprimir', 'comentar': 'Comentar',
 }

@@ -49,6 +49,7 @@ class WorkflowState(Base):
     # Visual positioning
     ui_pos_x = Column(Integer, nullable=True)
     ui_pos_y = Column(Integer, nullable=True)
+    swimlane = Column(String, nullable=True)
 
     workflow = relationship("Workflow", back_populates="states")
 
@@ -106,6 +107,7 @@ class WorkflowTask(Base):
     assignee_id = Column(String, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True)
     assignee_group_id = Column(String, nullable=True, index=True)
     assignee_role = Column(String, nullable=True, index=True)
+    task_form_key = Column(String, nullable=True)
 
     due_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utc_now)

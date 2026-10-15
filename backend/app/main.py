@@ -23,6 +23,7 @@ from app.database import get_db
 from app import models
 from app.search import search_service
 from app.retention import RetentionService
+from app import auth
 from app.auth import get_current_active_user, role_checker, check_institution_access
 from app.filewatch import run_filewatch_cycle
 from app.privacy_utils import redact_text_for_log

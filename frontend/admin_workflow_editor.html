@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreGED - Editor de Workflow (Diplomas)</title>
+    
+    <!-- CSS Dependencies -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600&display=swap" rel="stylesheet">
+    
+    <!-- Drawflow CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
+    
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            overflow: hidden; 
+            margin: 0; 
+            padding: 0; 
+            background: #f8fafc;
+        }
+
+        /* -------------------------------------------
+           Header e Topbar
+        ------------------------------------------- */
+        .editor-header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 50;
+            pointer-events: none; /* Let clicks pass through empty areas */
+        }
+        
+        .header-left, .header-right {
+            pointer-events: auto; /* Re-enable clicks for buttons */
+        }
+
+        .workflow-title-box {
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 16px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border: 1px solid #e2e8f0;
+            gap: 12px;
+        }
+
+        .btn-back {
+            background: #f1f5f9;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #475569;
+            transition: 0.2s;
+        }
+        .btn-back:hover { background: #e2e8f0; }
+
+        .workflow-title h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 18px;
+            margin: 0;
+            color: #0f172a;
+            font-weight: 600;
+        }
+        .workflow-title p {
+            margin: 0;
+            font-size: 11px;
+            color: #64748b;
+        }
+        
+        .version-badge {
+            background: #dcfce7;
+            color: #166534;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border: 1px solid #e2e8f0;
+        }
+
+        .btn-icon, .btn-primary-action {
+            border: 1px solid #e2e8f0;
+            background: white;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #334155;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.2s;
+        }
+        .btn-icon:hover { background: #f8fafc; }
+        
+        .btn-primary-action {
+            background: #eff6ff;
+            color: #1d4ed8;
+            border-color: #bfdbfe;
+        }
+        .btn-primary-action:hover {
+            background: #dbeafe;
+        }
+
+        /* Filtro de Raias */
+        .swimlane-filters {
+            position: absolute;
+            top: 80px;
+            left: 20px;
+            z-index: 50;
+            display: flex;
+            gap: 8px;
+            pointer-events: auto;
+        }
+        
+        .filter-chip {
+            background: white;
+            border: 1px solid #e2e8f0;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #64748b;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+            transition: 0.2s;
+        }
+        .filter-chip.active {
+            background: #0f172a;
+            color: white;
+            border-color: #0f172a;
+        }
+
+        /* -------------------------------------------
+           Canvas Drawflow
+        ------------------------------------------- */
+        .canvas-container { 
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #fafbfc;
+            background-image: radial-gradient(#cbd5e1 1.5px, transparent 1.5px);
+            background-size: 30px 30px;
+        }
+        
+        #drawflow { 
+            width: 100%; 
+            height: 100%; 
+        }
+
+        /* -------------------------------------------
+           Estilos Customizados dos Nós
+        ------------------------------------------- */
+        .drawflow-node { 
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+            width: 220px;
+            padding: 0;
+        }
+        .drawflow-node.selected {
+            border: 2px solid #3b82f6;
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.2);
+        }
+
+        .node-modern {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .node-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Cores por tipo */
+        .node-modern.type-start .node-header { color: #10b981; }
+        .node-modern.type-user .node-header { color: #3b82f6; }
+        .node-modern.type-service .node-header { color: #14b8a6; }
+        .node-modern.type-gateway .node-header { color: #f59e0b; }
+        .node-modern.type-end .node-header { color: #ef4444; }
+
+        .node-modern .badge-status {
+            margin-left: auto;
+            background: #e0e7ff;
+            color: #4338ca;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+        }
+
+        .node-body {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1e293b;
+            line-height: 1.3;
+        }
+
+        .node-footer {
+            font-size: 11px;
+            color: #64748b;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* -------------------------------------------
+           Toolbar Flutuante
+        ------------------------------------------- */
+        .floating-toolbar {
+            position: absolute;
+            top: 130px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 50;
+            pointer-events: auto;
+        }
+
+        .toolbar-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            padding-right: 8px;
+            border-right: 1px solid #e2e8f0;
+        }
+
+        .drag-tool {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            cursor: move;
+            padding: 8px;
+            border-radius: 8px;
+            transition: 0.2s;
+        }
+        .drag-tool:hover {
+            background: #f1f5f9;
+        }
+        .drag-tool-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        .drag-tool span {
+            font-size: 10px;
+            font-weight: 500;
+            color: #334155;
+        }
+
+        /* Cores das ferramentas */
+        .tool-start .drag-tool-icon { color: #10b981; border: 1.5px solid #10b981; }
+        .tool-user .drag-tool-icon { color: #3b82f6; border: 1.5px solid #3b82f6; }
+        .tool-service .drag-tool-icon { color: #14b8a6; border: 1.5px solid #14b8a6; }
+        .tool-gateway .drag-tool-icon { color: #f59e0b; border: 1.5px solid #f59e0b; background: #fffbeb; }
+        .tool-end .drag-tool-icon { color: #ef4444; border: 1.5px solid #ef4444; }
+
+        /* -------------------------------------------
+           Bottom Sheet (Painel Inferior)
+        ------------------------------------------- */
+        .bottom-sheet {
+            position: absolute;
+            bottom: -500px; /* Hidden by default */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 800px;
+            background: white;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+            border-bottom: none;
+            z-index: 100;
+            transition: bottom 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            flex-direction: column;
+            max-height: 70vh;
+        }
+
+        .bottom-sheet.open {
+            bottom: 0;
+        }
+
+        .sheet-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            padding: 20px 24px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .sheet-title-area {
+            display: flex;
+            gap: 16px;
+        }
+
+        .sheet-node-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: #eff6ff;
+            color: #3b82f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .sheet-node-info h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0 0 4px 0;
+            color: #0f172a;
+        }
+        .sheet-node-info p {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-close-sheet {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 4px;
+        }
+        .btn-close-sheet:hover { color: #0f172a; }
+
+        /* Tabs */
+        .sheet-tabs {
+            display: flex;
+            gap: 24px;
+            padding: 0 24px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .sheet-tab {
+            padding: 12px 4px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: 0.2s;
+        }
+        .sheet-tab:hover { color: #0f172a; }
+        .sheet-tab.active {
+            color: #2563eb;
+            border-bottom-color: #2563eb;
+        }
+
+        /* Content Area */
+        .sheet-content {
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .tab-pane {
+            display: none;
+        }
+        .tab-pane.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Form Elements */
+        .form-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .form-control, .form-select {
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 14px;
+            box-shadow: none;
+            transition: 0.2s;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .sheet-footer {
+            padding: 16px 24px;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn-sheet-save {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .btn-sheet-save:hover { background: #1d4ed8; }
+        
+        .btn-sheet-delete {
+            background: #fee2e2;
+            color: #ef4444;
+            border: none;
+            padding: 10px;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-sheet-delete:hover { background: #fca5a5; }
+
+        /* System Tags Area */
+        .tags-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .sys-tag {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #3b82f6;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .sys-tag:hover { background: #e2e8f0; }
+
+    </style>
+</head>
+<body>
+
+<!-- CANVAS BACKGROUND -->
+<div class="canvas-container">
+    <div id="drawflow" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+</div>
+
+<!-- HEADER ABSOLUTO -->
+<div class="editor-header">
+    <div class="header-left">
+        <div class="workflow-title-box">
+            <button class="btn-back" onclick="window.history.back()"><i class="fa-solid fa-chevron-left"></i></button>
+            <div class="workflow-title">
+                <h1>Emissão de Diplomas</h1>
+                <p><i class="fa-solid fa-circle" style="color: #10b981; font-size: 8px; margin-right: 4px;"></i> Todas as alterações salvas</p>
+            </div>
+            <span class="version-badge">v2.4</span>
+        </div>
+    </div>
+    
+    <div class="header-right">
+        <div class="header-actions">
+            <button class="btn-icon" title="Ajustar Visualização"><i class="fa-solid fa-compress"></i></button>
+            <button class="btn-icon" title="Lista de Variáveis"><i class="fa-solid fa-list-ul"></i></button>
+            <button class="btn-primary-action" onclick="saveWorkflow()"><i class="fa-solid fa-download"></i> JSON</button>
+        </div>
+    </div>
+</div>
+
+<!-- FILTRO DE RAIAS -->
+<div class="swimlane-filters">
+    <div class="filter-chip active">Todas Raias</div>
+    <div class="filter-chip">Aluno</div>
+    <div class="filter-chip">Secretaria Acadêmica</div>
+    <div class="filter-chip">Coordenação</div>
+</div>
+
+<!-- TOOLBAR FLUTUANTE CENTRAL -->
+<div class="floating-toolbar">
+    <div class="toolbar-label">Add</div>
+    
+    <div class="drag-tool tool-start" draggable="true" ondragstart="drag(event)" data-node="start">
+        <div class="drag-tool-icon"><i class="fa-solid fa-play"></i></div>
+        <span>Início</span>
+    </div>
+    
+    <div class="drag-tool tool-user" draggable="true" ondragstart="drag(event)" data-node="user_task">
+        <div class="drag-tool-icon"><i class="fa-regular fa-user"></i></div>
+        <span>Usuário</span>
+    </div>
+    
+    <div class="drag-tool tool-service" draggable="true" ondragstart="drag(event)" data-node="service_task">
+        <div class="drag-tool-icon"><i class="fa-solid fa-gear"></i></div>
+        <span>Serviço</span>
+    </div>
+    
+    <div class="drag-tool tool-gateway" draggable="true" ondragstart="drag(event)" data-node="gateway">
+        <div class="drag-tool-icon"><i class="fa-solid fa-xmark"></i></div>
+        <span>Decisão</span>
+    </div>
+    
+    <div class="drag-tool tool-end" draggable="true" ondragstart="drag(event)" data-node="end">
+        <div class="drag-tool-icon"><i class="fa-solid fa-stop"></i></div>
+        <span>Término</span>
+    </div>
+</div>
+
+<!-- BOTTOM SHEET (Drawer) -->
+<div class="bottom-sheet" id="properties-sheet">
+    <div class="sheet-header">
+        <div class="sheet-title-area">
+            <div class="sheet-node-icon" id="sheet-icon">
+                <i class="fa-regular fa-user"></i>
+            </div>
+            <div class="sheet-node-info">
+                <p id="sheet-node-type">TAREFA DE USUÁRIO <span class="text-muted fw-normal ms-2" id="sheet-node-id">#TSK-00</span></p>
+                <h2 id="sheet-node-title">Nome da Tarefa</h2>
+            </div>
+        </div>
+        <button class="btn-close-sheet" onclick="closePropertiesSheet()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    
+    <div class="sheet-tabs">
+        <div class="sheet-tab active" onclick="switchSheetTab('config')">Configuração</div>
+        <div class="sheet-tab" onclick="switchSheetTab('rules')">Regras & SLA</div>
+        <div class="sheet-tab" onclick="switchSheetTab('vars')">Variáveis & Notif.</div>
+    </div>
+    
+    <div class="sheet-content">
+        <!-- Aba Config -->
+        <div class="tab-pane active" id="tab-config">
+            <div class="row g-4">
+                <div class="col-12">
+                    <label class="form-label">Título do Elemento BPMN</label>
+                    <input type="text" class="form-control" id="prop-name" onchange="updateSelectedNodeData('name', this.value)">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Raia / Responsável</label>
+                    <select class="form-select" id="prop-swimlane" onchange="updateSelectedNodeData('swimlane', this.value)">
+                        <option value="aluno">Aluno</option>
+                        <option value="secretaria">Secretaria Acadêmica</option>
+                        <option value="coordenacao">Coordenação</option>
+                        <option value="sistema">Sistema (Automação)</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Tipo de Execução</label>
+                    <select class="form-select" id="prop-exec" onchange="updateSelectedNodeData('execution', this.value)">
+                        <option value="human">Humana (Aprovação)</option>
+                        <option value="form">Formulário (Preenchimento)</option>
+                        <option value="script">Script (Automático)</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Instruções aos Usuários / Config JSON</label>
+                    <textarea class="form-control" id="prop-config" rows="3" onchange="updateSelectedNodeData('config', this.value)"></textarea>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Aba Regras -->
+        <div class="tab-pane" id="tab-rules">
+            <div class="alert alert-info border-0 bg-light">
+                Configure os tempos limites (SLA) para esta tarefa e as regras de escalonamento.
+            </div>
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <label class="form-label">Prazo (Horas úteis)</label>
+                    <input type="number" class="form-control" placeholder="Ex: 48">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Aba Variáveis -->
+        <div class="tab-pane" id="tab-vars">
+            <label class="form-label mb-2">Variáveis de Contexto (Tags)</label>
+            <p class="text-muted small mb-3">Clique em uma tag para copiar e colar nas instruções ou configurações.</p>
+            <div class="tags-wrapper">
+                <div class="sys-tag" onclick="copyTag(this)">&lt;login&gt;</div>
+                <div class="sys-tag" onclick="copyTag(this)">&lt;nome_aluno&gt;</div>
+                <div class="sys-tag" onclick="copyTag(this)">&lt;matricula&gt;</div>
+                <div class="sys-tag" onclick="copyTag(this)">&lt;curso_id&gt;</div>
+                <div class="sys-tag" onclick="copyTag(this)">&lt;id_processo&gt;</div>
+                <div class="sys-tag" onclick="copyTag(this)">&lt;documento_url&gt;</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="sheet-footer">
+        <button class="btn-sheet-save" onclick="closePropertiesSheet()">Salvar Alterações</button>
+        <div class="d-flex gap-2">
+            <button class="btn-sheet-delete" title="Duplicar"><i class="fa-regular fa-copy" style="color: #64748b;"></i></button>
+            <button class="btn-sheet-delete" title="Excluir"><i class="fa-regular fa-trash-can"></i></button>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
+<script src="js/admin_workflow_editor.js"></script>
+</body>
+</html>

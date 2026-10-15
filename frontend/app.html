@@ -74,11 +74,11 @@
                 </a>
                 <a href="#flow" class="menu-item" data-target="flow">
                     <i class="fa-solid fa-diagram-project" style="margin-right: 12px; font-size:18px;"></i>
-                    Monitor de Fluxo
+                    Monitor de Trânsito
                 </a>
                 <a href="#new-flow" class="menu-item" data-target="new-flow">
                     <i class="fa-solid fa-code-branch" style="margin-right: 12px; font-size:18px;"></i>
-                    Novo Fluxo
+                    Novo Trânsito
                 </a>
                 <a href="#new-task" class="menu-item" data-target="new-task">
                     <i class="fa-solid fa-square-plus" style="margin-right: 12px; font-size:18px;"></i>
@@ -410,39 +410,175 @@
                     </div>
                 </section>
 
-                <!-- View: Monitor de Fluxo -->
+                <!-- View: Monitor de Trânsito -->
                 <section id="view-flow" class="view">
                     <div class="glass-panel" style="padding: 30px; min-height: 400px;">
                         <div class="section-heading">
                             <div>
-                                <h2>Monitor de Fluxo</h2>
-                                <p class="text-muted">Consulte os modelos de fluxo disponíveis para iniciar documentos.</p>
+                                <h2>Monitor de Trânsito</h2>
+                                <p class="text-muted">Consulte os modelos de trânsito disponíveis para iniciar documentos.</p>
                             </div>
                             <button class="btn-secondary" type="button" onclick="loadFlowMonitor()">
                                 <i class="fa-solid fa-rotate"></i> Atualizar
                             </button>
                         </div>
                         <div id="flow-monitor-list" class="operation-list">
-                            <p class="text-muted">Carregando fluxos...</p>
+                            <p class="text-muted">Carregando trânsitos...</p>
                         </div>
                     </div>
                 </section>
 
-                <!-- View: Novo Fluxo -->
+                <!-- View: Novo Trânsito -->
                 <section id="view-new-flow" class="view">
-                    <div class="glass-panel operation-form-panel">
-                        <h2>Novo Fluxo</h2>
-                        <p class="text-muted">O fluxo é iniciado a partir de um documento já indexado.</p>
+                    <div class="new-flow-wizard">
+                        <!-- Progress Bar -->
+                        <div class="wizard-progress">
+                            <div class="wizard-step active" data-step="1">
+                                <div class="wizard-step-icon"><i class="fa-solid fa-file-circle-check"></i></div>
+                                <span>Tipo Documental</span>
+                            </div>
+                            <div class="wizard-step-connector"></div>
+                            <div class="wizard-step" data-step="2">
+                                <div class="wizard-step-icon"><i class="fa-solid fa-folder-open"></i></div>
+                                <span>Documento</span>
+                            </div>
+                            <div class="wizard-step-connector"></div>
+                            <div class="wizard-step" data-step="3">
+                                <div class="wizard-step-icon"><i class="fa-solid fa-diagram-project"></i></div>
+                                <span>Workflow</span>
+                            </div>
+                            <div class="wizard-step-connector"></div>
+                            <div class="wizard-step" data-step="4">
+                                <div class="wizard-step-icon"><i class="fa-solid fa-play-circle"></i></div>
+                                <span>Iniciar</span>
+                            </div>
+                        </div>
+
                         <form id="new-flow-form" onsubmit="event.preventDefault(); startFlowFromForm();">
-                            <label for="new-flow-document-id">ID do documento</label>
-                            <input id="new-flow-document-id" class="form-control" required placeholder="Cole o ID do documento">
-                            <label for="new-flow-workflow-id">ID do modelo de fluxo</label>
-                            <input id="new-flow-workflow-id" class="form-control" required placeholder="Cole o ID do workflow">
-                            <label for="new-flow-state-id">Estado inicial</label>
-                            <input id="new-flow-state-id" class="form-control" required placeholder="Cole o ID do estado inicial">
-                            <button class="btn-primary" type="submit"><i class="fa-solid fa-play"></i> Iniciar fluxo</button>
+                            <!-- Step 1: Tipo Documental -->
+                            <div class="wizard-panel active" id="wizard-step-1">
+                                <div class="wizard-panel-header">
+                                    <div class="wizard-panel-icon"><i class="fa-solid fa-file-circle-check"></i></div>
+                                    <div>
+                                        <h3>Qual tipo de documento?</h3>
+                                        <p class="text-muted">Escolha a categoria do documento que entrará no fluxo de trânsito.</p>
+                                    </div>
+                                </div>
+                                <select id="new-flow-doc-type-id" class="form-control wizard-select" required onchange="onNewFlowDocTypeChange()">
+                                    <option value="">Selecione o Tipo Documental</option>
+                                </select>
+                                <div class="wizard-hint">
+                                    <i class="fa-solid fa-circle-info"></i>
+                                    Os tipos documentais exibidos são os cadastrados pelo administrador para a sua instituição.
+                                </div>
+                                <div class="wizard-actions">
+                                    <span></span>
+                                    <button type="button" class="btn-primary wizard-btn-next" onclick="wizardGoTo(2)" disabled id="wizard-next-1">
+                                        Próximo <i class="fa-solid fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Step 2: Documento -->
+                            <div class="wizard-panel" id="wizard-step-2">
+                                <div class="wizard-panel-header">
+                                    <div class="wizard-panel-icon" style="background: linear-gradient(135deg, #10b981, #059669);"><i class="fa-solid fa-folder-open"></i></div>
+                                    <div>
+                                        <h3>Selecione o documento</h3>
+                                        <p class="text-muted">Escolha o documento indexado que será tramitado neste fluxo.</p>
+                                    </div>
+                                </div>
+                                <select id="new-flow-document-id" class="form-control wizard-select" required disabled>
+                                    <option value="">Selecione primeiro o Tipo</option>
+                                </select>
+                                <div class="wizard-hint">
+                                    <i class="fa-solid fa-circle-info"></i>
+                                    Somente documentos já indexados aparecerão aqui. Caso não encontre, verifique se o upload foi concluído.
+                                </div>
+                                <div class="wizard-actions">
+                                    <button type="button" class="btn-secondary wizard-btn-back" onclick="wizardGoTo(1)">
+                                        <i class="fa-solid fa-arrow-left"></i> Voltar
+                                    </button>
+                                    <button type="button" class="btn-primary wizard-btn-next" onclick="wizardGoTo(3)" disabled id="wizard-next-2">
+                                        Próximo <i class="fa-solid fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Step 3: Workflow + Estado -->
+                            <div class="wizard-panel" id="wizard-step-3">
+                                <div class="wizard-panel-header">
+                                    <div class="wizard-panel-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);"><i class="fa-solid fa-diagram-project"></i></div>
+                                    <div>
+                                        <h3>Defina o fluxo de trabalho</h3>
+                                        <p class="text-muted">Selecione o modelo de workflow e o estado inicial da tramitação.</p>
+                                    </div>
+                                </div>
+                                <div class="wizard-field-group">
+                                    <label for="new-flow-workflow-id"><i class="fa-solid fa-sitemap"></i> Modelo de Workflow</label>
+                                    <select id="new-flow-workflow-id" class="form-control wizard-select" required onchange="onNewFlowWorkflowChange()">
+                                        <option value="">Selecione o Modelo</option>
+                                    </select>
+                                </div>
+                                <div class="wizard-field-group">
+                                    <label for="new-flow-state-id"><i class="fa-solid fa-flag-checkered"></i> Estado Inicial</label>
+                                    <select id="new-flow-state-id" class="form-control wizard-select" required disabled>
+                                        <option value="">Selecione primeiro o Modelo</option>
+                                    </select>
+                                </div>
+                                <div class="wizard-hint">
+                                    <i class="fa-solid fa-circle-info"></i>
+                                    O estado inicial é o primeiro passo do fluxo. Os demais estados serão percorridos automaticamente conforme as regras do workflow.
+                                </div>
+                                <div class="wizard-actions">
+                                    <button type="button" class="btn-secondary wizard-btn-back" onclick="wizardGoTo(2)">
+                                        <i class="fa-solid fa-arrow-left"></i> Voltar
+                                    </button>
+                                    <button type="button" class="btn-primary wizard-btn-next" onclick="wizardGoTo(4)" disabled id="wizard-next-3">
+                                        Revisar <i class="fa-solid fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Step 4: Revisão e Confirmação -->
+                            <div class="wizard-panel" id="wizard-step-4">
+                                <div class="wizard-panel-header">
+                                    <div class="wizard-panel-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);"><i class="fa-solid fa-clipboard-check"></i></div>
+                                    <div>
+                                        <h3>Confirme e inicie</h3>
+                                        <p class="text-muted">Revise as informações antes de iniciar o trânsito documental.</p>
+                                    </div>
+                                </div>
+                                <div class="wizard-summary">
+                                    <div class="wizard-summary-row">
+                                        <div class="wizard-summary-label"><i class="fa-solid fa-file-circle-check"></i> Tipo</div>
+                                        <div class="wizard-summary-value" id="wizard-review-type">—</div>
+                                    </div>
+                                    <div class="wizard-summary-row">
+                                        <div class="wizard-summary-label"><i class="fa-solid fa-folder-open"></i> Documento</div>
+                                        <div class="wizard-summary-value" id="wizard-review-doc">—</div>
+                                    </div>
+                                    <div class="wizard-summary-row">
+                                        <div class="wizard-summary-label"><i class="fa-solid fa-diagram-project"></i> Workflow</div>
+                                        <div class="wizard-summary-value" id="wizard-review-wf">—</div>
+                                    </div>
+                                    <div class="wizard-summary-row">
+                                        <div class="wizard-summary-label"><i class="fa-solid fa-flag-checkered"></i> Estado Inicial</div>
+                                        <div class="wizard-summary-value" id="wizard-review-state">—</div>
+                                    </div>
+                                </div>
+                                <div class="wizard-actions">
+                                    <button type="button" class="btn-secondary wizard-btn-back" onclick="wizardGoTo(3)">
+                                        <i class="fa-solid fa-arrow-left"></i> Voltar
+                                    </button>
+                                    <button class="btn-primary wizard-btn-submit" type="submit">
+                                        <i class="fa-solid fa-rocket"></i> Iniciar Trânsito
+                                    </button>
+                                </div>
+                            </div>
                         </form>
-                        <div id="new-flow-feedback" class="operation-feedback" aria-live="polite"></div>
+
+                        <div id="new-flow-feedback" class="operation-feedback wizard-feedback" aria-live="polite"></div>
                     </div>
                 </section>
 
@@ -453,7 +589,7 @@
                         <p class="text-muted">As tarefas são criadas pelo estado inicial ou pelas transições do workflow.</p>
                         <div class="quick-action-grid">
                             <button class="btn-primary" type="button" onclick="window.location.hash='new-flow'">
-                                <i class="fa-solid fa-code-branch"></i> Iniciar fluxo que gera tarefa
+                                <i class="fa-solid fa-code-branch"></i> Iniciar trânsito que gera tarefa
                             </button>
                             <button class="btn-secondary" type="button" onclick="window.location.hash='tasks'">
                                 <i class="fa-solid fa-list-check"></i> Ver minhas tarefas
@@ -487,7 +623,7 @@
                         <p class="text-muted">Indicadores rápidos baseados nos dados operacionais disponíveis.</p>
                         <div id="insights-grid" class="quick-action-grid">
                             <div class="insight-card"><strong id="insight-task-count">-</strong><span>Tarefas pendentes</span></div>
-                            <div class="insight-card"><strong id="insight-flow-count">-</strong><span>Fluxos disponíveis</span></div>
+                            <div class="insight-card"><strong id="insight-flow-count">-</strong><span>Trânsitos disponíveis</span></div>
                             <div class="insight-card"><strong id="insight-upload-count">-</strong><span>Arquivos na fila de upload</span></div>
                         </div>
                         <button class="btn-secondary" type="button" onclick="loadInsights()"><i class="fa-solid fa-rotate"></i> Atualizar indicadores</button>
@@ -679,6 +815,7 @@
             if(hash === 'tasks' && typeof loadTaskMonitor === 'function') loadTaskMonitor();
             if(hash === 'flow' && typeof loadFlowMonitor === 'function') loadFlowMonitor();
             if(hash === 'insights' && typeof loadInsights === 'function') loadInsights();
+            if(hash === 'new-flow' && typeof initNewFlowView === 'function') initNewFlowView();
         }
 
         window.addEventListener('hashchange', handleRoute);

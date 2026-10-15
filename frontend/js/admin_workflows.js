@@ -94,12 +94,12 @@ function toggleWorkflowListPanel(forceState) {
     const nextHidden = typeof forceState === 'boolean' ? forceState : !panel.classList.contains('is-hidden');
     panel.classList.toggle('is-hidden', nextHidden);
     panel.classList.remove('is-collapsed');
-    panel.style.display = nextHidden ? 'none' : 'flex';
-    panel.style.width = nextHidden ? '0' : '300px';
-    panel.style.height = nextHidden ? '0' : 'auto';
-    panel.style.opacity = nextHidden ? '0' : '1';
-    panel.style.overflow = nextHidden ? 'hidden' : 'visible';
-    panel.style.flex = nextHidden ? '0 0 0' : '0 0 300px';
+    panel.style.display = nextHidden ? 'none' : '';
+    panel.style.width = nextHidden ? '0' : '';
+    panel.style.height = nextHidden ? '0' : '';
+    panel.style.opacity = nextHidden ? '0' : '';
+    panel.style.overflow = nextHidden ? 'hidden' : '';
+    panel.style.flex = nextHidden ? '0 0 0' : '';
 
     const btn = panel.querySelector('.workflow-list-collapse');
     if (btn) {
@@ -160,11 +160,11 @@ async function loadWorkflows() {
                 <td onclick="selectWorkflow('${w.id}')">${w.name}</td>
                 <td onclick="selectWorkflow('${w.id}')"><span class="badge workflow-status-badge ${w.is_active ? 'is-active' : 'is-inactive'}">${w.is_active ? 'Ativo' : 'Inativo'}</span></td>
                 <td>
-                    <div class="workflow-row-actions">
-                        <button class="icon-button" title="Editar em nova aba" aria-label="Editar em nova aba" onclick="editWorkflow('${w.id}'); event.stopPropagation();"><i class="fa-solid fa-pen"></i></button>
-                        <button class="icon-button" title="${w.is_active ? 'Inativar' : 'Ativar'}" aria-label="${w.is_active ? 'Inativar' : 'Ativar'}" onclick="toggleWorkflowActive('${w.id}', ${!w.is_active}); event.stopPropagation();"><i class="fa-solid ${w.is_active ? 'fa-pause' : 'fa-play'}"></i></button>
-                        <button class="icon-button" title="Ver versões" aria-label="Ver versões" onclick="openWorkflowVersions('${w.id}'); event.stopPropagation();"><i class="fa-solid fa-clock-rotate-left"></i></button>
-                        <button class="icon-button danger" title="Excluir" aria-label="Excluir" onclick="deleteWorkflow('${w.id}'); event.stopPropagation();"><i class="fa-solid fa-trash"></i></button>
+                    <div class="workflow-row-actions" style="display: flex; gap: 5px; flex-wrap: wrap;">
+                        <button class="icon-button" style="padding: 4px 8px; font-size: 0.85em; width: auto; height: auto;" title="Editar em nova aba" aria-label="Editar em nova aba" onclick="editWorkflow('${w.id}'); event.stopPropagation();"><i class="fa-solid fa-pen"></i> Editar</button>
+                        <button class="icon-button" style="padding: 4px 8px; font-size: 0.85em; width: auto; height: auto;" title="${w.is_active ? 'Inativar' : 'Ativar'}" aria-label="${w.is_active ? 'Inativar' : 'Ativar'}" onclick="toggleWorkflowActive('${w.id}', ${!w.is_active}); event.stopPropagation();"><i class="fa-solid ${w.is_active ? 'fa-pause' : 'fa-play'}"></i> ${w.is_active ? 'Inativar' : 'Ativar'}</button>
+                        <button class="icon-button" style="padding: 4px 8px; font-size: 0.85em; width: auto; height: auto;" title="Ver versões" aria-label="Ver versões" onclick="openWorkflowVersions('${w.id}'); event.stopPropagation();"><i class="fa-solid fa-clock-rotate-left"></i> Versões</button>
+                        <button class="icon-button danger" style="padding: 4px 8px; font-size: 0.85em; width: auto; height: auto;" title="Excluir" aria-label="Excluir" onclick="deleteWorkflow('${w.id}'); event.stopPropagation();"><i class="fa-solid fa-trash"></i> Excluir</button>
                     </div>
                 </td>
             `;
@@ -209,67 +209,31 @@ function selectWorkflow(idOrObj) {
     ensureWorkflowCanvasVisible();
     resetWorkflowDirty();
     document.getElementById('current-workflow-name').innerText = workflow.name;
-    document.getElementById('btn-add-state').disabled = false;
-    document.getElementById('btn-organize-workflow').disabled = false;
-    document.getElementById('btn-export-workflow').disabled = false;
-    document.getElementById('btn-publish-workflow').disabled = false;
-    document.getElementById('btn-versions-workflow').disabled = false;
-    document.getElementById('bpmn-toolbox').style.display = 'flex';
-    document.getElementById('editor-hint').innerText = 'Arraste ou clique em um elemento do painel superior para criar um nó';
+    ['btn-add-state', 'btn-organize-workflow', 'btn-export-workflow', 'btn-publish-workflow', 'btn-versions-workflow'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = false;
+    });
+    const bpmnToolbox = document.getElementById('bpmn-toolbox');
+    if (bpmnToolbox) bpmnToolbox.style.display = 'flex';
+    const editorHint = document.getElementById('editor-hint');
+    if (editorHint) editorHint.innerText = 'Arraste ou clique em um elemento do painel superior para criar um nó';
     
     initDrawflow();
-    renderDrawflow(workflow.states || [], workflow.transitions || []);
+    const states = workflow.states || [];
+    const transitions = workflow.transitions || [];
+    renderDrawflow(states, transitions);
+    // Auto-organize layout if positions not set
+    const hasPositions = states.some(s => s.ui_pos_x > 20 && s.ui_pos_y > 20);
+    if (!hasPositions && states.length > 0) {
+        setTimeout(() => organizeCurrentWorkflow(), 300);
+    }
 }
 
 function installOrthogonalConnectionRenderer(instance) {
+    // Using Drawflow default smooth Bezier curves - no override needed
+    // Just ensure invalid coords don't crash
     if (!instance || instance.__orthogonalRendererInstalled) return;
     instance.__orthogonalRendererInstalled = true;
-
-    instance.createCurvature = function(startX, startY, endX, endY, curvature = 0, type = 'openclose') {
-        if (!Number.isFinite(startX) || !Number.isFinite(startY) || !Number.isFinite(endX) || !Number.isFinite(endY)) {
-            return 'M 0 0';
-        }
-
-        const deltaX = endX - startX;
-        const deltaY = endY - startY;
-        const dxAbs = Math.abs(deltaX);
-        const dyAbs = Math.abs(deltaY);
-
-        if (dxAbs < 1 && dyAbs < 1) {
-            return `M ${startX} ${startY} L ${endX} ${endY}`;
-        }
-
-        const useHorizontal = dxAbs >= dyAbs;
-        const bend = Math.max(70, Math.min(useHorizontal ? dxAbs * 0.5 : dyAbs * 0.5, 240));
-
-        if (useHorizontal) {
-            const straightX = startX + Math.sign(deltaX || 1) * bend;
-            return `M ${startX} ${startY} L ${straightX} ${startY} L ${straightX} ${endY} L ${endX} ${endY}`;
-        }
-
-        const straightY = startY + Math.sign(deltaY || 1) * bend;
-        return `M ${startX} ${startY} L ${startX} ${straightY} L ${endX} ${straightY} L ${endX} ${endY}`;
-    };
-
-    instance.updateConnection = function(outputX, outputY) {
-        if (!this.ele_selected || !this.connection_ele) return;
-
-        const path = this.connection_ele.querySelector('.main-path') || this.connection_ele.children[0];
-        if (!path) return;
-
-        const canvasRect = this.precanvas.getBoundingClientRect();
-        const nodeRect = this.ele_selected.getBoundingClientRect();
-        const zoom = this.zoom || 1;
-        const scaleX = this.precanvas.clientWidth / (this.precanvas.clientWidth * zoom);
-        const scaleY = this.precanvas.clientHeight / (this.precanvas.clientHeight * zoom);
-
-        const startX = this.ele_selected.offsetWidth / 2 + (nodeRect.x - canvasRect.x) * scaleX;
-        const startY = this.ele_selected.offsetHeight / 2 + (nodeRect.y - canvasRect.y) * scaleY;
-        const endX = outputX * (this.precanvas.clientWidth / (this.precanvas.clientWidth * zoom)) - canvasRect.x * (this.precanvas.clientWidth / (this.precanvas.clientWidth * zoom));
-        const endY = outputY * (this.precanvas.clientHeight / (this.precanvas.clientHeight * zoom)) - canvasRect.y * (this.precanvas.clientHeight / (this.precanvas.clientHeight * zoom));
-
-        path.setAttributeNS(null, 'd', this.createCurvature(startX, startY, endX, endY, this.curvature || 0, 'openclose'));
-    };
 }
 
 function initDrawflow() {
@@ -278,10 +242,10 @@ function initDrawflow() {
     ensureWorkflowCanvasVisible();
     editor = new Drawflow(container);
     installOrthogonalConnectionRenderer(editor);
-    editor.reroute = false;
-    editor.curvature = 0;
-    editor.reroute_curvature = 0;
-    editor.reroute_fix_curvature = false;
+    editor.reroute = true;
+    editor.curvature = 0.5;
+    editor.reroute_curvature = 0.5;
+    editor.reroute_fix_curvature = true;
     editor.draggable_inputs = false;
     editor.draggable_links = false;
     editor.start();
@@ -389,7 +353,8 @@ function getPoolData(state) {
 function renderWorkflowPools(states) {
     const canvas = document.getElementById('drawflow');
     if (!canvas) return;
-    canvas.querySelectorAll('.workflow-pool-lane').forEach(node => node.remove());
+    const drawflowInner = canvas.querySelector('.drawflow') || canvas;
+    drawflowInner.querySelectorAll('.workflow-pool-lane').forEach(node => node.remove());
 
     const pools = [...new Map(states.map(state => {
         const { poolName, poolColor } = getPoolData(state);
@@ -432,7 +397,7 @@ function renderWorkflowPools(states) {
         label.style.top = '12px';
         label.style.left = '18px';
         lane.appendChild(label);
-        canvas.appendChild(lane);
+        drawflowInner.appendChild(lane);
 
         runningTop += Math.max(180, height) + 26;
     });
@@ -449,60 +414,70 @@ function renderSingleNode(s, fallbackIndex = 0) {
     
     if (nType.startsWith('event_')) {
         let color = '#3b82f6';
-        let icon = '<path d="M8 5l10 7-10 7z" fill="currentColor" stroke="none"></path>';
-        if(nType === 'event_start') { color = '#16a34a'; icon = '<path d="M8 5l10 7-10 7z" fill="currentColor" stroke="none"></path>'; }
-        if(nType === 'event_end') { color = '#dc2626'; icon = '<rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none"></rect>'; }
-        if(nType === 'event_message') { icon = '<path d="M4 6h16v12H4z"></path><path d="m4 7 8 6 8-6"></path>'; }
+        let icon = 'fa-regular fa-envelope';
+        let typeLabel = 'EVENTO';
+        
+        if(nType === 'event_start') { color = '#10b981'; icon = 'fa-solid fa-play'; typeLabel = 'INÍCIO'; }
+        if(nType === 'event_end') { color = '#ef4444'; icon = 'fa-solid fa-stop'; typeLabel = 'TÉRMINO'; }
+        if(nType === 'event_message') { typeLabel = 'MENSAGEM'; }
         
         html_content = `
-        <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:4px;">
-            <span style="display:inline-block; min-width:14px; height:14px; border-radius:50%; background:${poolInfo.poolColor}; border:2px solid rgba(15,23,42,.2);"></span>
-            <small style="font-size:10px; color:#475569; font-weight:700;">${poolInfo.poolName}</small>
-        </div>
-        <div class="workflow-node-icon-anchor" style="border-radius:50%; width:64px; height:64px; border:4px solid ${color}; display:flex; align-items:center; justify-content:center; background:#fff; flex-direction:column; margin:0 auto; user-select:none; pointer-events:none; box-shadow:0 3px 8px rgba(15,23,42,.16);">
-            ${workflowIcon(icon, color)}
-        </div>
-        <div style="text-align:center; font-size:10px; margin-top:5px; color:#333; user-select:none;"><strong>${s.label}</strong></div>`;
+        <div class="node-modern type-event" style="min-width: 180px;">
+            <div class="node-header" style="color: ${color};">
+                <i class="${icon}"></i> ${typeLabel}
+                ${s.is_initial ? '<span class="badge-status">Inicial</span>' : ''}
+                ${s.is_completion ? '<span class="badge-status" style="background:#fef2f2;color:#dc2626;">Final</span>' : ''}
+            </div>
+            <div class="node-body">
+                ${s.label}
+            </div>
+            <div class="node-footer">
+                <span><span class="swimlane-label" style="font-weight:600;color:#0f172a;">${poolInfo.poolName}</span></span>
+            </div>
+        </div>`;
     } else if (nType.startsWith('gateway_')) {
-        let icon = nType === 'gateway_exclusive'
-            ? '<path d="M7 7l10 10M17 7 7 17"></path>'
-            : '<path d="M12 6v12M6 12h12"></path>';
+        let icon = nType === 'gateway_exclusive' ? 'fa-solid fa-xmark' : 'fa-solid fa-plus';
+        
         html_content = `
-        <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:4px;">
-            <span style="display:inline-block; min-width:14px; height:14px; border-radius:50%; background:${poolInfo.poolColor}; border:2px solid rgba(15,23,42,.2);"></span>
-            <small style="font-size:10px; color:#475569; font-weight:700;">${poolInfo.poolName}</small>
-        </div>
-        <div class="workflow-node-icon-anchor" style="width:58px; height:58px; border:3px solid #eab308; background:#fef3c7; transform: rotate(45deg); display:flex; align-items:center; justify-content:center; margin:10px auto; user-select:none; pointer-events:none; box-shadow:0 3px 8px rgba(15,23,42,.14);">
-            <span style="transform:rotate(-45deg);">${workflowIcon(icon, '#ca8a04')}</span>
-        </div>
-        <div style="text-align:center; font-size:10px; margin-top:15px; color:#333; user-select:none;"><strong>${s.label}</strong></div>`;
+        <div class="node-modern type-gateway" style="min-width: 180px;">
+            <div class="node-header" style="color: #f59e0b;">
+                <i class="${icon}"></i> DECISÃO
+            </div>
+            <div class="node-body">
+                ${s.label}
+            </div>
+            <div class="node-footer">
+                <span><span class="swimlane-label" style="font-weight:600;color:#0f172a;">${poolInfo.poolName}</span></span>
+            </div>
+        </div>`;
     } else {
-        let icon = '<circle cx="10" cy="9" r="4"></circle><path d="M3 25c1-5 3-7 7-7s6 2 7 7"></path><path d="m19 21 3 3 6-7"></path>';
-        let color = '#2563eb';
+        let icon = 'fa-regular fa-user';
+        let color = '#3b82f6';
+        let typeLabel = 'TAREFA DE USUÁRIO';
+        
         if(nType === 'task_service') {
-            icon = '<circle cx="11" cy="16" r="6"></circle><path d="M11 6v4M11 22v4M1 16h4M17 16h4M4 9l3 3M15 20l3 3M18 9l-3 3M7 20l-3 3"></path><circle cx="11" cy="16" r="2"></circle>';
-            color = '#0f766e';
+            icon = 'fa-solid fa-gear';
+            color = '#14b8a6';
+            typeLabel = 'SERVIÇO';
         }
         if(nType === 'task_script') {
-            icon = '<path d="M5 5h22v22H5z"></path><path d="m10 12-4 4 4 4M22 12l4 4-4 4M18 9l-4 14"></path>';
-            color = '#7c3aed';
-        }
-        if ((s.config || {}).action_code === 'SEND_EMAIL') {
-            icon = '<rect x="3" y="7" width="26" height="18" rx="2"></rect><path d="m4 9 12 9L28 9"></path>';
-            color = '#dc2626';
-        }
-        if ((s.config || {}).action_code === 'REQUEST_SIGNATURE') {
-            icon = '<path d="M6 4h15l5 5v19H6z"></path><path d="M21 4v6h5M10 20h10M10 15h7"></path><path d="m20 25 3-3 3 3"></path>';
-            color = '#b91c1c';
+            icon = 'fa-solid fa-code';
+            color = '#8b5cf6';
+            typeLabel = 'SCRIPT';
         }
         
         html_content = `
-        <div class="workflow-task-card" style="border:2px solid ${color}; border-radius:10px; background:#fff; min-width:170px; max-width:210px; padding:11px; box-shadow:0 3px 9px rgba(15,23,42,.14); user-select:none;">
-            <div style="display:flex; align-items:center; margin-bottom:5px; pointer-events:none;">
-                <span class="workflow-node-icon-anchor" style="display:inline-flex; margin-right:6px;">${workflowIcon(icon, color)}</span>
-                <strong style="font-size:11px; color:${color};">${nType === 'task_user' ? 'Tarefa de usuário' : (nType === 'task_service' ? 'Serviço automático' : 'Script')}</strong>
+        <div class="node-modern type-task" style="min-width: 210px;">
+            <div class="node-header" style="color: ${color};">
+                <i class="${icon}"></i> ${typeLabel}
             </div>
-            <div style="font-size:12px; font-weight:600; text-align:center; pointer-events:none;">${s.label}</div>
+            <div class="node-body">
+                ${s.label}
+            </div>
+            <div class="node-footer">
+                <span>Resp: <span class="swimlane-label" style="font-weight:600;color:#0f172a;">${poolInfo.poolName}</span></span>
+                <span>${(s.config || {}).action_code || ''}</span>
+            </div>
         </div>`;
     }
 
@@ -557,45 +532,78 @@ function organizeCurrentWorkflow() {
     const initial = states.find(state => state.is_initial) || states[0];
     if (!initial) return;
 
+    // Step 1: Calculate flow level (column) via BFS from the initial state
     const levels = new Map([[initial.id, 0]]);
     const queue = [initial.id];
     while (queue.length) {
         const origin = queue.shift();
-        const next = transitions
-            .filter(transition => transition.origin_state_id === origin)
-            .map(transition => transition.destination_state_id);
-        next.forEach(destination => {
-            if (!levels.has(destination)) {
-                levels.set(destination, levels.get(origin) + 1);
-                queue.push(destination);
-            }
-        });
+        transitions
+            .filter(t => t.origin_state_id === origin)
+            .forEach(t => {
+                if (!levels.has(t.destination_state_id)) {
+                    levels.set(t.destination_state_id, levels.get(origin) + 1);
+                    queue.push(t.destination_state_id);
+                }
+            });
     }
-
-    const columns = new Map();
-    states.forEach((state, index) => {
-        const level = levels.has(state.id) ? levels.get(state.id) : Math.floor(index / 2);
-        if (!columns.has(level)) columns.set(level, []);
-        columns.get(level).push(state);
+    // Assign fallback level to disconnected states
+    states.forEach((state, idx) => {
+        if (!levels.has(state.id)) levels.set(state.id, idx + levels.size);
     });
 
-    const updates = [];
-    [...columns.entries()].sort((a, b) => a[0] - b[0]).forEach(([level, column]) => {
-        column.forEach((state, index) => {
-            state.ui_pos_x = 60 + level * 235;
-            state.ui_pos_y = 90 + index * 150;
-            updates.push(fetch(`${WORKFLOWS_API}/${currentWorkflowId}/states/${state.id}`, {
-                method: 'PUT',
-                headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ui_pos_x: state.ui_pos_x, ui_pos_y: state.ui_pos_y })
-            }));
+    // Step 2: Determine unique pool order (by first appearance of a pool in the flow)
+    const poolOrder = [];
+    [...levels.entries()]
+        .sort((a, b) => a[1] - b[1])
+        .forEach(([stateId]) => {
+            const state = states.find(s => s.id === stateId);
+            if (!state) return;
+            const { poolName } = getPoolData(state);
+            if (!poolOrder.includes(poolName)) poolOrder.push(poolName);
         });
+
+    // Step 3: Group states by pool
+    const poolGroups = {};
+    states.forEach(state => {
+        const { poolName } = getPoolData(state);
+        if (!poolGroups[poolName]) poolGroups[poolName] = [];
+        poolGroups[poolName].push(state);
     });
 
-    Promise.all(updates).then(() => renderDrawflow(states, transitions))
+    // Step 4: Assign positions - X by flow level, Y by pool row
+    const NODE_W = 240;  // node width + gap
+    const NODE_H = 180;  // pool row height
+    const PADDING_X = 80;
+    const PADDING_Y = 60;
+
+    // Calculate pool Y offsets
+    const poolYOffset = {};
+    poolOrder.forEach((poolName, i) => {
+        poolYOffset[poolName] = PADDING_Y + i * NODE_H;
+    });
+
+    // Position each state: X = column level, Y = center of its pool row
+    const updates = [];
+    states.forEach(state => {
+        const level = levels.get(state.id) || 0;
+        const { poolName } = getPoolData(state);
+        const poolY = poolYOffset[poolName] ?? PADDING_Y;
+
+        state.ui_pos_x = PADDING_X + level * NODE_W;
+        state.ui_pos_y = poolY + 30; // 30px offset from pool top for centering
+
+        updates.push(fetch(`${WORKFLOWS_API}/${currentWorkflowId}/states/${state.id}`, {
+            method: 'PUT',
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ui_pos_x: state.ui_pos_x, ui_pos_y: state.ui_pos_y })
+        }));
+    });
+
+    Promise.all(updates)
+        .then(() => renderDrawflow(states, transitions))
         .catch(error => {
             console.error('Erro ao organizar workflow', error);
-            alert('Não foi possível salvar a organização do fluxo.');
+            alert('Não foi possível salvar a organização do layout.');
         });
 }
 
@@ -811,30 +819,52 @@ async function deleteWorkflow(id) {
 }
 
 function openStateModal() {
-    document.getElementById('state-id').value = '';
-    document.getElementById('state-modal-title').textContent = 'Novo Estado';
-    document.getElementById('state-label').value = '';
-    document.getElementById('state-initial').checked = false;
-    document.getElementById('state-completion').checked = false;
-    document.getElementById('state-action-code').value = '';
-    document.getElementById('state-recipients').value = '';
-    document.getElementById('state-execution-details').value = '';
-    document.getElementById('modal-state').classList.add('active');
+    closePropertiesSheet();
+    // Default open on double click of empty canvas? Not needed, nodes are dragged.
 }
 
 async function openStateEditor(stateId) {
     const state = (currentWorkflowData.states || []).find(item => item.id === stateId);
     if (!state) return;
+    
+    // Configura o cabeçalho
+    let typeName = "Elemento";
+    let iconClass = "fa-solid fa-gear";
+    if (state.node_type) {
+        if (state.node_type.startsWith('task')) { typeName = "TAREFA"; iconClass = "fa-regular fa-user"; }
+        if (state.node_type.startsWith('event')) { typeName = "EVENTO"; iconClass = "fa-regular fa-circle-play"; }
+        if (state.node_type.startsWith('gateway')) { typeName = "DECISÃO"; iconClass = "fa-solid fa-xmark"; }
+    }
+    document.getElementById('sheet-node-type').innerHTML = `${typeName} <span class="text-muted fw-normal ms-2">#${stateId}</span>`;
+    document.getElementById('sheet-node-title').textContent = state.label || 'Editar Estado';
+    document.getElementById('sheet-icon').innerHTML = `<i class="${iconClass}"></i>`;
+    
+    // Campos
     document.getElementById('state-id').value = state.id;
-    document.getElementById('state-modal-title').textContent = 'Editar elemento';
     document.getElementById('state-label').value = state.label || '';
     document.getElementById('state-initial').checked = Boolean(state.is_initial);
     document.getElementById('state-completion').checked = Boolean(state.is_completion);
+    
     const config = state.config || {};
     document.getElementById('state-action-code').value = config.action_code || '';
     document.getElementById('state-recipients').value = config.recipients || '';
     document.getElementById('state-execution-details').value = config.execution_details || '';
-    document.getElementById('modal-state').classList.add('active');
+    
+    const poolEl = document.getElementById('state-pool');
+    if (poolEl) poolEl.value = config.pool_name || config.pool || '';
+    
+    const poolColorEl = document.getElementById('state-pool-color');
+    if (poolColorEl) poolColorEl.value = config.color || '#cbd5e1';
+    
+    const taskFormEl = document.getElementById('state-task-form');
+    if (taskFormEl) taskFormEl.value = config.task_form || '';
+    
+    document.getElementById('properties-sheet').classList.add('open');
+}
+
+function closePropertiesSheet() {
+    const sheet = document.getElementById('properties-sheet');
+    if(sheet) sheet.classList.remove('open');
 }
 
 async function saveState() {
@@ -847,6 +877,15 @@ async function saveState() {
         recipients: document.getElementById('state-recipients').value.trim() || null,
         execution_details: document.getElementById('state-execution-details').value.trim() || null
     };
+    
+    const poolEl = document.getElementById('state-pool');
+    if (poolEl && poolEl.value.trim()) config.pool_name = poolEl.value.trim();
+    
+    const poolColorEl = document.getElementById('state-pool-color');
+    if (poolColorEl && poolColorEl.value) config.color = poolColorEl.value;
+    
+    const taskFormEl = document.getElementById('state-task-form');
+    if (taskFormEl && taskFormEl.value.trim()) config.task_form = taskFormEl.value.trim();
     
     try {
         const resp = await fetch(stateId
@@ -861,7 +900,7 @@ async function saveState() {
         });
         
         if(resp.ok) {
-            document.getElementById('modal-state').classList.remove('active');
+            closePropertiesSheet();
             resetWorkflowDirty();
             
             // Reload just this workflow to get the new state
@@ -877,6 +916,7 @@ async function saveState() {
         alert('Erro de rede: ' + e);
     }
 }
+
 
 let pendingTransitionData = null;
 
@@ -1021,10 +1061,11 @@ document.addEventListener('DOMContentLoaded', () => {
             dragType = item.getAttribute('data-type');
             e.dataTransfer.setData('text/plain', dragType);
         });
-        item.addEventListener('click', () => {
+        item.addEventListener('click', (e) => {
             const canvas = document.getElementById('drawflow');
             const rect = canvas.getBoundingClientRect();
-            createNodeAt(item.getAttribute('data-type'), rect.left + rect.width / 2, rect.top + rect.height / 2);
+            // Drop it near the center or near the top
+            createNodeAt(item.getAttribute('data-type'), rect.left + rect.width / 2, rect.top + 100);
         });
     });
 });
@@ -1050,8 +1091,9 @@ async function createNodeAt(type, clientX, clientY) {
     const y = clientY - rect.top;
     
     // Zoom and pan adjustments (Drawflow specific)
-    const posX = Math.max(20, Math.round(x / Math.max(editor.zoom, 0.1)));
-    const posY = Math.max(20, Math.round(y / Math.max(editor.zoom, 0.1)));
+    const zoom = (editor && editor.zoom) ? editor.zoom : 1;
+    const posX = Math.max(20, Math.round(x / Math.max(zoom, 0.1)));
+    const posY = Math.max(20, Math.round(y / Math.max(zoom, 0.1)));
     
     // Defaults based on type
     let label = 'Nova Tarefa';

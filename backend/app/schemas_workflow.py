@@ -9,6 +9,7 @@ class WorkflowStateBase(BaseModel):
     is_completion: bool = False
     ui_pos_x: Optional[int] = None
     ui_pos_y: Optional[int] = None
+    swimlane: Optional[str] = None
     node_type: Optional[str] = "task"
     config: Optional[dict[str, Any]] = None
 
@@ -21,6 +22,7 @@ class WorkflowStateUpdate(BaseModel):
     is_completion: Optional[bool] = None
     ui_pos_x: Optional[int] = None
     ui_pos_y: Optional[int] = None
+    swimlane: Optional[str] = None
     node_type: Optional[str] = None
     config: Optional[dict[str, Any]] = None
 
@@ -118,6 +120,7 @@ class WorkflowTaskBase(BaseModel):
     assignee_id: Optional[str] = None
     assignee_group_id: Optional[str] = None
     assignee_role: Optional[str] = None
+    task_form_key: Optional[str] = None
     due_date: Optional[datetime.datetime] = None
 
 class WorkflowTaskCreate(WorkflowTaskBase):

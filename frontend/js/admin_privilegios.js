@@ -58,7 +58,7 @@ async function editarCadastroAdmin(caminho, registro, indice, atualizar) {
             <label><input name="auto_increment" type="checkbox" ${registro.auto_increment ? 'checked' : ''}> Autonumeração</label>` : `
             <label>Grupo<input name="group_id" value="${escaparAdmin(registro.group_id || '')}"></label>
             <label>Anos de retenção<input name="retention_years" type="number" min="0" max="1000" value="${registro.retention_years}"></label>
-            <label>ID do fluxo<input name="workflow_id" value="${escaparAdmin(registro.workflow_id || '')}"></label>
+            <label>ID do trânsito<input name="workflow_id" value="${escaparAdmin(registro.workflow_id || '')}"></label>
             <label>Área de armazenamento<input name="storage_area_id" value="${escaparAdmin(registro.storage_area_id || '')}"></label>
             <label>Partição<input name="storage_partition_id" value="${escaparAdmin(registro.storage_partition_id || '')}"></label>
             <label><input name="legal_hold" type="checkbox" ${registro.legal_hold ? 'checked' : ''}> Preservação legal</label>`}
@@ -135,18 +135,23 @@ async function carregarIndicesVinculados(tipoId) {
         painel = document.createElement('div'); painel.id = 'indices-vinculados-admin';
         document.getElementById('current-doctype-name').closest('.glass-panel').append(painel);
     }
-    painel.innerHTML = '<h4>Índices vinculados</h4>';
+    painel.innerHTML = '<h4 style="margin-bottom: 12px; color: var(--primary-color);">Índices vinculados</h4><div id="indices-list-container" style="max-height: 400px; overflow-y: auto; padding-right: 8px; display: flex; flex-direction: column; gap: 8px;"></div>';
+    const listContainer = painel.querySelector('#indices-list-container');
+    
     try {
         const vinculos = await requisicaoAdmin(`/document-types/${tipoId}/indices`);
         for (const vinculo of vinculos) {
             const linha = document.createElement('div');
-            linha.style.cssText = 'display:flex;gap:12px;align-items:center;margin:10px 0';
-            linha.innerHTML = `<span>${escaparAdmin(vinculo.index.name)} (${escaparAdmin(vinculo.index.type)})</span>
-                <label><input type="checkbox" data-campo="is_required" ${vinculo.is_required ? 'checked' : ''}> Obrigatório</label>
-                <label><input type="checkbox" data-campo="is_unique" ${vinculo.is_unique ? 'checked' : ''}> Único</label>`;
+            linha.style.cssText = 'display:flex; gap:12px; align-items:center; padding: 10px 15px; background: rgba(255, 255, 255, 0.6); border-radius: 8px; border: 1px solid rgba(0,0,0,0.05); font-size: 0.9rem; flex-wrap: wrap;';
+            linha.innerHTML = `<span style="flex: 1; min-width: 200px; font-weight: 600; color: #333;">${escaparAdmin(vinculo.index.name)} <span style="color: #777; font-weight: 400; font-size: 0.8rem;">(${escaparAdmin(vinculo.index.type)})</span></span>
+                <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;"><input type="checkbox" data-campo="is_required" ${vinculo.is_required ? 'checked' : ''}> Obrigatório</label>
+                <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;"><input type="checkbox" data-campo="is_unique" ${vinculo.is_unique ? 'checked' : ''}> Único</label>
+                <div style="display:flex; gap:6px; margin-left:auto;" class="acoes-indices"></div>`;
+                
+            const acoes = linha.querySelector('.acoes-indices');
             linha.querySelectorAll('input').forEach(campo => campo.disabled = !adminGlobal());
             if (adminGlobal()) {
-                linha.append(botaoAdmin('Salvar', async () => {
+                const btnSalvar = botaoAdmin('Salvar', async () => {
                     try {
                         await requisicaoAdmin(`/document-types/${tipoId}/indices/${vinculo.id}`, 'PUT', {
                             index_id: vinculo.index_id,
@@ -155,13 +160,18 @@ async function carregarIndicesVinculados(tipoId) {
                         });
                         await carregarIndicesVinculados(tipoId);
                     } catch (erro) { alert(erro.message); }
-                }));
-                linha.append(botaoAdmin('Remover', () => excluirCadastroAdmin(`/document-types/${tipoId}/indices/${vinculo.id}`, vinculo.index.name, () => carregarIndicesVinculados(tipoId))));
+                });
+                btnSalvar.className = 'btn-primary btn-small';
+                acoes.append(btnSalvar);
+                
+                const btnRemover = botaoAdmin('Remover', () => excluirCadastroAdmin(`/document-types/${tipoId}/indices/${vinculo.id}`, vinculo.index.name, () => carregarIndicesVinculados(tipoId)));
+                btnRemover.className = 'btn-secondary btn-small';
+                acoes.append(btnRemover);
             }
-            painel.append(linha);
+            listContainer.append(linha);
         }
-        if (!vinculos.length) painel.append('Nenhum Índice vinculado.');
-    } catch (erro) { painel.append(erro.message); }
+        if (!vinculos.length) listContainer.innerHTML = '<p class="text-muted" style="font-size: 0.9rem;">Nenhum Índice vinculado.</p>';
+    } catch (erro) { listContainer.append(erro.message); }
 }
 async function abrirPermissoesDocumentais(usuario) {
     const modal = modalAdmin(`Tipos de documento: ${usuario.username}`);

@@ -79,7 +79,7 @@ def role_checker(allowed_roles: list[str]):
         return user
     return check_roles
 
-get_current_admin = role_checker(["admin_instituicao"])
+get_current_admin = role_checker(["admin_instituicao", "gestor_clinica"])
 
 def check_institution_access(user: models.User, target_institution_id: str):
     if user.role == "admin_global":

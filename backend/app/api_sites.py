@@ -9,7 +9,7 @@ from app.models_ecm import Site, SiteMember
 from app.schemas_ecm import SiteCreate, SiteResponse, SiteMemberCreate, SiteMemberResponse
 import uuid
 
-router = APIRouter(prefix="/api/ecm/sites", tags=["ECM Sites"])
+router = APIRouter(tags=["ECM Sites"])
 
 SiteManagerRole = Depends(require_site_role(["SiteManager"]))
 SiteWriteRole = Depends(require_site_role(["SiteManager", "SiteCollaborator", "SiteContributor"]))

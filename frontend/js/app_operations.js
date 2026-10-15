@@ -347,20 +347,20 @@ async function loadTaskMonitor() {
 async function loadFlowMonitor() {
     const list = document.getElementById('flow-monitor-list');
     if (!list) return;
-    list.innerHTML = '<p class="text-muted">Carregando fluxos...</p>';
+    list.innerHTML = '<p class="text-muted">Carregando trânsitos...</p>';
     try {
         const response = await fetch(`${API_URL}/workflows?page=1&size=100`, {
             headers: getAuthHeaders()
         });
         if (!response.ok) {
-            renderOperationError(list, `Monitor de fluxo indisponível para este perfil (HTTP ${response.status}).`);
+            renderOperationError(list, `Monitor de trânsito indisponível para este perfil (HTTP ${response.status}).`);
             document.getElementById('insight-flow-count')?.replaceChildren(document.createTextNode('-'));
             return;
         }
         const payload = await response.json();
         const flows = payload.items || [];
         if (!flows.length) {
-            list.innerHTML = '<p class="text-muted">Nenhum fluxo disponível.</p>';
+            list.innerHTML = '<p class="text-muted">Nenhum trânsito disponível.</p>';
             return;
         }
         list.innerHTML = flows.map(flow => `
@@ -381,6 +381,174 @@ async function loadFlowMonitor() {
     }
 }
 
+async function initNewFlowView() {
+    const docTypeSelect = document.getElementById('new-flow-doc-type-id');
+    const workflowSelect = document.getElementById('new-flow-workflow-id');
+    const docSelect = document.getElementById('new-flow-document-id');
+    const stateSelect = document.getElementById('new-flow-state-id');
+
+    docTypeSelect.innerHTML = '<option value="">Selecione o Tipo Documental</option>';
+    workflowSelect.innerHTML = '<option value="">Selecione o Modelo de Workflow</option>';
+    docSelect.innerHTML = '<option value="">Selecione primeiro o Tipo</option>';
+    stateSelect.innerHTML = '<option value="">Selecione primeiro o Modelo</option>';
+    docSelect.disabled = true;
+    stateSelect.disabled = true;
+
+    try {
+        const [typesRes, wfRes] = await Promise.all([
+            fetch(`${API_URL}/document-types?limit=100`, { headers: getAuthHeaders() }),
+            fetch(`${API_URL}/workflows`, { headers: getAuthHeaders() })
+        ]);
+
+        if (typesRes.ok) {
+            const types = await typesRes.json();
+            const items = types.items || types;
+            items.forEach(t => {
+                docTypeSelect.innerHTML += `<option value="${t.id}">${escapeHtml(t.name)}</option>`;
+            });
+        }
+        if (wfRes.ok) {
+            const workflows = await wfRes.json();
+            const items = workflows.items || workflows;
+            items.forEach(w => {
+                workflowSelect.innerHTML += `<option value="${w.id}">${escapeHtml(w.name)}</option>`;
+            });
+        }
+    } catch (e) {
+        console.error('Error initNewFlowView', e);
+    }
+
+    // Reset wizard to step 1
+    wizardGoTo(1);
+}
+
+// ═══════════════════════════════════════════════════
+//  WIZARD — Navegação e Estado
+// ═══════════════════════════════════════════════════
+let _wizardCurrentStep = 1;
+
+function wizardGoTo(step) {
+    _wizardCurrentStep = step;
+    
+    // Update panels
+    document.querySelectorAll('.wizard-panel').forEach(p => p.classList.remove('active'));
+    const panel = document.getElementById('wizard-step-' + step);
+    if (panel) panel.classList.add('active');
+    
+    // Update progress bar steps
+    document.querySelectorAll('.wizard-step').forEach(s => {
+        const sStep = parseInt(s.dataset.step);
+        s.classList.remove('active', 'completed');
+        if (sStep === step) s.classList.add('active');
+        else if (sStep < step) s.classList.add('completed');
+    });
+    
+    // Update connectors
+    const connectors = document.querySelectorAll('.wizard-step-connector');
+    connectors.forEach((c, idx) => {
+        if (idx < step - 1) c.classList.add('filled');
+        else c.classList.remove('filled');
+    });
+
+    // If going to step 4 (review), populate summary
+    if (step === 4) {
+        const typeSelect = document.getElementById('new-flow-doc-type-id');
+        const docSelect = document.getElementById('new-flow-document-id');
+        const wfSelect = document.getElementById('new-flow-workflow-id');
+        const stateSelect = document.getElementById('new-flow-state-id');
+        
+        document.getElementById('wizard-review-type').textContent = 
+            typeSelect.options[typeSelect.selectedIndex]?.text || '—';
+        document.getElementById('wizard-review-doc').textContent = 
+            docSelect.options[docSelect.selectedIndex]?.text || '—';
+        document.getElementById('wizard-review-wf').textContent = 
+            wfSelect.options[wfSelect.selectedIndex]?.text || '—';
+        document.getElementById('wizard-review-state').textContent = 
+            stateSelect.options[stateSelect.selectedIndex]?.text || '—';
+    }
+}
+
+function _wizardUpdateNextButton(stepNum, selectId) {
+    const btn = document.getElementById('wizard-next-' + stepNum);
+    const val = document.getElementById(selectId)?.value;
+    if (btn) btn.disabled = !val;
+}
+
+async function onNewFlowDocTypeChange() {
+    const typeId = document.getElementById('new-flow-doc-type-id').value;
+    const docSelect = document.getElementById('new-flow-document-id');
+    
+    // Enable/disable step 1 "next" button
+    _wizardUpdateNextButton(1, 'new-flow-doc-type-id');
+    
+    if (!typeId) {
+        docSelect.innerHTML = '<option value="">Selecione primeiro o Tipo</option>';
+        docSelect.disabled = true;
+        return;
+    }
+    
+    docSelect.innerHTML = '<option value="">Carregando...</option>';
+    docSelect.disabled = true;
+
+    try {
+        const res = await fetch(`${API_URL}/documents?type_id=${typeId}&limit=50`, { headers: getAuthHeaders() });
+        if (res.ok) {
+            const data = await res.json();
+            const items = data.items || data;
+            docSelect.innerHTML = '<option value="">Selecione o Documento</option>';
+            items.forEach(doc => {
+                const title = doc.title || doc.file_name || doc.id;
+                docSelect.innerHTML += `<option value="${doc.id}">${escapeHtml(title)}</option>`;
+            });
+            docSelect.disabled = false;
+        } else {
+            docSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+        }
+    } catch (e) {
+        docSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+    }
+    
+    // Add listener on document select for step 2 next button
+    docSelect.onchange = () => _wizardUpdateNextButton(2, 'new-flow-document-id');
+}
+
+async function onNewFlowWorkflowChange() {
+    const wfId = document.getElementById('new-flow-workflow-id').value;
+    const stateSelect = document.getElementById('new-flow-state-id');
+    
+    if (!wfId) {
+        stateSelect.innerHTML = '<option value="">Selecione primeiro o Modelo</option>';
+        stateSelect.disabled = true;
+        _wizardUpdateNextButton(3, 'new-flow-state-id');
+        return;
+    }
+    
+    stateSelect.innerHTML = '<option value="">Carregando...</option>';
+    stateSelect.disabled = true;
+
+    try {
+        const res = await fetch(`${API_URL}/workflows/${wfId}`, { headers: getAuthHeaders() });
+        if (res.ok) {
+            const wf = await res.json();
+            stateSelect.innerHTML = '<option value="">Selecione o Estado Inicial</option>';
+            if (wf.states) {
+                const initialStates = wf.states.filter(s => s.is_initial);
+                const statesToShow = initialStates.length > 0 ? initialStates : wf.states;
+                statesToShow.forEach(s => {
+                    stateSelect.innerHTML += `<option value="${s.id}">${escapeHtml(s.label)}</option>`;
+                });
+            }
+            stateSelect.disabled = false;
+        } else {
+            stateSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+        }
+    } catch (e) {
+        stateSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+    }
+    
+    stateSelect.onchange = () => _wizardUpdateNextButton(3, 'new-flow-state-id');
+}
+
 async function startFlowFromForm() {
     const feedback = document.getElementById('new-flow-feedback');
     const payload = {
@@ -388,7 +556,7 @@ async function startFlowFromForm() {
         workflow_id: document.getElementById('new-flow-workflow-id').value.trim(),
         current_state_id: document.getElementById('new-flow-state-id').value.trim()
     };
-    feedback.textContent = 'Iniciando fluxo...';
+    feedback.textContent = 'Iniciando trânsito...';
     try {
         const response = await fetch(`${API_URL}/workflows/instances`, {
             method: 'POST',
@@ -400,10 +568,10 @@ async function startFlowFromForm() {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            feedback.textContent = data.detail || `Não foi possível iniciar o fluxo (HTTP ${response.status}).`;
+            feedback.textContent = data.detail || `Não foi possível iniciar o trânsito (HTTP ${response.status}).`;
             return;
         }
-        feedback.textContent = `Fluxo iniciado com sucesso: ${data.id || 'instância criada'}.`;
+        feedback.textContent = `Trânsito iniciado com sucesso: ${data.id || 'instância criada'}.`;
         document.getElementById('new-flow-form').reset();
         window.location.hash = 'tasks';
     } catch (error) {
@@ -684,16 +852,38 @@ async function loadDashboard() {
 }
 
 async function completeTask(taskId) {
-    if(!confirm("Deseja realmente marcar esta tarefa como concluída?")) return;
-    
     try {
+        const formResponse = await fetch(`${API_URL}/workflows/tasks/${taskId}/form`, {
+            headers: getAuthHeaders()
+        });
+        
+        let formData = { action: 'COMPLETE' };
+        
+        if (formResponse.ok) {
+            const formInfo = await formResponse.json();
+            if (formInfo.has_form) {
+                const variables = await renderTaskFormModal(formInfo.schema);
+                if (!variables) return;
+                
+                if (variables.action) {
+                    formData.action = variables.action;
+                    delete variables.action;
+                }
+                formData.variables = variables;
+            } else {
+                if(!confirm("Deseja realmente marcar esta tarefa como concluída?")) return;
+            }
+        } else {
+            if(!confirm("Deseja realmente marcar esta tarefa como concluída?")) return;
+        }
+        
         const response = await fetch(`${API_URL}/workflows/tasks/${taskId}/complete`, {
             method: 'PUT',
             headers: {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ action: 'COMPLETE' })
+            body: JSON.stringify(formData)
         });
         
         if(response.ok) {
@@ -705,6 +895,125 @@ async function completeTask(taskId) {
     } catch(e) {
         alert('Erro de rede: ' + e);
     }
+}
+
+function renderTaskFormModal(schema) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100vw';
+        overlay.style.height = '100vh';
+        overlay.style.backgroundColor = 'rgba(0,0,0,0.6)';
+        overlay.style.zIndex = '99999';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        
+        const modal = document.createElement('div');
+        modal.style.backgroundColor = 'var(--bg-panel, #fff)';
+        modal.style.padding = '25px';
+        modal.style.borderRadius = '8px';
+        modal.style.width = '100%';
+        modal.style.maxWidth = '500px';
+        modal.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)';
+        modal.style.fontFamily = 'var(--font-family, sans-serif)';
+        modal.style.color = 'var(--text-color, #333)';
+        
+        modal.innerHTML = `
+            <h3 style="margin-top:0; margin-bottom: 20px; font-size: 18px; border-bottom: 1px solid var(--border-color, #eee); padding-bottom: 10px;">Formulário da Tarefa</h3>
+            <div id="dynamic-form-fields" style="display:flex; flex-direction:column; gap: 15px; margin-bottom: 25px;"></div>
+            <div style="display:flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border-color, #eee); padding-top: 15px;">
+                <button id="task-modal-cancel" style="padding: 8px 16px; border: 1px solid #ccc; background: transparent; border-radius: 4px; cursor: pointer; color: var(--text-color, #333);">Cancelar</button>
+                <button id="task-modal-reject" style="padding: 8px 16px; border: none; background: #ef4444; color: #fff; border-radius: 4px; cursor: pointer; font-weight: 500;">Rejeitar</button>
+                <button id="task-modal-approve" style="padding: 8px 16px; border: none; background: var(--primary, #3b82f6); color: #fff; border-radius: 4px; cursor: pointer; font-weight: 500;">Aprovar / Concluir</button>
+            </div>
+        `;
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        
+        const fieldsContainer = modal.querySelector('#dynamic-form-fields');
+        const inputs = {};
+        
+        if (schema && schema.properties) {
+            for (const key of Object.keys(schema.properties)) {
+                const prop = schema.properties[key];
+                const fieldDiv = document.createElement('div');
+                fieldDiv.style.display = 'flex';
+                fieldDiv.style.flexDirection = 'column';
+                fieldDiv.style.gap = '6px';
+                
+                const label = document.createElement('label');
+                label.textContent = prop.title || key;
+                label.style.fontWeight = '500';
+                label.style.fontSize = '14px';
+                
+                let input;
+                if (prop.type === 'boolean') {
+                    fieldDiv.style.flexDirection = 'row';
+                    fieldDiv.style.alignItems = 'center';
+                    input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.style.width = '16px';
+                    input.style.height = '16px';
+                    input.style.margin = '0 8px 0 0';
+                    fieldDiv.appendChild(input);
+                    fieldDiv.appendChild(label); // label after checkbox
+                } else if (prop.type === 'string' && key.includes('observa')) {
+                    fieldDiv.appendChild(label);
+                    input = document.createElement('textarea');
+                    input.rows = 4;
+                    input.style.width = '100%';
+                    input.style.padding = '10px';
+                    input.style.border = '1px solid var(--border-color, #ccc)';
+                    input.style.borderRadius = '4px';
+                    input.style.backgroundColor = 'var(--bg-color, #fff)';
+                    input.style.color = 'var(--text-color, #333)';
+                    fieldDiv.appendChild(input);
+                } else {
+                    fieldDiv.appendChild(label);
+                    input = document.createElement('input');
+                    input.type = 'text';
+                    input.style.width = '100%';
+                    input.style.padding = '10px';
+                    input.style.border = '1px solid var(--border-color, #ccc)';
+                    input.style.borderRadius = '4px';
+                    input.style.backgroundColor = 'var(--bg-color, #fff)';
+                    input.style.color = 'var(--text-color, #333)';
+                    fieldDiv.appendChild(input);
+                }
+                
+                inputs[key] = { input, type: prop.type };
+                fieldsContainer.appendChild(fieldDiv);
+            }
+        } else {
+            fieldsContainer.innerHTML = '<p class="text-muted">Nenhum campo configurado neste formulário.</p>';
+        }
+        
+        const close = () => { document.body.removeChild(overlay); resolve(null); };
+        modal.querySelector('#task-modal-cancel').onclick = close;
+        
+        const getValues = () => {
+            const vals = {};
+            for (const key of Object.keys(inputs)) {
+                const { input, type } = inputs[key];
+                vals[key] = type === 'boolean' ? input.checked : input.value;
+            }
+            return vals;
+        };
+        
+        modal.querySelector('#task-modal-reject').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ action: 'REJECT', ...getValues() });
+        };
+        
+        modal.querySelector('#task-modal-approve').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ action: 'APPROVE', ...getValues() });
+        };
+    });
 }
 
 async function loadSites() {
@@ -1303,7 +1612,7 @@ async function startWorkflowForDocument() {
             closeDocumentDetails();
         } else {
             const data = await response.json();
-            alert('Erro ao iniciar fluxo: ' + (data.detail || ''));
+            alert('Erro ao iniciar trânsito: ' + (data.detail || ''));
         }
     } catch(e) {
         alert('Erro: ' + e);

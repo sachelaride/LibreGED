@@ -7,14 +7,51 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
     <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
     <style>
-        .drawflow .drawflow-node { background: var(--bg-card); border-color: var(--primary); color: var(--text-color); }
-        .drawflow .drawflow-node.selected { background: var(--primary); color: white; }
-        .drawflow .connection .main-path { stroke: var(--primary); stroke-width: 3px; }
+        /* Drawflow canvas background */
+        #drawflow { background-color: #f8fafc; }
+        .drawflow .drawflow-node {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            color: #0f172a;
+            padding: 0;
+            min-width: 200px;
+            box-shadow: 0 2px 12px rgba(15,23,42,0.08);
+        }
+        .drawflow .drawflow-node:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 20px rgba(59,130,246,0.15);
+        }
+        .drawflow .drawflow-node.selected {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.25), 0 4px 20px rgba(59,130,246,0.2);
+        }
+        /* Connection arrows - smooth blue curves */
+        .drawflow .connection .main-path {
+            stroke: #3b82f6;
+            stroke-width: 2.5px;
+            fill: none;
+            filter: drop-shadow(0 1px 2px rgba(59,130,246,0.2));
+        }
+        .drawflow .connection .main-path:hover {
+            stroke: #2563eb;
+            stroke-width: 3.5px;
+        }
+        /* Connection dots */
+        .drawflow-node .input, .drawflow-node .output {
+            background: #3b82f6;
+            border: 2px solid white;
+            width: 12px;
+            height: 12px;
+            box-shadow: 0 1px 4px rgba(59,130,246,0.4);
+        }
     </style>
     <link rel="stylesheet" href="css/style.css?v=5">
+    <link rel="stylesheet" href="css/workflow_editor.css?v=1">
     <script src="js/theme.js"></script>
     <script>
         function parseJwt(token) {
@@ -54,7 +91,7 @@
                 </a>
                 <a href="#" class="menu-item role-admin-global" data-target="workflows">
                     <span class="icon workflow-icon" aria-hidden="true">
-                        <svg viewBox="0 0 32 32" role="img" aria-label="Fluxo">
+                        <svg viewBox="0 0 32 32" role="img" aria-label="Trânsito">
                             <rect x="2.5" y="11" width="8" height="8" rx="2"></rect>
                             <rect x="21.5" y="2.5" width="8" height="8" rx="2"></rect>
                             <rect x="21.5" y="21.5" width="8" height="8" rx="2"></rect>
@@ -267,71 +304,118 @@
                         </div>
 
                         <div class="workflow-editor-column workflow-editor-column-hidden" id="workflow-editor-column">
-                            <div class="glass-panel" id="bpmn-toolbox" style="display:none; flex-direction:column; padding: 15px; font-size:13px; overflow-y: auto;">
-                                <div class="workflow-toolbox-header">
-                                    <h4>BPMN Tools</h4>
-                                    <div class="workflow-header-tools">
-                                        <button class="btn-secondary btn-small" id="btn-show-workflow-list" type="button" onclick="toggleWorkflowListPanel(false)" style="display:none;">Mostrar lista</button>
-                                        <button class="btn-secondary btn-small" id="btn-toggle-fullscreen" type="button" onclick="toggleWorkflowFullscreen()">Tela cheia</button>
-                                        <span id="workflow-dirty-indicator" class="workflow-dirty-indicator" hidden>Nenhuma alteração pendente</span>
-                                    </div>
-                                </div>
-                                <div class="workflow-toolbox-content">
-                                    <div class="bpmn-group">
-                                        <strong>Eventos</strong>
-                                        <div class="bpmn-drag-item bpmn-icon-item" draggable="true" data-type="event_start" title="Início" aria-label="Início" style="background:rgba(74,222,128,0.1); border:1px solid #4ade80;">
-                                            <i class="fa-solid fa-play" style="color:#4ade80;"></i>
-                                        </div>
-                                        <div class="bpmn-drag-item bpmn-icon-item" draggable="true" data-type="event_end" title="Fim" aria-label="Fim" style="background:rgba(239,68,68,0.1); border:1px solid #ef4444;">
-                                            <i class="fa-solid fa-stop" style="color:#ef4444;"></i>
-                                        </div>
-                                        <div class="bpmn-drag-item bpmn-icon-item" draggable="true" data-type="event_message" title="Mensagem" aria-label="Mensagem" style="background:rgba(59,130,246,0.1); border:1px solid #3b82f6;">
-                                            <i class="fa-regular fa-envelope" style="color:#3b82f6;"></i>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="bpmn-group">
-                                        <strong>Tarefas</strong>
-                                        <div class="bpmn-drag-item bpmn-icon-item" draggable="true" data-type="task_user" title="Tarefa de usuário" aria-label="Tarefa de usuário" style="background:transparent; border:1px solid #cbd5e1;">
-                                            <i class="fa-solid fa-user"></i>
-                                        </div>
-                                        <div class="bpmn-drag-item bpmn-icon-item" draggable="true" data-type="task_service" title="Tarefa de serviço" aria-label="Tarefa de serviço" style="background:transparent; border:1px solid #cbd5e1;">
-                                            <i class="fa-solid fa-gear"></i>
-                                        </div>
-                                        <div class="bpmn-drag-item bpmn-icon-item" draggable="true" data-type="task_script" title="Tarefa de script" aria-label="Tarefa de script" style="background:transparent; border:1px solid #cbd5e1;">
-                                            <i class="fa-solid fa-code"></i>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="bpmn-group">
-                                        <strong>Gateways</strong>
-                                        <div class="bpmn-drag-item bpmn-icon-item" draggable="true" data-type="gateway_exclusive" title="Gateway exclusivo" aria-label="Gateway exclusivo" style="background:rgba(250,204,21,0.1); border:1px solid #facc15;">
-                                            <i class="fa-solid fa-xmark"></i>
-                                        </div>
-                                        <div class="bpmn-drag-item bpmn-icon-item" draggable="true" data-type="gateway_parallel" title="Gateway paralelo" aria-label="Gateway paralelo" style="background:rgba(250,204,21,0.1); border:1px solid #facc15;">
-                                            <i class="fa-solid fa-plus"></i>
+                            
+                            <!-- HEADER DA TELA CHEIA (Opcional, pode manter ações no topo) -->
+                            <div class="editor-header" style="pointer-events: none; position: absolute; z-index: 50; top: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between;">
+                                <div class="header-left" style="pointer-events: auto;">
+                                    <div class="workflow-title-box" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.95); padding: 10px 16px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                                        <div class="workflow-title">
+                                            <h1 style="margin: 0; font-size: 16px; color: #0f172a;"><span id="current-workflow-name" style="color:var(--primary);">Selecione um workflow</span></h1>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="bpmn-tip">Arraste para o canvas</div>
+                                
+                                <div class="header-right" style="pointer-events: auto;">
+                                    <div class="header-actions" style="display: flex; gap: 10px; background: rgba(255, 255, 255, 0.95); padding: 8px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+                                        <button class="btn-icon" id="btn-show-workflow-list" title="Mostrar lista" type="button" onclick="toggleWorkflowListPanel(false)" style="display:none;"><i class="fa-solid fa-list"></i></button>
+                                        <button class="btn-icon" id="btn-toggle-fullscreen" title="Tela cheia" type="button" onclick="toggleWorkflowFullscreen()"><i class="fa-solid fa-expand"></i></button>
+                                        <button class="btn-icon" id="btn-organize-workflow" disabled title="Organizar" type="button" onclick="organizeCurrentWorkflow()"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+                                        <button class="btn-icon" id="btn-versions-workflow" disabled title="Versões" type="button" onclick="restoreWorkflowVersion()"><i class="fa-solid fa-code-commit"></i></button>
+                                        <button class="btn-icon" id="btn-import-workflow" title="Importar JSON" onclick="document.getElementById('workflow-import-file').click()"><i class="fa-solid fa-file-import"></i></button>
+                                        <input type="file" id="workflow-import-file" accept="application/json,.json" hidden onchange="importWorkflowFile(this.files[0])">
+                                        <button class="btn-primary-action" id="btn-export-workflow" disabled onclick="exportCurrentWorkflow()"><i class="fa-solid fa-download"></i> JSON</button>
+                                        <button class="btn-primary-action" id="btn-publish-workflow" disabled onclick="publishCurrentWorkflow()" style="background:#10b981; color:white; border-color:#059669;"><i class="fa-solid fa-check"></i> Publicar</button>
+                                        <span id="workflow-dirty-indicator" class="workflow-dirty-indicator" hidden></span>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div class="glass-panel workflow-canvas-panel">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 12px; flex-wrap: wrap;">
-                                    <h4>Editor: <span id="current-workflow-name" style="color:var(--primary);">Selecione um workflow</span></h4>
-                                    <div class="workflow-toolbar-actions">
-                                        <button class="btn-secondary btn-small" id="btn-organize-workflow" disabled onclick="organizeCurrentWorkflow()">Organizar fluxo</button>
-                                        <button class="btn-secondary btn-small" id="btn-export-workflow" disabled onclick="exportCurrentWorkflow()">Baixar JSON</button>
-                                        <button class="btn-secondary btn-small" id="btn-publish-workflow" disabled onclick="publishCurrentWorkflow()">Publicar versão</button>
-                                        <button class="btn-secondary btn-small" id="btn-versions-workflow" disabled onclick="restoreWorkflowVersion()">Versões</button>
-                                        <button class="btn-secondary btn-small" id="btn-import-workflow" onclick="document.getElementById('workflow-import-file').click()">Importar JSON</button>
-                                        <input type="file" id="workflow-import-file" accept="application/json,.json" hidden onchange="importWorkflowFile(this.files[0])">
-                                        <button class="btn-secondary btn-small" id="btn-add-state" disabled onclick="openStateModal()" style="display:none;">+ Estado (Nó)</button>
+                            <!-- TOOLBAR FLUTUANTE CENTRAL -->
+                            <div class="floating-toolbar">
+                                <div class="toolbar-label">Add</div>
+                                <div class="drag-tool tool-start bpmn-drag-item" draggable="true" data-type="event_start">
+                                    <div class="drag-tool-icon"><i class="fa-solid fa-play"></i></div><span>Início</span>
+                                </div>
+                                <div class="drag-tool tool-user bpmn-drag-item" draggable="true" data-type="task_user">
+                                    <div class="drag-tool-icon"><i class="fa-regular fa-user"></i></div><span>Usuário</span>
+                                </div>
+                                <div class="drag-tool tool-service bpmn-drag-item" draggable="true" data-type="task_service">
+                                    <div class="drag-tool-icon"><i class="fa-solid fa-gear"></i></div><span>Serviço</span>
+                                </div>
+                                <div class="drag-tool tool-script bpmn-drag-item" draggable="true" data-type="task_script">
+                                    <div class="drag-tool-icon"><i class="fa-solid fa-code"></i></div><span>Script</span>
+                                </div>
+                                <div class="drag-tool tool-gateway bpmn-drag-item" draggable="true" data-type="gateway_exclusive">
+                                    <div class="drag-tool-icon"><i class="fa-solid fa-xmark"></i></div><span>Decisão</span>
+                                </div>
+                                <div class="drag-tool tool-gateway bpmn-drag-item" draggable="true" data-type="gateway_parallel">
+                                    <div class="drag-tool-icon"><i class="fa-solid fa-plus"></i></div><span>Paralelo</span>
+                                </div>
+                                <div class="drag-tool tool-end bpmn-drag-item" draggable="true" data-type="event_end">
+                                    <div class="drag-tool-icon"><i class="fa-solid fa-stop"></i></div><span>Término</span>
+                                </div>
+                            </div>
+
+                            <div class="glass-panel workflow-canvas-panel" style="padding:0; position:relative; overflow:hidden;">
+                                <div id="drawflow" style="width:100%; height:100%; min-height:600px; background-color:#fafbfc; background-image: radial-gradient(#cbd5e1 1.5px, transparent 1.5px); background-size:30px 30px;" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+                            </div>
+
+                            <!-- BOTTOM SHEET (Drawer) -->
+                            <div class="bottom-sheet" id="properties-sheet">
+                                <div class="sheet-header">
+                                    <div class="sheet-title-area">
+                                        <div class="sheet-node-icon" id="sheet-icon"><i class="fa-solid fa-gear"></i></div>
+                                        <div class="sheet-node-info">
+                                            <p id="sheet-node-type">CONFIGURAÇÃO DO ELEMENTO</p>
+                                            <h2 id="sheet-node-title">Editar Propriedades</h2>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn-close-sheet" onclick="closePropertiesSheet()"><i class="fa-solid fa-xmark"></i></button>
+                                </div>
+                                
+                                <div class="sheet-content">
+                                    <input type="hidden" id="state-id">
+                                    
+                                    <div class="form-group">
+                                        <label>Nome do Estado</label>
+                                        <input type="text" id="state-label">
+                                    </div>
+                                    <div class="form-group" style="display: flex; gap: 20px;">
+                                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="state-initial"> Estado Inicial</label>
+                                        <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="state-completion"> Estado Final</label>
+                                    </div>
+                                    <div class="form-group" style="display: flex; gap: 15px;">
+                                        <div style="flex: 1;">
+                                            <label>Swimlane (Raia)</label>
+                                            <input type="text" id="state-pool" placeholder="Ex.: Financeiro, Secretaria">
+                                        </div>
+                                        <div style="width: 80px;">
+                                            <label>Cor</label>
+                                            <input type="color" id="state-pool-color" value="#cbd5e1" style="padding:0; height:38px; width:100%; cursor:pointer;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Ação executada pelo elemento</label>
+                                        <input type="text" id="state-action-code" placeholder="Ex.: SEND_EMAIL, REQUEST_SIGNATURE">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Destinatários / responsáveis</label>
+                                        <input type="text" id="state-recipients" placeholder="E-mails, usuários ou papéis separados por vírgula">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Detalhes da execução</label>
+                                        <textarea id="state-execution-details" rows="3" placeholder="Ex.: enviar para secretaria@exemplo.br"></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Formulário da Tarefa (Chave/ID do form)</label>
+                                        <input type="text" id="state-task-form" placeholder="Ex.: form_aprovacao_bolsa">
                                     </div>
                                 </div>
-                                <div id="editor-hint" style="font-size:12px; color:var(--text-muted); margin-bottom: 10px;">Arraste ou clique em um elemento do painel superior para criar um nó</div>
-                                <div id="drawflow" style="flex: 1; min-height: 420px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjEiIGZpbGw9IiMzMzMiLz48L3N2Zz4=');" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+                                <div class="sheet-footer">
+                                    <button class="btn-sheet-save" onclick="saveState()">Salvar Alterações</button>
+                                </div>
                             </div>
+
                         </div>
                     </div>
                 </section>
@@ -483,43 +567,6 @@
                     </div>
                 </div>
                 
-                <!-- Modal Novo Estado -->
-                <div class="modal-overlay" id="modal-state">
-                    <div class="modal-content glass-panel" style="width: 460px; max-width: calc(100vw - 32px); padding: 30px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                            <h2 id="state-modal-title">Novo Estado</h2>
-                            <button class="btn-close" onclick="document.getElementById('modal-state').classList.remove('active')">✖</button>
-                        </div>
-                        <form onsubmit="event.preventDefault(); saveState();">
-                            <div class="form-group">
-                                <label>Nome do Estado</label>
-                                <input type="text" id="state-label" required>
-                            </div>
-                            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="state-initial" style="width: auto;">
-                                <label for="state-initial" style="margin-bottom: 0;">Estado Inicial</label>
-                            </div>
-                            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                                <input type="checkbox" id="state-completion" style="width: auto;">
-                                <label for="state-completion" style="margin-bottom: 0;">Estado Final (Conclusão)</label>
-                            </div>
-                            <div class="form-group">
-                                <label>Ação executada pelo elemento</label>
-                                <input type="text" id="state-action-code" placeholder="Ex.: SEND_EMAIL, REQUEST_SIGNATURE">
-                            </div>
-                            <div class="form-group">
-                                <label>Destinatários / responsáveis</label>
-                                <input type="text" id="state-recipients" placeholder="E-mails, usuários ou papéis separados por vírgula">
-                            </div>
-                            <div class="form-group">
-                                <label>Detalhes da execução</label>
-                                <textarea id="state-execution-details" rows="3" placeholder="Ex.: enviar para secretaria@exemplo.br, solicitar assinatura do reitor"></textarea>
-                            </div>
-                            <input type="hidden" id="state-id">
-                            <button type="submit" class="btn-primary w-100 mt-20">Salvar</button>
-                        </form>
-                    </div>
-                </div>
 
                 <!-- Modal Nova Transição -->
                 <div class="modal-overlay" id="modal-transition">
@@ -792,7 +839,7 @@
                                 <input type="number" id="dt-retention" value="5" min="0" max="1000" required>
                             </div>
                             <div class="form-group">
-                                <label>ID do fluxo (opcional)</label>
+                                <label>ID do trânsito (opcional)</label>
                                 <input type="text" id="dt-workflow">
                             </div>
                             <div class="form-group" style="display: flex; align-items: center; gap: 10px;">

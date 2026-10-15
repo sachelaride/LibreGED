@@ -192,10 +192,10 @@ async function loadUserDocuments() {
             const typeId = docType ? docType.id : null;
             
             const podeVer = typeId ? hasPermission(typeId, 'consultar') : true;
-            const podeExecutarFluxo = typeId ? hasPermission(typeId, 'executar_fluxo') : true;
+            const podeExecutarTrânsito = typeId ? hasPermission(typeId, 'executar_trânsito') : true;
             
             let btnVer = podeVer ? `<button class="btn-secondary btn-small">Ver</button>` : '';
-            let btnFluxo = podeExecutarFluxo ? `<button class="btn-primary btn-small" onclick="alert('Funcionalidade sendo adaptada para o Workflow Engine!')">Avançar Fluxo</button>` : '';
+            let btnTrânsito = podeExecutarTrânsito ? `<button class="btn-primary btn-small" onclick="alert('Funcionalidade sendo adaptada para o Workflow Engine!')">Avançar Trânsito</button>` : '';
             
             tr.innerHTML = `
                 <td>${doc.name}</td>
@@ -204,7 +204,7 @@ async function loadUserDocuments() {
                 <td>${created}</td>
                 <td>
                     ${btnVer}
-                    ${btnFluxo}
+                    ${btnTrânsito}
                 </td>
             `;
             tbody.appendChild(tr);

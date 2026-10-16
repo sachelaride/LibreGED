@@ -121,7 +121,7 @@ def create_seed():
             label=f"Pendente: {doc}",
             swimlane="secretaria",
             node_type="user_task",
-            config_json=json.dumps({"notificar": "sim", "msg": f"Anexar {doc} para <nome>."}),
+            config_json=json.dumps({"notificar": "sim", "msg": f"Anexar {doc} para <nome>.", "task_form": "anexar_pendencia"}),
             ui_pos_x=ui_x,
             ui_pos_y=ui_y_base + 150
         )

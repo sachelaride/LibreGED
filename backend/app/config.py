@@ -105,21 +105,19 @@ class BaseConfig(BaseSettings):
 
 
 class DevelopmentConfig(BaseConfig):
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/eduged_libre"
+    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/eduged_libre"
     ENVIRONMENT: str = "development"
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=(".env", "backend/.env", "../.env"), env_file_encoding="utf-8", extra="ignore")
 
 
 class TestConfig(BaseConfig):
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/eduged_libre_test"
+    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/eduged_libre_test"
     ENVIRONMENT: str = "test"
     model_config = SettingsConfigDict(
-        env_file=".env.test",
+        env_file=(".env.test", ".env", "backend/.env", "../.env"),
         env_file_encoding="utf-8",
-        env_prefix="TEST_",
         extra="ignore",
     )
-
 
 class StagingConfig(BaseConfig):
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/staging_db"

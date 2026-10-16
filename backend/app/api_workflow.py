@@ -622,11 +622,31 @@ def start_workflow_instance(
 ):
     from app.api_document_operations import obter_documento
     doc = obter_documento(db, user, payload.document_id, "iniciar_fluxo")
+
+    workflow = db.query(models_workflow.Workflow).filter_by(id=payload.workflow_id).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    initial_state = db.query(models_workflow.WorkflowState).filter_by(
+        workflow_id=workflow.id, is_initial=True
+    ).first()
+
+    if not initial_state:
+        raise HTTPException(status_code=400, detail="Workflow has no initial state defined")
+
+    instance = models_workflow.DocumentWorkflowInstance(
+        document_id=payload.document_id,
+        workflow_id=workflow.id,
+        current_state_id=initial_state.id
+    )
+    db.add(instance)
+    db.flush()
+
     _handle_state_entry(instance, initial_state, db, user, doc, "Início do fluxo")
-    
+
     db.commit()
     db.refresh(instance)
-    
+
     return instance
 
 @router.get("/workflows/tasks/my-tasks", response_model=List[WorkflowTaskResponse], tags=["Workflows - Execution"])

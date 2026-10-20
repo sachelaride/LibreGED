@@ -1,9 +1,33 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
-    <meta http-equiv="refresh" content="0; url='login.html'" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreGED</title>
+    <script>
+        function parseJwt(token) {
+            try {
+                const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+                const decoded = decodeURIComponent(atob(encoded).split('').map(character =>
+                    '%' + character.charCodeAt(0).toString(16).padStart(2, '0')
+                ).join(''));
+                return JSON.parse(decoded);
+            } catch {
+                return null;
+            }
+        }
+
+        const token = localStorage.getItem('ged_token');
+        const payload = token ? parseJwt(token) : null;
+        if (!payload || !payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) {
+            localStorage.removeItem('ged_token');
+            window.location.replace('login.html');
+        } else {
+            window.location.replace('app.html');
+        }
+    </script>
 </head>
 <body>
-    <p>Redirecionando para <a href="login.html">login.html</a>...</p>
+    <p>Redirecionando para o LibreGED...</p>
 </body>
 </html>

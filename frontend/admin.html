@@ -65,7 +65,7 @@
         if(!token) window.location.href = 'login.html';
         const payload = parseJwt(token);
         if(!payload || (payload.role !== 'admin_global' && payload.role !== 'admin_instituicao')) {
-            window.location.href = 'login.html';
+            window.location.href = './';
         }
     </script>
 </head>
@@ -87,7 +87,7 @@
                 <a href="#" class="menu-item role-admin-global" data-target="institutions">
                     <span class="icon">🏢</span> Instituições
                 </a>
-                <a href="#" class="menu-item role-admin-global" data-target="usuarios">
+                <a href="#" class="menu-item role-admin-global role-admin-instituicao" data-target="usuarios">
                     <span class="icon">👥</span> Gestão de Usuários
                 </a>
                 <a href="#" class="menu-item role-admin-global" data-target="storage">
@@ -157,7 +157,7 @@
                         <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">
                             <i class="fa-solid fa-sun" aria-hidden="true"></i><span>Tema claro</span>
                         </button>
-                        <button class="account-action" id="btn-logout" type="button" onclick="localStorage.removeItem('ged_token'); window.location.href='login.html'">
+                        <button class="account-action" id="btn-logout" type="button" onclick="localStorage.removeItem('ged_token'); window.top.location.href='login.html'">
                             <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sair
                         </button>
                     </div>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreGED Admin</title>
+    <style>
+        html, body, iframe {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            border: 0;
+        }
+
+        iframe {
+            display: block;
+        }
+    </style>
+    <script>
+        function parseJwt(token) {
+            try {
+                const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+                const decoded = decodeURIComponent(atob(encoded).split('').map(character =>
+                    '%' + character.charCodeAt(0).toString(16).padStart(2, '0')
+                ).join(''));
+                return JSON.parse(decoded);
+            } catch {
+                return null;
+            }
+        }
+
+        const token = localStorage.getItem('ged_token');
+        const payload = token ? parseJwt(token) : null;
+        if (!payload || !payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) {
+            localStorage.removeItem('ged_token');
+            window.location.replace('../login.html?next=admin%2F');
+        } else if (payload.role !== 'admin_global' && payload.role !== 'admin_instituicao') {
+            window.location.replace('../');
+        }
+    </script>
+</head>
+<body>
+    <iframe src="../admin.html" title="Área administrativa LibreGED"></iframe>
+</body>
+</html>

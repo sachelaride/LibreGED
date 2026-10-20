@@ -38,10 +38,6 @@
             window.location.href = 'login.html';
         }
         
-        // Prevent admin from using this panel
-        if(payload && (payload.role === 'admin_global' || payload.role === 'admin_instituicao')) {
-            window.location.href = 'admin.html';
-        }
     </script>
 
     <div class="app-container">

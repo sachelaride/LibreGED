@@ -176,9 +176,9 @@ function createSidebarUserLabel() {
     const label = document.createElement('div');
     label.id = 'sidebar-username';
     label.style.padding = '10px 20px';
-    label.style.color = 'white';
+    label.style.color = 'var(--text-main)';
     label.style.fontWeight = '500';
-    label.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+    label.style.borderBottom = '1px solid var(--glass-border)';
     const sidebarLogo = document.querySelector('.sidebar .logo');
     if (sidebarLogo) {
         sidebarLogo.parentNode.insertBefore(label, sidebarLogo.nextSibling);

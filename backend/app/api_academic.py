@@ -67,12 +67,15 @@ class EnrollmentResponse(BaseModel):
 @router.get("/api/students", response_model=List[StudentResponse])
 def get_students(
     institution_id: Optional[str] = None,
+    cpf: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
     query = db.query(models.Student)
     if institution_id:
         query = query.filter(models.Student.institution_id == institution_id)
+    if cpf:
+        query = query.filter(models.Student.cpf == cpf)
     # Por segurança, sempre filtramos pela instituição do usuário, a não ser que ele seja admin global
     if current_user.role != "admin_global":
         query = query.filter(models.Student.institution_id == current_user.institution_id)

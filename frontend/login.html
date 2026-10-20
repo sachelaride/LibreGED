@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EduGED Libre - Acesso</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
@@ -46,12 +47,21 @@
                 <label>Usuário</label>
                 <input type="text" id="login-username" required autocomplete="username">
             </div>
-            <div class="form-group">
+            <div class="form-group" style="position: relative;">
                 <label>Senha</label>
-                <input type="password" id="login-password" required autocomplete="current-password">
+                <div style="position: relative; display: flex; align-items: center;">
+                    <input type="password" id="login-password" required autocomplete="current-password" style="padding-right: 40px; width: 100%;">
+                    <button type="button" id="toggle-pwd" onclick="togglePasswordVisibility()" style="position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 5px;" title="Mostrar/ocultar senha">
+                        <i class="fa-solid fa-eye" id="eye-icon"></i>
+                    </button>
+                </div>
             </div>
             <p id="login-error" class="error-msg"></p>
             <button type="submit" class="btn-primary w-100" id="btn-login">Entrar no Sistema</button>
+            <div style="margin-top: 15px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px;" onclick="prefill('demo.academico', 'Demo@123456')">Preencher demo.academico</button>
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px;" onclick="prefill('consultor', 'Demo@123456')">Preencher consultor</button>
+            </div>
         </form>
     </div>
 
@@ -67,9 +77,12 @@
             btn.disabled = true;
             err.innerText = '';
             
+            const usernameInput = document.getElementById('login-username').value.trim();
+            const passwordInput = document.getElementById('login-password').value.trim();
+
             const formData = new URLSearchParams();
-            formData.append('username', document.getElementById('login-username').value);
-            formData.append('password', document.getElementById('login-password').value);
+            formData.append('username', usernameInput);
+            formData.append('password', passwordInput);
             
             try {
                 const response = await fetch(`${API_URL}/auth/token`, {
@@ -127,6 +140,24 @@
             } else {
                 localStorage.removeItem('ged_token');
             }
+        }
+
+        function togglePasswordVisibility() {
+            const pwdInput = document.getElementById('login-password');
+            const icon = document.getElementById('eye-icon');
+            if (pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                icon.className = 'fa-solid fa-eye-slash';
+            } else {
+                pwdInput.type = 'password';
+                icon.className = 'fa-solid fa-eye';
+            }
+        }
+
+        function prefill(username, password) {
+            document.getElementById('login-username').value = username;
+            document.getElementById('login-password').value = password;
+            document.getElementById('login-error').innerText = '';
         }
     </script>
 </body>

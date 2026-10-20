@@ -253,6 +253,19 @@ def get_workflows(page: int = 1, size: int = 50, db: Session = Depends(get_db), 
     pages = math.ceil(total / size) if size > 0 else 0
     return {"items": items, "total": total, "page": page, "size": size, "pages": pages}
 
+
+@router.get("/workflows/{workflow_id}", response_model=WorkflowResponse, tags=["Admin - Workflows"])
+def get_workflow(
+    workflow_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user),
+):
+    workflow = db.get(models_workflow.Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Workflow não encontrado")
+    return workflow
+
+
 @router.post("/workflows", response_model=WorkflowResponse, tags=["Admin - Workflows"])
 def create_workflow(wkf_in: WorkflowCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_admin)):
     duplicate_name = db.query(models_workflow.Workflow).filter(

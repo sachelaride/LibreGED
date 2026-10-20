@@ -161,7 +161,7 @@ def seed(root: Path) -> int:
     try:
         system_index_names = [name.upper() for name, _ in SYSTEM_INDEXES]
         image_index_names = [name.upper() for name in IMAGE_INDEXES]
-        all_index_names = system_index_names + image_index_names
+        all_index_names = list(dict.fromkeys(system_index_names + image_index_names))
         existing = {
             index.name.upper(): index for index in db.query(GedIndex).all()
         }

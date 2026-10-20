@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EduGED Libre - Operacional</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
@@ -248,10 +249,9 @@
                                 <h3 id="doc-modal-title" style="margin-bottom:20px; color:var(--primary); word-wrap:break-word;">Detalhes do Arquivo</h3>
                                 
                                 <div style="display:flex; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
-                                    <button id="tab-btn-meta" onclick="switchModalTab('meta')" style="background:none; border:none; color:#fff; padding:10px 20px; cursor:pointer; border-bottom: 2px solid var(--primary); font-weight:600;">Metadados</button>
+                                    <button id="tab-btn-meta" onclick="switchModalTab('meta')" style="background:none; border:none; color:var(--primary); padding:10px 20px; cursor:pointer; border-bottom: 2px solid var(--primary); font-weight:600;">Metadados</button>
                                     <button id="tab-btn-flow" onclick="switchModalTab('flow')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Workflow</button>
                                     <button id="tab-btn-sig" onclick="switchModalTab('sig')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Assinatura (ICP)</button>
-                                    <!-- REPLACE_MARKER --> onclick="switchModalTab('flow')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Workflow</button>
                                 </div>
                                 
                                 <!-- Aba Metadados -->
@@ -313,24 +313,26 @@
                                     <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:8px; margin-bottom:20px;">
                                         <h4 style="margin-bottom:10px; color:var(--primary);"><i class="fa-solid fa-file-signature"></i> Executar Assinatura Digital</h4>
                                         
-                                        <div class="form-group" style="margin-bottom:10px;">
-                                            <label>Signatário (Cofre)</label>
-                                            <select id="doc-modal-signer-select" class="form-control" style="width:100%; padding:8px;">
-                                                <option value="">Carregando...</option>
-                                            </select>
-                                        </div>
-                                        
-                                        <div class="form-group" style="margin-bottom:10px;">
-                                            <label>Senha do Certificado A1</label>
-                                            <input type="password" id="doc-modal-signer-pass" class="form-control" placeholder="Senha do .p12" style="width:100%; padding:8px;">
-                                        </div>
-                                        
-                                        <div class="form-group" style="margin-bottom:15px;">
-                                            <label>Motivo / Comentário (Opcional)</label>
-                                            <input type="text" id="doc-modal-signer-comments" class="form-control" placeholder="Ex: Assinatura de Diploma" style="width:100%; padding:8px;">
-                                        </div>
-                                        
-                                        <button class="btn-primary w-100" id="btn-sign-document" onclick="signDocument()"><i class="fa-solid fa-file-signature"></i> Assinar ICP-Brasil</button>
+                                        <form id="doc-sign-form" onsubmit="event.preventDefault(); signDocument();">
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label>Signatário (Cofre)</label>
+                                                <select id="doc-modal-signer-select" class="form-control" style="width:100%; padding:8px;">
+                                                    <option value="">Carregando...</option>
+                                                </select>
+                                            </div>
+
+                                            <div class="form-group" style="margin-bottom:10px;">
+                                                <label>Senha do Certificado A1</label>
+                                                <input type="password" id="doc-modal-signer-pass" class="form-control" placeholder="Senha do .p12" autocomplete="off" style="width:100%; padding:8px;">
+                                            </div>
+
+                                            <div class="form-group" style="margin-bottom:15px;">
+                                                <label>Motivo / Comentário (Opcional)</label>
+                                                <input type="text" id="doc-modal-signer-comments" class="form-control" placeholder="Ex: Assinatura de Diploma" style="width:100%; padding:8px;">
+                                            </div>
+
+                                            <button type="submit" class="btn-primary w-100" id="btn-sign-document"><i class="fa-solid fa-file-signature"></i> Assinar ICP-Brasil</button>
+                                        </form>
                                     </div>
                                     
                                     <h4 style="margin-bottom:10px;"><i class="fa-solid fa-list-check"></i> Auditoria de Assinaturas (Recibos)</h4>
@@ -363,22 +365,22 @@
                         <h2 style="font-size: 36px; margin-bottom: 20px;">O que você procura?</h2>
                         <div style="width: 100%; max-width: 900px; display:flex; flex-direction:column; gap:12px;">
                             <div style="display:flex; gap:10px;">
-                                <input type="text" id="search-query" class="form-control" placeholder="Buscar por CPF, nome, código..." style="padding: 16px; font-size: 16px; width: 100%; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;">
+                                <input type="text" id="search-query" class="form-control" placeholder="Buscar por CPF, nome, código..." style="padding: 16px; font-size: 16px; width: 100%; border-radius: 8px;">
                                 <button class="btn-primary" onclick="performSearch()" style="padding: 16px 30px;"><i class="fa-solid fa-search"></i></button>
                                 <button class="btn-secondary" type="button" onclick="clearSearchFilters()" title="Limpar busca" aria-label="Limpar busca" style="padding: 16px 18px;"><i class="fa-solid fa-rotate-left"></i></button>
                             </div>
                             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
-                                <input type="text" id="search-student" class="form-control" placeholder="Aluno / student_id" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
-                                <select id="search-group" class="form-control" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                <input type="text" id="search-student" class="form-control" placeholder="Aluno / student_id" style="padding: 12px; border-radius: 8px;">
+                                <select id="search-group" class="form-control" style="padding: 12px; border-radius: 8px;">
                                     <option value="">Grupo documental</option>
                                 </select>
-                                <select id="search-document-type" class="form-control" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                <select id="search-document-type" class="form-control" style="padding: 12px; border-radius: 8px;">
                                     <option value="">Tipo documental</option>
                                 </select>
-                                <select id="search-index" class="form-control" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                <select id="search-index" class="form-control" style="padding: 12px; border-radius: 8px;">
                                     <option value="">Índice cadastrado</option>
                                 </select>
-                                <input type="text" id="search-index-value" class="form-control" placeholder="Valor do índice (CPF, RGM...)" style="padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;">
+                                <input type="text" id="search-index-value" class="form-control" placeholder="Valor do índice (CPF, RGM...)" style="padding: 12px; border-radius: 8px;">
                             </div>
                             <div id="search-indexes-help" class="search-indexes-help text-muted" aria-live="polite">
                                 Selecione um grupo ou tipo para ver os índices disponíveis.
@@ -390,6 +392,21 @@
                         </div>
                     </div>
                 </section>
+
+                <div id="document-preview-modal" class="document-preview-modal" role="dialog" aria-modal="true" aria-labelledby="document-preview-title" hidden>
+                    <div class="document-preview-panel">
+                        <header class="document-preview-header">
+                            <h2 id="document-preview-title">Visualização do documento</h2>
+                            <button class="btn-secondary btn-small" type="button" onclick="closeDocumentPreview()" aria-label="Fechar visualização">
+                                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            </button>
+                        </header>
+                        <div id="document-preview-content" class="document-preview-content" aria-live="polite"></div>
+                        <footer class="document-preview-footer">
+                            <a id="document-preview-download" class="btn-secondary btn-small" href="#" hidden>Baixar arquivo original</a>
+                        </footer>
+                    </div>
+                </div>
 
                 <!-- View: Monitor de Tarefas -->
                 <section id="view-tasks" class="view">
@@ -641,15 +658,15 @@
                             <div>
                                 <div class="form-group" style="margin-bottom:15px;">
                                     <label style="display:block; margin-bottom:5px; color:var(--text-muted);">Nome do Aluno</label>
-                                    <input type="text" id="student-name" style="width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px;">
+                                    <input type="text" id="student-name" class="form-control" style="width:100%; padding:10px; border-radius:6px;">
                                 </div>
                                 <div class="form-group" style="margin-bottom:15px;">
                                     <label style="display:block; margin-bottom:5px; color:var(--text-muted);">CPF</label>
-                                    <input type="text" id="student-cpf" style="width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px;">
+                                    <input type="text" id="student-cpf" class="form-control" style="width:100%; padding:10px; border-radius:6px;">
                                 </div>
                                 <div class="form-group" style="margin-bottom:25px;">
                                     <label style="display:block; margin-bottom:5px; color:var(--text-muted);">Matrícula (Opcional)</label>
-                                    <input type="text" id="student-reg" style="width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px;">
+                                    <input type="text" id="student-reg" class="form-control" style="width:100%; padding:10px; border-radius:6px;">
                                 </div>
                                 <button class="btn-primary w-100" onclick="createDossier()">Avançar para Upload</button>
                             </div>
@@ -657,16 +674,16 @@
                             <div id="upload-zone" style="opacity: 0.5; pointer-events:none;">
                                 <div class="form-group" style="margin-bottom:15px" onclick="event.stopPropagation()">
                                     <label for="upload-document-type">Tipo documental</label>
-                                    <select id="upload-document-type" onchange="carregarIndicesUpload()">
+                                    <select id="upload-document-type" class="form-control" onchange="carregarIndicesUpload()">
                                         <option value="">Selecione o tipo documental</option>
                                     </select>
                                     <label for="upload-document-purpose" style="display:block; margin-top:12px;">Finalidade do documento</label>
-                                    <select id="upload-document-purpose" aria-describedby="upload-document-purpose-help">
+                                    <select id="upload-document-purpose" class="form-control" aria-describedby="upload-document-purpose-help">
                                         <option value="official">Oficial</option>
                                         <option value="conference">Conferência (não oficial)</option>
                                     </select>
                                     <label for="upload-ocr-engine" style="display:block; margin-top:12px;">Motor OCR</label>
-                                    <select id="upload-ocr-engine" onchange="updateOcrHelp()">
+                                    <select id="upload-ocr-engine" class="form-control" onchange="updateOcrHelp()">
                                         <option value="auto">Auto (recomendado)</option>
                                         <option value="none">Não processar OCR</option>
                                         <option value="tesseract">Tesseract</option>

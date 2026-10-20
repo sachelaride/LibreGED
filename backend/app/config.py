@@ -111,10 +111,10 @@ class DevelopmentConfig(BaseConfig):
 
 
 class TestConfig(BaseConfig):
-    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/eduged_libre_test"
+    DATABASE_URL: str = "postgresql+psycopg://postgres:lizard1240king@localhost:5432/libreged_test"
     ENVIRONMENT: str = "test"
     model_config = SettingsConfigDict(
-        env_file=(".env.test", ".env", "backend/.env", "../.env"),
+        env_file=(".env.test", "backend/.env.test"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

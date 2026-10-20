@@ -126,15 +126,15 @@ window.switchModalTab = function(tabName) {
     
     // Custom tab handling
     document.getElementById('tab-btn-meta').style.borderColor = tabName === 'meta' ? 'var(--primary)' : 'transparent';
-    document.getElementById('tab-btn-meta').style.color = tabName === 'meta' ? '#fff' : 'var(--text-muted)';
+    document.getElementById('tab-btn-meta').style.color = tabName === 'meta' ? 'var(--primary)' : 'var(--text-muted)';
     
     document.getElementById('tab-btn-flow').style.borderColor = tabName === 'flow' ? 'var(--primary)' : 'transparent';
-    document.getElementById('tab-btn-flow').style.color = tabName === 'flow' ? '#fff' : 'var(--text-muted)';
+    document.getElementById('tab-btn-flow').style.color = tabName === 'flow' ? 'var(--primary)' : 'var(--text-muted)';
     
     const sigBtn = document.getElementById('tab-btn-sig');
     if(sigBtn) {
         sigBtn.style.borderColor = tabName === 'sig' ? 'var(--primary)' : 'transparent';
-        sigBtn.style.color = tabName === 'sig' ? '#fff' : 'var(--text-muted)';
+        sigBtn.style.color = tabName === 'sig' ? 'var(--primary)' : 'var(--text-muted)';
     }
     
     document.getElementById('tab-meta').style.display = tabName === 'meta' ? 'block' : 'none';

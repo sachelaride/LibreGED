@@ -7,6 +7,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 from app.database import SessionLocal
 from app.models_ged_config import DocumentType, DocumentTypeVersion, DocumentTypeIndex, GedIndex
 from app import models
+from app import models_ged
+from app import models_workflow
+from app import models_academic_dossier
 import uuid
 
 def get_or_create_index(db, name: str, type_: str, options: list = None, mask: str = None):

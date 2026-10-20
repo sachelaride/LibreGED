@@ -239,20 +239,136 @@ async function performSearch() {
 }
 
 function viewDocument(docId) {
-    const summary = document.getElementById('search-summary');
-    if (summary) summary.textContent = `Documento selecionado: ${docId}. A visualização do arquivo será aberta pelo módulo documental.`;
+    openDocumentPreview(docId, `documents/${encodeURIComponent(docId)}/preview`);
+}
+
+let documentPreviewUrl = null;
+let documentPreviewRequest = 0;
+
+async function openDocumentPreview(docId, previewPath) {
+    const modal = document.getElementById('document-preview-modal');
+    const title = document.getElementById('document-preview-title');
+    const content = document.getElementById('document-preview-content');
+    const download = document.getElementById('document-preview-download');
+    if (!modal || !title || !content || !download) return;
+
+    closeDocumentPreview();
+    const requestId = ++documentPreviewRequest;
+    modal.hidden = false;
+    title.textContent = 'Carregando documento...';
+    content.replaceChildren();
+
+    try {
+        const response = await fetch(
+            `${API_URL}/${previewPath}`,
+            { headers: getAuthHeaders() }
+        );
+        if (!response.ok) {
+            let message = 'Não foi possível visualizar este documento.';
+            try {
+                const error = await response.json();
+                message = error.detail || message;
+            } catch (_) {
+                // Preserve a useful message if the server did not return JSON.
+            }
+            throw new Error(message);
+        }
+
+        const blob = await response.blob();
+        if (requestId !== documentPreviewRequest) return;
+
+        documentPreviewUrl = URL.createObjectURL(blob);
+        const mediaType = (response.headers.get('content-type') || '').split(';')[0].toLowerCase();
+        const filename = response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/i)?.[1]
+            || `documento-${docId}`;
+        title.textContent = filename;
+
+        if (mediaType === 'application/pdf') {
+            const frame = document.createElement('iframe');
+            frame.title = `Pré-visualização de ${filename}`;
+            frame.src = documentPreviewUrl;
+            content.appendChild(frame);
+        } else if (mediaType.startsWith('image/')) {
+            const image = document.createElement('img');
+            image.alt = `Pré-visualização de ${filename}`;
+            image.src = documentPreviewUrl;
+            content.appendChild(image);
+        } else if (
+            mediaType.startsWith('text/')
+            || mediaType.includes('xml')
+            || mediaType.includes('json')
+            || /\.(xml|json|csv|txt|log)$/i.test(filename)
+        ) {
+            const text = document.createElement('pre');
+            text.className = 'document-preview-text';
+            text.textContent = await blob.text();
+            content.appendChild(text);
+        } else {
+            const message = document.createElement('p');
+            message.className = 'document-preview-message';
+            message.textContent = `O formato ${mediaType || 'desconhecido'} não pode ser exibido no navegador. Baixe o arquivo para abri-lo.`;
+            content.appendChild(message);
+        }
+
+        download.href = documentPreviewUrl;
+        download.download = filename;
+        download.hidden = false;
+        document.addEventListener('keydown', handleDocumentPreviewKeydown);
+    } catch (error) {
+        if (requestId !== documentPreviewRequest) return;
+        title.textContent = 'Erro ao visualizar documento';
+        const message = document.createElement('p');
+        message.className = 'document-preview-message';
+        message.textContent = error.message;
+        content.replaceChildren(message);
+    }
+}
+
+function closeDocumentPreview() {
+    documentPreviewRequest += 1;
+    const modal = document.getElementById('document-preview-modal');
+    const content = document.getElementById('document-preview-content');
+    const download = document.getElementById('document-preview-download');
+    if (modal) modal.hidden = true;
+    if (content) content.replaceChildren();
+    if (download) {
+        download.removeAttribute('href');
+        download.removeAttribute('download');
+        download.hidden = true;
+    }
+    if (documentPreviewUrl) {
+        URL.revokeObjectURL(documentPreviewUrl);
+        documentPreviewUrl = null;
+    }
+    document.removeEventListener('keydown', handleDocumentPreviewKeydown);
+}
+
+function handleDocumentPreviewKeydown(event) {
+    if (event.key === 'Escape') closeDocumentPreview();
+}
+
+function previewCurrentDocument() {
+    const docId = document.getElementById('doc-modal-id')?.value;
+    if (!docId) return;
+    openDocumentPreview(docId, `ecm/nodes/${encodeURIComponent(docId)}/preview`);
 }
 
 let tiposDocumentaisUpload = [];
 
 async function carregarTiposUpload() {
-    const resposta = await fetch(`${API_URL}/document-types?page=1&size=100`, {headers: getAuthHeaders()});
-    if (!resposta.ok) throw new Error('Não foi possível carregar os tipos documentais.');
+    const resposta = await fetch(`${API_URL}/documents/search/types?permission=cadastrar`, {headers: getAuthHeaders()});
+    if (!resposta.ok) {
+        const erro = await resposta.json().catch(() => ({}));
+        throw new Error(erro.detail || 'Não foi possível carregar os tipos documentais para cadastro.');
+    }
     const dados = await resposta.json();
-    tiposDocumentaisUpload = dados.items || [];
+    tiposDocumentaisUpload = Array.isArray(dados) ? dados : [];
+    if (tiposDocumentaisUpload.length === 0) {
+        throw new Error('Sua conta não possui permissão de cadastro em nenhum tipo documental ativo.');
+    }
     const seletor = document.getElementById('upload-document-type');
     seletor.innerHTML = '<option value="">Selecione o tipo documental</option>';
-    tiposDocumentaisUpload.filter(tipo => tipo.is_active).forEach(tipo => {
+    tiposDocumentaisUpload.forEach(tipo => {
         const opcao = document.createElement('option');
         opcao.value = tipo.id;
         opcao.textContent = tipo.name;
@@ -289,6 +405,7 @@ function carregarIndicesUpload() {
                 ['número', 'numero'].includes(indice.type.toLocaleLowerCase()) ? 'number' : 'text';
             if (indice.mask) campo.pattern = indice.mask;
         }
+        campo.classList.add('form-control');
         campo.dataset.indexId = indice.id;
         campo.dataset.autoIncrement = indice.auto_increment ? 'true' : 'false';
         campo.required = vinculo.is_required && !indice.auto_increment;
@@ -396,26 +513,41 @@ async function initNewFlowView() {
 
     try {
         const [typesRes, wfRes] = await Promise.all([
-            fetch(`${API_URL}/document-types?limit=100`, { headers: getAuthHeaders() }),
-            fetch(`${API_URL}/workflows`, { headers: getAuthHeaders() })
+            fetch(`${API_URL}/documents/search/types`, { headers: getAuthHeaders() }),
+            fetch(`${API_URL}/workflows?page=1&size=100`, { headers: getAuthHeaders() })
         ]);
 
-        if (typesRes.ok) {
-            const types = await typesRes.json();
-            const items = types.items || types;
-            items.forEach(t => {
-                docTypeSelect.innerHTML += `<option value="${t.id}">${escapeHtml(t.name)}</option>`;
-            });
+        if (!typesRes.ok) throw new Error('Não foi possível carregar os tipos documentais permitidos.');
+        if (!wfRes.ok) throw new Error('Não foi possível carregar os modelos de workflow.');
+
+        const types = await typesRes.json();
+        const workflows = await wfRes.json();
+        const typeItems = Array.isArray(types) ? types : (types.items || []);
+        const workflowItems = Array.isArray(workflows) ? workflows : (workflows.items || []);
+
+        typeItems.forEach(type => {
+            const option = document.createElement('option');
+            option.value = type.id;
+            option.textContent = type.name;
+            docTypeSelect.appendChild(option);
+        });
+        workflowItems.filter(workflow => workflow.is_active).forEach(workflow => {
+            const option = document.createElement('option');
+            option.value = workflow.id;
+            option.textContent = workflow.name;
+            workflowSelect.appendChild(option);
+        });
+
+        if (!typeItems.length) {
+            docTypeSelect.innerHTML = '<option value="">Nenhum tipo documental disponível para consulta</option>';
         }
-        if (wfRes.ok) {
-            const workflows = await wfRes.json();
-            const items = workflows.items || workflows;
-            items.forEach(w => {
-                workflowSelect.innerHTML += `<option value="${w.id}">${escapeHtml(w.name)}</option>`;
-            });
+        if (!workflowItems.some(workflow => workflow.is_active)) {
+            workflowSelect.innerHTML = '<option value="">Nenhum workflow ativo disponível</option>';
         }
-    } catch (e) {
-        console.error('Error initNewFlowView', e);
+    } catch (error) {
+        console.error('Falha ao inicializar o assistente de tramitação', error);
+        docTypeSelect.innerHTML = '<option value="">Falha ao carregar os tipos documentais</option>';
+        workflowSelect.innerHTML = '<option value="">Falha ao carregar os workflows</option>';
     }
 
     // Reset wizard to step 1
@@ -491,21 +623,35 @@ async function onNewFlowDocTypeChange() {
     docSelect.disabled = true;
 
     try {
-        const res = await fetch(`${API_URL}/documents?type_id=${typeId}&limit=50`, { headers: getAuthHeaders() });
-        if (res.ok) {
-            const data = await res.json();
-            const items = data.items || data;
-            docSelect.innerHTML = '<option value="">Selecione o Documento</option>';
-            items.forEach(doc => {
-                const title = doc.title || doc.file_name || doc.id;
-                docSelect.innerHTML += `<option value="${doc.id}">${escapeHtml(title)}</option>`;
-            });
-            docSelect.disabled = false;
-        } else {
-            docSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+        const params = new URLSearchParams({
+            document_type_id: typeId,
+            page: '1',
+            size: '100',
+        });
+        const response = await fetch(`${API_URL}/documents/search?${params}`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) throw new Error('Não foi possível carregar documentos deste tipo.');
+
+        const data = await response.json();
+        const items = Array.isArray(data) ? data : (data.items || []);
+        docSelect.innerHTML = '<option value="">Selecione o Documento</option>';
+        items.forEach(doc => {
+            const documentId = doc.document_id || doc.id;
+            if (!documentId) return;
+            const title = doc.title || doc.file_name || documentId;
+            const option = document.createElement('option');
+            option.value = documentId;
+            option.textContent = title;
+            docSelect.appendChild(option);
+        });
+        if (!items.length) {
+            docSelect.innerHTML = '<option value="">Nenhum documento disponível para este tipo</option>';
         }
-    } catch (e) {
-        docSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+        docSelect.disabled = false;
+    } catch (error) {
+        console.error('Falha ao carregar documentos do tipo selecionado', error);
+        docSelect.innerHTML = '<option value="">Falha ao carregar documentos</option>';
     }
     
     // Add listener on document select for step 2 next button
@@ -626,23 +772,25 @@ function renderUploadStatus(message = '') {
 async function createDossier() {
     const name = document.getElementById('student-name').value;
     const cpf = document.getElementById('student-cpf').value;
+    const cpfDigits = cpf.replace(/\D/g, '');
+    currentStudentId = null;
+    currentInstitutionId = null;
     
-    if(!name || !cpf) {
-        alert("Nome e CPF são obrigatórios para iniciar o Dossiê.");
+    if (!name.trim() || cpfDigits.length !== 11) {
+        alert("Informe o nome do aluno e um CPF com 11 dígitos para iniciar o Dossiê.");
         return;
     }
 
     try {
-        // Obter instituição (pega a primeira disponível para simplificar o MVP)
-        const instResp = await fetch(`${API_URL}/institutions`, { headers: getAuthHeaders() });
-        const insts = await instResp.json();
-        if(insts.length === 0) {
-            alert("Nenhuma instituição encontrada no sistema.");
+        const token = localStorage.getItem('ged_token');
+        const usuario = token && typeof parseJwt === 'function' ? parseJwt(token) : null;
+        currentInstitutionId = usuario?.institution_id || null;
+        if (!currentInstitutionId) {
+            alert("Sua conta não está vinculada a uma instituição. Solicite a associação à administração.");
             return;
         }
-        currentInstitutionId = insts[0].id;
 
-        // Criar Aluno (Mockando email e data de nascimento se não existirem na UI)
+        // A tela não coleta nascimento ou e-mail, então usa valores neutros para criar o cadastro mínimo.
         const studentResp = await fetch(`${API_URL}/students`, {
             method: 'POST',
             headers: {
@@ -651,10 +799,10 @@ async function createDossier() {
             },
             body: JSON.stringify({
                 institution_id: currentInstitutionId,
-                full_name: name,
-                cpf: cpf,
-                birth_date: "2000-01-01", // MOCK
-                email: `${cpf}@aluno.com` // MOCK
+                full_name: name.trim(),
+                cpf: cpfDigits,
+                birth_date: "2000-01-01",
+                email: `${cpfDigits}@aluno.com`
             })
         });
         
@@ -662,12 +810,19 @@ async function createDossier() {
             const data = await studentResp.json();
             // Se já existe, tenta buscar a lista e achar ele
             if(studentResp.status === 409) {
-                const listResp = await fetch(`${API_URL}/students?institution_id=${currentInstitutionId}`, { headers: getAuthHeaders() });
-                const students = await listResp.json();
-                const existing = students.find(s => s.cpf === cpf);
-                if(existing) {
+                const params = new URLSearchParams({
+                    institution_id: currentInstitutionId,
+                    cpf: cpfDigits
+                });
+                const listResp = await fetch(`${API_URL}/students?${params}`, { headers: getAuthHeaders() });
+                const students = listResp.ok ? await listResp.json() : [];
+                const existing = students.length === 1 ? students[0] : null;
+                if (existing) {
                     currentStudentId = existing.id;
                     alert("Aluno já existia. Dossiê aberto para o aluno existente.");
+                } else {
+                    alert("Esse CPF já está cadastrado, mas não foi possível identificar o aluno com segurança. Confira o CPF ou solicite apoio à administração.");
+                    return;
                 }
             } else {
                 alert("Erro ao criar aluno: " + (data.detail || ''));
@@ -685,16 +840,16 @@ async function createDossier() {
     }
 
     // Libera a zona de upload
-    const uploadZone = document.getElementById('upload-zone');
-    const uploadDropzone = document.getElementById('upload-dropzone');
-    uploadZone.style.opacity = '1';
-    uploadZone.style.pointerEvents = 'auto';
     try {
         await carregarTiposUpload();
     } catch (erro) {
         alert(erro.message);
         return;
     }
+    const uploadZone = document.getElementById('upload-zone');
+    const uploadDropzone = document.getElementById('upload-dropzone');
+    uploadZone.style.opacity = '1';
+    uploadZone.style.pointerEvents = 'auto';
     
     // Adiciona listener pro clique na zona
     uploadDropzone.onclick = () => document.getElementById('file-input').click();
@@ -1463,7 +1618,7 @@ function switchModalTab(tab) {
     
     if(tab === 'meta') {
         btnMeta.style.borderBottom = '2px solid var(--primary)';
-        btnMeta.style.color = '#fff';
+        btnMeta.style.color = 'var(--primary)';
         btnFlow.style.borderBottom = '2px solid transparent';
         btnFlow.style.color = 'var(--text-muted)';
         
@@ -1471,7 +1626,7 @@ function switchModalTab(tab) {
         divFlow.style.display = 'none';
     } else {
         btnFlow.style.borderBottom = '2px solid var(--primary)';
-        btnFlow.style.color = '#fff';
+        btnFlow.style.color = 'var(--primary)';
         btnMeta.style.borderBottom = '2px solid transparent';
         btnMeta.style.color = 'var(--text-muted)';
         

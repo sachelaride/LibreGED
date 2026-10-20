@@ -74,9 +74,32 @@ from app.worker_fila import start_worker, stop_worker
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.database import SessionLocal
-    from app.models import User
+    from app.models import User, Institution, InstitutionSettings
     from app.auth import get_password_hash
     db = SessionLocal()
+    
+    # Garante que existe pelo menos uma instituição padrão para o sistema
+    inst = db.query(Institution).first()
+    if not inst:
+        import uuid
+        inst_id = uuid.uuid4().hex
+        inst = Institution(
+            id=inst_id,
+            name="Instituto de Ensino Superior EduGED",
+            cnpj="00.000.000/0001-91",
+            legal_name="EduGED Libre Instituição de Ensino Superior LTDA"
+        )
+        db.add(inst)
+        db.flush()
+        
+        # Cria configurações padrão da instituição
+        settings = InstitutionSettings(
+            id=uuid.uuid4().hex,
+            institution_id=inst.id
+        )
+        db.add(settings)
+        db.commit()
+
     admin = db.query(User).filter(User.username == "admin").first()
     if not admin:
         import uuid
@@ -84,10 +107,15 @@ async def lifespan(app: FastAPI):
             id=uuid.uuid4().hex,
             username="admin",
             hashed_password=get_password_hash("admin123"),
-            role="admin_global"
+            role="admin_global",
+            institution_id=inst.id
         )
         db.add(new_admin)
         db.commit()
+    elif not admin.institution_id and inst:
+        admin.institution_id = inst.id
+        db.commit()
+
     db.close()
     
     start_worker()
@@ -148,6 +176,7 @@ async def sqlalchemy_integrity_error_handler(request: Request, exc: IntegrityErr
 # Role definitions for dependency injection
 AdminOnly = Depends(role_checker(["admin_global"]))
 InstitutionRoles = Depends(role_checker(["admin_global", "admin_instituicao", "operador", "leitor", "auditor"]))
+AcademicStudentRoles = Depends(role_checker(["admin_global", "admin_instituicao", "operador", "academico"]))
 
 from app import api_admin, api_users, api_institutions, api_ged_upload, api_ecm, api_sites, api_health
 from app import api_storage_config, api_ged_config, api_workflow, api_templates, api_search, api_erp_ingestion, api_digital_signature, api_academic, api_xsd, api_academic_dossier, api_validator, api_quarantine, api_integration, api_dashboard, api_representation
@@ -400,7 +429,7 @@ def list_institutions(db: Session = Depends(get_db), user: models.User = AdminOn
 
 
 @app.post("/api/students", response_model=Student)
-def create_student(payload: StudentCreate, db: Session = Depends(get_db), user: models.User = InstitutionRoles):
+def create_student(payload: StudentCreate, db: Session = Depends(get_db), user: models.User = AcademicStudentRoles):
     check_institution_access(user, payload.institution_id)
     institution = db.query(models.Institution).filter(models.Institution.id == payload.institution_id).first()
     if institution is None:

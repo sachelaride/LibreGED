@@ -36,6 +36,34 @@ def test_seed_diploma_workflow_creates_expected_nodes_and_swimlanes():
         form_tasks = [s for s in states if s.config and s.config.get("task_form")]
         assert len(form_tasks) >= 1, "Devem existir tarefas com formulário customizado"
 
+
+def test_get_workflow_details_returns_states():
+    with SessionLocal() as db:
+        workflow = models_workflow.Workflow(
+            name=f"Workflow Detalhe {uuid4().hex[:6]}",
+            internal_name=f"workflow_detail_{uuid4().hex[:6]}",
+        )
+        db.add(workflow)
+        db.flush()
+        state = models_workflow.WorkflowState(
+            workflow_id=workflow.id,
+            label="Revisão",
+            is_initial=True,
+        )
+        db.add(state)
+        db.commit()
+        workflow_id = workflow.id
+        state_id = state.id
+
+    response = cliente.get(f"/api/workflows/{workflow_id}")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["id"] == workflow_id
+    assert payload["states"][0]["id"] == state_id
+    assert payload["states"][0]["is_initial"] is True
+
+
 def test_workflow_start_instance_and_complete_task():
     """Valida a execução de ponta a ponta: início de instância, auto-execução de service tasks e conclusão de tarefa."""
     with SessionLocal() as db:
@@ -48,7 +76,7 @@ def test_workflow_start_instance_and_complete_task():
             
         inst = db.query(models.Institution).first()
         if not inst:
-            inst = models.Institution(id=str(uuid4()), name="Faculdade Teste", cnpj="00112233000199")
+            inst = models.Institution(id=str(uuid4()), name="Faculdade Teste", cnpj="00112233000199", legal_name="Faculdade Teste LTDA")
             db.add(inst)
             db.commit()
 

@@ -218,6 +218,39 @@ def seed(db: object) -> None:
                 is_official=False,
             ))
 
+    document_category_ids = {
+        document.category_id
+        for document in db.query(GEDDocument).filter_by(student_id=student.id).all()
+        if document.category_id
+    }
+    demo_type_ids = {
+        document_type_id
+        for document_type_id, in db.query(DocumentType.id).filter(
+            DocumentType.id.in_(document_category_ids)
+        ).all()
+    }
+    demo_users = db.query(models.User).filter(
+        models.User.institution_id == institution.id,
+        models.User.role.in_(["admin_instituicao", "academico"]),
+    ).all()
+    for demo_user in demo_users:
+        for document_type_id in demo_type_ids:
+            permission = db.query(UserDocumentType).filter_by(
+                user_id=demo_user.id,
+                document_type_id=document_type_id,
+            ).first()
+            if permission is None:
+                db.add(UserDocumentType(
+                    user_id=demo_user.id,
+                    document_type_id=document_type_id,
+                    permissions=["consultar", "download"],
+                    denied_permissions=[],
+                ))
+            else:
+                permission.permissions = sorted(
+                    set(permission.permissions or []) | {"consultar", "download"}
+                )
+
     db.commit()
     print(f"Seed concluído. Usuário: {USERNAME} | Senha: {PASSWORD}")
     print(f"Storage de demonstração: {demo_root.resolve()}")

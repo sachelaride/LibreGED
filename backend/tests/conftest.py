@@ -29,7 +29,7 @@ app.dependency_overrides[get_current_active_user] = override_get_current_active_
 def setup_db(request):
     """Clear all tables before each test."""
     dependency_overrides = app.dependency_overrides.copy()
-    if request.module.__name__ in {"test_admin", "test_filewatch", "test_ocr_engine", "test_workflow_execution"}:
+    if request.module.__name__ in {"test_admin", "test_filewatch", "test_ocr_engine"}:
         yield
         app.dependency_overrides.clear()
         app.dependency_overrides.update(dependency_overrides)

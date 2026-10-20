@@ -1,6 +1,7 @@
 """Operações documentais protegidas pelos privilégios concedidos no admin."""
 import io
 import json
+import mimetypes
 import zipfile
 from datetime import timedelta
 from pathlib import Path
@@ -316,6 +317,32 @@ def permissoes_documento(documento_id: str, db: Session = Depends(get_db), usuar
 @router.get("/{documento_id}/details", response_model=GEDDocumentResponse)
 def consultar_documento(documento_id: str, db: Session = Depends(get_db), usuario: User = Depends(get_current_active_user)):
     return obter_documento(db, usuario, documento_id, "consultar")
+
+
+@router.get("/{documento_id}/preview")
+def visualizar_documento(
+    documento_id: str,
+    db: Session = Depends(get_db),
+    usuario: User = Depends(get_current_active_user),
+):
+    documento = obter_documento(db, usuario, documento_id, "consultar")
+    if documento.status == GEDDocumentStatus.QUARENTENA:
+        raise HTTPException(409, "Arquivo em quarentena não pode ser visualizado.")
+
+    caminho = caminho_seguro(documento)
+    media_type = mimetypes.guess_type(caminho.name)[0] or "application/octet-stream"
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox",
+        "Cache-Control": "private, no-store",
+    }
+    return FileResponse(
+        caminho,
+        filename=caminho.name,
+        media_type=media_type,
+        headers=headers,
+        content_disposition_type="inline",
+    )
 
 
 @router.put("/{documento_id}", response_model=GEDDocumentResponse)

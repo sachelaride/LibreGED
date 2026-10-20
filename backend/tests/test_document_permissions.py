@@ -6,11 +6,11 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.auth import get_current_active_user
 from app.database import SessionLocal
-from app.models import Institution, User, AuditEvent, utc_now
+from app.models import Institution, Student, User, AuditEvent, utc_now
 from app.models_ged import DocumentCategory, GEDDocument, GEDDocumentStatus
 from app.models_ged_config import (
-    DocumentType, UserDocumentType, PermissionGroup, PermissionGroupMember,
-    PermissionGroupDocumentType,
+    DocumentType, DocumentTypeIndex, GedIndex, UserDocumentType, PermissionGroup,
+    PermissionGroupMember, PermissionGroupDocumentType,
 )
 
 cliente = TestClient(app)
@@ -96,6 +96,37 @@ def test_acoes_desconhecidas_e_tipos_duplicados(cenario):
                       json={'vinculos': [vinculo, vinculo]}).status_code == 422
 
 
+def test_tipos_documentais_sao_filtrados_pela_permissao_solicitada(cenario, autenticar):
+    autenticar(cenario["usuario"])
+    with SessionLocal() as db:
+        indice = GedIndex(name="Matrícula teste", type="Caractere", options=[])
+        db.add(indice)
+        db.flush()
+        db.add(DocumentTypeIndex(
+            document_type_id=cenario["tipo"],
+            index_id=indice.id,
+            is_required=True,
+        ))
+        db.add(UserDocumentType(
+            user_id=cenario["usuario"],
+            document_type_id=cenario["tipo"],
+            permissions=["cadastrar"],
+        ))
+        db.commit()
+
+    consulta = cliente.get("/api/documents/search/types")
+    cadastro = cliente.get(
+        "/api/documents/search/types", params={"permission": "cadastrar"}
+    )
+    assert consulta.status_code == 200, consulta.json()
+    assert consulta.json() == []
+    assert cadastro.status_code == 200, cadastro.json()
+    assert [item["id"] for item in cadastro.json()] == [cenario["tipo"]]
+    indice_retorno = cadastro.json()[0]["indices"][0]
+    assert indice_retorno["is_required"] is True
+    assert indice_retorno["index"]["name"] == "Matrícula teste"
+
+
 def test_isolamento_institucional_e_escalada(cenario, autenticar):
     with SessionLocal() as db:
         outra = Institution(id=str(uuid4()), name='Outra', cnpj='456', legal_name='Outra')
@@ -176,6 +207,44 @@ def test_exclusao_e_download(cenario, autenticar, tmp_path, monkeypatch):
     assert not arquivo.exists()
     with SessionLocal() as db:
         assert db.get(GEDDocument, cenario['documento']) is None
+
+
+@pytest.mark.parametrize(
+    "filename,content,media_type",
+    [
+        ("historico.pdf", b"%PDF-1.4 historico", "application/pdf"),
+        ("diploma.xml", b"<Diploma><Nome>Ana Demo</Nome></Diploma>", "text/xml"),
+    ],
+)
+def test_visualizacao_documental_exige_consulta_e_exibe_arquivo(
+    cenario, autenticar, tmp_path, monkeypatch, filename, content, media_type
+):
+    from app import api_document_operations
+
+    monkeypatch.setattr(api_document_operations, "STORAGE_ROOT", tmp_path)
+    arquivo = tmp_path / filename
+    arquivo.write_bytes(content)
+    with SessionLocal() as db:
+        documento = db.get(GEDDocument, cenario["documento"])
+        documento.file_path = str(arquivo)
+        db.commit()
+
+    url = f"/api/documents/{cenario['documento']}/preview"
+    assert conceder(cenario, []).status_code == 200
+    autenticar(cenario["usuario"])
+    assert cliente.get(url).status_code == 403
+    with SessionLocal() as db:
+        db.query(UserDocumentType).filter_by(
+            user_id=cenario["usuario"], document_type_id=cenario["tipo"]
+        ).one().permissions = ["consultar"]
+        db.commit()
+
+    resposta = cliente.get(url)
+    assert resposta.status_code == 200
+    assert resposta.content == content
+    assert resposta.headers["content-type"].startswith(media_type)
+    assert resposta.headers["content-disposition"].startswith("inline")
+    assert resposta.headers["x-content-type-options"] == "nosniff"
 
 
 @pytest.mark.parametrize('rota,metodo,dados', [
@@ -332,3 +401,85 @@ def test_grupo_herda_permissao_e_bloqueio_direto_prevalece(cenario):
         db.delete(filho_db)
         db.delete(db.get(PermissionGroup, pai.id))
         db.commit()
+
+
+def test_usuario_academico_pode_criar_aluno_apenas_na_propria_instituicao(cenario, autenticar):
+    with SessionLocal() as db:
+        usuario = User(
+            id=str(uuid4()),
+            username=f"academico-{uuid4().hex[:8]}",
+            hashed_password="teste",
+            institution_id=cenario["instituicao"],
+            role="academico",
+        )
+        db.add(usuario)
+        db.commit()
+        usuario_id = usuario.id
+
+        outra_instituicao = Institution(
+            id=str(uuid4()),
+            name="Outra instituição",
+            cnpj=f"9{uuid4().int % 10**13:013d}",
+            legal_name="Outra instituição",
+        )
+        db.add(outra_instituicao)
+        db.commit()
+        outra_instituicao_id = outra_instituicao.id
+
+    autenticar(usuario_id)
+    payload = {
+        "institution_id": cenario["instituicao"],
+        "full_name": "Aluno Acadêmico",
+        "birth_date": "2005-01-01",
+        "cpf": "12345678901",
+        "email": "aluno@example.org",
+    }
+    resposta = cliente.post("/api/students", json=payload)
+    assert resposta.status_code == 200, resposta.json()
+
+    payload["institution_id"] = outra_instituicao_id
+    resposta = cliente.post("/api/students", json=payload)
+    assert resposta.status_code == 403
+
+
+def test_busca_aluno_por_cpf_fica_restrita_a_instituicao_e_retorna_dado_mascarado(cenario, autenticar):
+    with SessionLocal() as db:
+        aluno = Student(
+            id=str(uuid4()),
+            institution_id=cenario["instituicao"],
+            full_name="Aluno de teste",
+            birth_date="2005-01-01",
+            cpf="12345678901",
+            email="aluno@example.org",
+        )
+        db.add(aluno)
+        db.commit()
+        aluno_id = aluno.id
+
+        outra_instituicao = Institution(
+            id=str(uuid4()),
+            name="Outra instituição",
+            cnpj=f"8{uuid4().int % 10**13:013d}",
+            legal_name="Outra instituição",
+        )
+        db.add(outra_instituicao)
+        db.flush()
+        aluno_fora_da_instituicao = Student(
+            id=str(uuid4()),
+            institution_id=outra_instituicao.id,
+            full_name="Outro aluno",
+            birth_date="2005-01-01",
+            cpf="12345678902",
+            email="outro@example.org",
+        )
+        db.add(aluno_fora_da_instituicao)
+        db.commit()
+
+    autenticar(cenario["usuario"])
+    resposta = cliente.get("/api/students", params={"cpf": "12345678901"})
+
+    assert resposta.status_code == 200, resposta.json()
+    assert len(resposta.json()) == 1
+    assert resposta.json()[0]["id"] == aluno_id
+    assert resposta.json()[0]["cpf"] == "123.***.***-01"
+    assert cliente.get("/api/students", params={"cpf": "12345678902"}).json() == []

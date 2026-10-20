@@ -200,9 +200,21 @@ def propose_settings_update(
     return settings
 
 @router.get("/settings/proposals", response_model=List[ConfigProposalResponse])
-def get_proposals(db: Session = Depends(get_db), user: models.User = OperadorRole):
+def get_proposals(
+    institution_id: Optional[str] = None,
+    db: Session = Depends(get_db), 
+    user: models.User = OperadorRole
+):
+    target_inst_id = institution_id or user.institution_id
+    if user.role == "admin_global" and not target_inst_id:
+        first_inst = db.query(models.Institution).first()
+        target_inst_id = first_inst.id if first_inst else None
+        
+    if not target_inst_id:
+        return []
+
     return db.query(ConfigProposal).filter(
-        ConfigProposal.institution_id == user.institution_id
+        ConfigProposal.institution_id == target_inst_id
     ).order_by(ConfigProposal.created_at.desc()).all()
 
 @router.post("/settings/proposals/{proposal_id}/approve", response_model=InstitutionSettingsResponse)

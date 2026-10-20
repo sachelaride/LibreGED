@@ -8,12 +8,16 @@ async function loadIngestions() {
 
     try {
         const resp = await fetch(url, { headers: getAuthHeaders() });
-        const ingestions = await resp.json();
-
         const tbody = document.getElementById('table-ingestions-body');
         tbody.innerHTML = '';
 
-        if (ingestions.length === 0) {
+        if (!resp.ok) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">Nenhuma ingestão registrada ou instituição ainda não vinculada.</td></tr>';
+            return;
+        }
+
+        const ingestions = await resp.json();
+        if (!Array.isArray(ingestions) || ingestions.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Nenhuma ingestão encontrada.</td></tr>';
             return;
         }

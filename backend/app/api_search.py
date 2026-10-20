@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.search import SearchService
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 from app.schemas_pagination import PaginatedResponse
 
 from app.auth import get_current_active_user
@@ -21,26 +21,22 @@ search_service = SearchService()
 
 @router.get("/api/documents/search/types", tags=["GED - Busca Full-Text"])
 def search_document_types(
+    permission: Literal["consultar", "cadastrar"] = Query("consultar"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Retorna os tipos e índices que o usuário pode consultar."""
+    """Retorna os tipos e índices permitidos para consulta ou cadastro."""
     query = db.query(DocumentType).filter(DocumentType.is_active.is_(True))
     if current_user.role != "admin_global":
         if not current_user.institution_id:
             return []
-        allowed_type_ids = [
-            record.document_type_id
-            for record in db.query(UserDocumentType).filter(
-                UserDocumentType.user_id == current_user.id
-            ).all()
-            if "consultar" in (record.permissions or [])
-        ]
-        if not allowed_type_ids:
-            return []
-        query = query.filter(DocumentType.id.in_(allowed_type_ids))
 
-    types = query.order_by(DocumentType.name.asc()).all()
+    from app.document_permissions import tem_permissao
+
+    types = [
+        item for item in query.order_by(DocumentType.name.asc()).all()
+        if tem_permissao(db, current_user, item.id, permission)
+    ]
     type_ids = [item.id for item in types]
     links = (
         db.query(DocumentTypeIndex, GedIndex)
@@ -54,12 +50,18 @@ def search_document_types(
     )
     indices_by_type = {}
     for link, index in links:
-        indices_by_type.setdefault(link.document_type_id, []).append({
+        index_data = {
             "id": index.id,
             "name": index.name,
             "type": index.type,
             "options": index.options or [],
             "mask": index.mask,
+            "auto_increment": index.auto_increment,
+        }
+        indices_by_type.setdefault(link.document_type_id, []).append({
+            **index_data,
+            "index": index_data,
+            "is_required": link.is_required,
         })
 
     return [

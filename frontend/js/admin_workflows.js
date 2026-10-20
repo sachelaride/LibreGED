@@ -175,6 +175,8 @@ async function loadWorkflows() {
         if (editorParam && editorParam !== 'new') {
             const workflow = workflows.find(item => item.id === editorParam);
             if (workflow) selectWorkflow(workflow);
+        } else if (!currentWorkflowId && workflows.length > 0) {
+            selectWorkflow(workflows[0]);
         }
     } catch (err) {
         console.error('Erro ao carregar workflows', err);
@@ -222,10 +224,52 @@ function selectWorkflow(idOrObj) {
     const states = workflow.states || [];
     const transitions = workflow.transitions || [];
     renderDrawflow(states, transitions);
-    // Auto-organize layout if positions not set
-    const hasPositions = states.some(s => s.ui_pos_x > 20 && s.ui_pos_y > 20);
-    if (!hasPositions && states.length > 0) {
+    // Auto-organize layout ONLY if no states have any positions at all
+    const hasAnyCustomPositions = states.some(s => s.ui_pos_x && s.ui_pos_x > 0);
+    if (!hasAnyCustomPositions && states.length > 0) {
         setTimeout(() => organizeCurrentWorkflow(), 300);
+    }
+}
+
+function ensureArrowheadMarkers(container) {
+    if (!container) return;
+    let svgDefs = container.querySelector('svg defs');
+    if (!svgDefs) {
+        let svg = container.querySelector('svg');
+        if (!svg) {
+            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.style.position = 'absolute';
+            svg.style.width = '0';
+            svg.style.height = '0';
+            svg.style.pointerEvents = 'none';
+            container.prepend(svg);
+        }
+        svgDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        svg.prepend(svgDefs);
+    }
+    if (!container.querySelector('#arrow-marker')) {
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+        marker.setAttribute('id', 'arrow-marker');
+        marker.setAttribute('viewBox', '0 0 10 10');
+        marker.setAttribute('refX', '8');
+        marker.setAttribute('refY', '5');
+        marker.setAttribute('markerWidth', '6');
+        marker.setAttribute('markerHeight', '6');
+        marker.setAttribute('orient', 'auto-start-reverse');
+        marker.innerHTML = '<path d="M 0 1 L 9 5 L 0 9 z" fill="#2563eb" />';
+        svgDefs.appendChild(marker);
+    }
+    if (!container.querySelector('#arrow-marker-hover')) {
+        const markerHover = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+        markerHover.setAttribute('id', 'arrow-marker-hover');
+        markerHover.setAttribute('viewBox', '0 0 10 10');
+        markerHover.setAttribute('refX', '8');
+        markerHover.setAttribute('refY', '5');
+        markerHover.setAttribute('markerWidth', '7');
+        markerHover.setAttribute('markerHeight', '7');
+        markerHover.setAttribute('orient', 'auto-start-reverse');
+        markerHover.innerHTML = '<path d="M 0 1 L 9 5 L 0 9 z" fill="#1d4ed8" />';
+        svgDefs.appendChild(markerHover);
     }
 }
 
@@ -233,30 +277,45 @@ function installOrthogonalConnectionRenderer(instance) {
     if (!instance || instance.__orthogonalRendererInstalled) return;
     instance.__orthogonalRendererInstalled = true;
 
-    // Sobrescreve o cálculo de linhas do Drawflow para gerar caminhos retos ortogonais (Manhattan/em L)
+    // Customiza o cálculo de conexões do Drawflow para gerar rotas ortogonais inteligentes
     instance.createCurvature = function(start_pos_x, start_pos_y, end_pos_x, end_pos_y, curvature_value, type) {
-        const x1 = Math.round(start_pos_x);
-        const y1 = Math.round(start_pos_y);
-        const x2 = Math.round(end_pos_x);
-        const y2 = Math.round(end_pos_y);
+        let x1 = Math.round(start_pos_x);
+        let y1 = Math.round(start_pos_y);
+        let x2 = Math.round(end_pos_x);
+        let y2 = Math.round(end_pos_y);
 
-        // Se estiver praticamente na mesma linha horizontal ou vertical, traça reta direta (I)
-        if (Math.abs(y1 - y2) < 4) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const absDy = Math.abs(dy);
+
+        // 1. Linha praticamente reta horizontal ou vertical (I)
+        if (absDy < 4) {
             return ` M ${x1} ${y1} L ${x2} ${y2}`;
         }
-        if (Math.abs(x1 - x2) < 4) {
+        if (Math.abs(dx) < 4) {
             return ` M ${x1} ${y1} L ${x2} ${y2}`;
         }
 
-        // Se o nó de destino está à direita (fluxo natural para a frente)
-        if (x2 >= x1 + 20) {
+        // 2. Destino à frente (fluxo natural para a direita com desnível vertical)
+        if (dx >= 40) {
             const midX = Math.round((x1 + x2) / 2);
             return ` M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+        }
+
+        // 3. Conexão para nós abaixo ou acima (mesma coluna ou voltando para trás)
+        // Dá uma pequena folga lateral à direita do nó de origem (ex: 24px) para não cortar o card,
+        // desce/sobe verticalmente até o nível desejado ou um canal desobstruído, e entra no destino.
+        const exitMargin = 22;
+        const entryMargin = 22;
+        const channelX = Math.max(x1 + exitMargin, x2 + exitMargin);
+        const midY = y1 + Math.round(dy / 2);
+
+        if (x2 <= x1) {
+            // Volta para a esquerda ou nó abaixo na mesma coluna
+            return ` M ${x1} ${y1} L ${x1 + exitMargin} ${y1} L ${x1 + exitMargin} ${midY} L ${x2 - entryMargin} ${midY} L ${x2 - entryMargin} ${y2} L ${x2} ${y2}`;
         } else {
-            // Conexão em loop para trás ou para o mesmo lado (em L / Z estendido)
-            const offsetX = 35;
-            const midY = Math.round((y1 + y2) / 2);
-            return ` M ${x1} ${y1} L ${x1 + offsetX} ${y1} L ${x1 + offsetX} ${midY} L ${x2 - offsetX} ${midY} L ${x2 - offsetX} ${y2} L ${x2} ${y2}`;
+            // Destino levemente à frente mas com pouca folga lateral
+            return ` M ${x1} ${y1} L ${channelX} ${y1} L ${channelX} ${y2} L ${x2} ${y2}`;
         }
     };
 }
@@ -267,6 +326,7 @@ function initDrawflow() {
     ensureWorkflowCanvasVisible();
     editor = new Drawflow(container);
     installOrthogonalConnectionRenderer(editor);
+    ensureArrowheadMarkers(container);
     editor.reroute = false;
     editor.curvature = 0;
     editor.reroute_curvature = 0;
@@ -277,12 +337,31 @@ function initDrawflow() {
     // Events
     editor.on('nodeMoved', async (id) => {
         if(isRendering) return;
-        setWorkflowDirty(true);
         const node = editor.getNodeFromId(id);
+        if(!node || !node.data) return;
         const stateId = node.data.stateId;
-        const posX = node.pos_x;
-        const posY = node.pos_y;
+        const posX = Math.round(node.pos_x);
+        const posY = Math.round(node.pos_y);
         
+        // Atualiza imediatamente na memória local para não resetar se alternar
+        if (currentWorkflowData && currentWorkflowData.states) {
+            const st = currentWorkflowData.states.find(s => s.id === stateId);
+            if (st) {
+                st.ui_pos_x = posX;
+                st.ui_pos_y = posY;
+            }
+        }
+        if (window.workflowsData) {
+            const wf = window.workflowsData.find(w => w.id === currentWorkflowId);
+            if (wf && wf.states) {
+                const st = wf.states.find(s => s.id === stateId);
+                if (st) {
+                    st.ui_pos_x = posX;
+                    st.ui_pos_y = posY;
+                }
+            }
+        }
+
         try {
             await fetch(`${WORKFLOWS_API}/${currentWorkflowId}/states/${stateId}`, {
                 method: 'PUT',
@@ -293,13 +372,20 @@ function initDrawflow() {
                 body: JSON.stringify({ ui_pos_x: posX, ui_pos_y: posY })
             });
             resetWorkflowDirty();
+        } catch(e) {
+            console.error('Erro ao salvar nova posição do nó:', e);
+        }
+    });
 
-            editor.on('nodeSelected', (id) => {
-                if (isRendering) return;
-                const stateId = nodeStateMap_inv[id];
-                if (stateId) openStateEditor(stateId);
-            });
-        } catch(e) { console.error(e); }
+    // Abrir edição SOMENTE com DUPLO CLIQUE (dblclick)
+    container.addEventListener('dblclick', (e) => {
+        const nodeEl = e.target.closest('.drawflow-node');
+        if (!nodeEl) return;
+        const nodeIdStr = nodeEl.id.replace('node-', '');
+        const stateId = nodeStateMap_inv[nodeIdStr];
+        if (stateId) {
+            openStateEditor(stateId);
+        }
     });
     
     editor.on('connectionCreated', (info) => {
@@ -369,8 +455,34 @@ let nodeStateMap_inv = {}; // drawflowNodeId -> stateId
 
 function getPoolData(state) {
     const config = state && state.config ? state.config : {};
-    const poolName = config.pool || config.pool_name || 'Geral';
-    const poolColor = config.color || '#cbd5e1';
+    let poolName = config.pool || config.pool_name || state.swimlane;
+    let poolColor = config.color;
+
+    // Se a raia não tiver sido configurada manualmente (está vazia ou 'Geral'), deduz de forma inteligente pelo tipo/ação
+    if (!poolName || poolName === 'Geral') {
+        const label = (state.label || '').toLowerCase();
+        const action = ((config.action_code || '') + ' ' + (config.execution_details || '')).toLowerCase();
+        const nType = state.node_type || '';
+
+        if (nType === 'task_service' || nType === 'task_script' || action.includes('xml') || action.includes('gen_') || label.includes('gerar') || label.includes('geração') || label.includes('xml') || label.includes('automátic')) {
+            poolName = 'Serviços Automáticos (XML / Geração)';
+            if (!poolColor) poolColor = '#8b5cf6'; // Roxo
+        } else if (action.includes('sign') || label.includes('assin') || label.includes('subscrit')) {
+            poolName = 'Assinatura Digital';
+            if (!poolColor) poolColor = '#f59e0b'; // Âmbar
+        } else if (label.includes('valid') || label.includes('verific') || label.includes('confer') || label.includes('analis')) {
+            poolName = 'Validação de Documentos';
+            if (!poolColor) poolColor = '#10b981'; // Verde esmeralda
+        } else if (label.includes('solicit') || label.includes('anex') || label.includes('document') || nType === 'task_user' || nType.startsWith('event')) {
+            poolName = 'Interação do Usuário / Documentação';
+            if (!poolColor) poolColor = '#3b82f6'; // Azul
+        } else {
+            poolName = 'Secretaria Geral';
+            if (!poolColor) poolColor = '#64748b'; // Ardósia
+        }
+    }
+
+    if (!poolColor) poolColor = '#3b82f6';
     return { poolName, poolColor };
 }
 
@@ -395,35 +507,36 @@ function renderWorkflowPools(states) {
         .map(({ poolName, poolColor, states: poolStates }) => {
             if (!poolStates.length) return null;
             const yValues = poolStates.map(state => Number(state.ui_pos_y) || 80);
-            const minY = Math.min(...yValues) - 150;
-            const maxY = Math.max(...yValues) + 150;
-            return { poolName, poolColor, minY, maxY, height: Math.max(180, maxY - minY) };
+            const xValues = poolStates.map(state => Number(state.ui_pos_x) || 80);
+            const minY = Math.min(...yValues) - 35;
+            const maxY = Math.max(...yValues) + 160;
+            const maxX = Math.max(...xValues) + 380;
+            return { poolName, poolColor, minY, maxY, maxX, height: Math.max(200, maxY - minY) };
         })
         .filter(Boolean)
         .sort((a, b) => a.minY - b.minY);
 
-    let runningTop = 20;
-    poolRows.forEach(({ poolName, poolColor, height }) => {
+    const maxCanvasWidth = Math.max(1600, ...poolRows.map(r => r.maxX || 1600));
+
+    poolRows.forEach(({ poolName, poolColor, minY, height }) => {
         const lane = document.createElement('div');
         lane.className = 'workflow-pool-lane';
-        lane.style.left = '8px';
-        lane.style.top = `${Math.max(20, runningTop)}px`;
-        lane.style.width = 'calc(100% - 16px)';
-        lane.style.height = `${Math.max(180, height)}px`;
+        lane.style.left = '16px';
+        lane.style.top = `${Math.max(20, minY)}px`;
+        lane.style.width = `${maxCanvasWidth}px`;
+        lane.style.height = `${height}px`;
         lane.style.borderColor = poolColor;
-        lane.style.background = `${poolColor}18`;
+        lane.style.background = `${poolColor}14`;
 
         const label = document.createElement('div');
         label.className = 'workflow-pool-label';
         label.textContent = poolName;
         label.style.background = poolColor;
         label.style.borderColor = poolColor;
-        label.style.top = '12px';
-        label.style.left = '18px';
+        label.style.top = '10px';
+        label.style.left = '14px';
         lane.appendChild(label);
         drawflowInner.appendChild(lane);
-
-        runningTop += Math.max(180, height) + 26;
     });
 }
 
@@ -529,6 +642,7 @@ function renderDrawflow(states, transitions) {
     applyPoolLayout(states, transitions);
     editor.clear();
     editor.clearModuleSelected();
+    ensureArrowheadMarkers(document.getElementById('drawflow'));
     nodeStateMap = {};
     nodeStateMap_inv = {};
     renderWorkflowPools(states);
@@ -552,69 +666,142 @@ function renderDrawflow(states, transitions) {
 function organizeCurrentWorkflow() {
     if (!currentWorkflowData || !currentWorkflowData.states) return;
     const states = currentWorkflowData.states;
-    const transitions = currentWorkflowData.transitions || [];
-    const initial = states.find(state => state.is_initial) || states[0];
+    // 1. Encontrar o estado inicial
+    const initial = states.find(s => s.is_initial) || states[0];
     if (!initial) return;
 
-    // Step 1: Calculate flow level (column) via BFS from the initial state
+    // 2. Mapeamento de adjacência (apenas transições que vão para a frente ou que não formam ciclos imediatos)
+    const forwardAdj = new Map();
+    const inDegree = new Map();
+    states.forEach(s => {
+        forwardAdj.set(s.id, []);
+        inDegree.set(s.id, 0);
+    });
+
+    transitions.forEach(t => {
+        if (forwardAdj.has(t.origin_state_id) && inDegree.has(t.destination_state_id)) {
+            forwardAdj.get(t.origin_state_id).push(t.destination_state_id);
+        }
+    });
+
+    // 3. Atribuição de Colunas (Níveis Sequenciais) pelo Caminho Mais Longo (Longest Path DAG)
+    // Isso garante que se A -> B -> C e A -> C, C ficará obrigatoriamente depois de B (à direita)
     const levels = new Map([[initial.id, 0]]);
     const queue = [initial.id];
-    while (queue.length) {
-        const origin = queue.shift();
-        transitions
-            .filter(t => t.origin_state_id === origin)
-            .forEach(t => {
-                if (!levels.has(t.destination_state_id)) {
-                    levels.set(t.destination_state_id, levels.get(origin) + 1);
-                    queue.push(t.destination_state_id);
-                }
-            });
-    }
-    // Assign fallback level to disconnected states
-    states.forEach((state, idx) => {
-        if (!levels.has(state.id)) levels.set(state.id, idx + levels.size);
-    });
 
-    // Step 2: Determine unique pool order (by first appearance of a pool in the flow)
-    const poolOrder = [];
-    [...levels.entries()]
-        .sort((a, b) => a[1] - b[1])
-        .forEach(([stateId]) => {
-            const state = states.find(s => s.id === stateId);
-            if (!state) return;
-            const { poolName } = getPoolData(state);
-            if (!poolOrder.includes(poolName)) poolOrder.push(poolName);
+    // BFS / Relaxamento de arestas para fluxo sequencial crescente
+    const visitedEdges = new Set();
+    while (queue.length > 0) {
+        const u = queue.shift();
+        const uLevel = levels.get(u) || 0;
+        const neighbors = forwardAdj.get(u) || [];
+
+        neighbors.forEach(v => {
+            const edgeKey = `${u}->${v}`;
+            // Evita loops infinitos em ciclos de retorno
+            if (visitedEdges.has(edgeKey)) return;
+            visitedEdges.add(edgeKey);
+
+            const vLevel = levels.get(v);
+            const candidateLevel = uLevel + 1;
+
+            if (vLevel === undefined || candidateLevel > vLevel) {
+                levels.set(v, candidateLevel);
+                queue.push(v);
+            }
         });
+    }
 
-    // Step 3: Group states by pool
-    const poolGroups = {};
-    states.forEach(state => {
-        const { poolName } = getPoolData(state);
-        if (!poolGroups[poolName]) poolGroups[poolName] = [];
-        poolGroups[poolName].push(state);
+    // Para nós desconectados, coloca no final
+    let maxAssignedLevel = Math.max(0, ...levels.values());
+    states.forEach(s => {
+        if (!levels.has(s.id)) {
+            maxAssignedLevel++;
+            levels.set(s.id, maxAssignedLevel);
+        }
     });
 
-    // Step 4: Assign positions - X by flow level, Y by pool row
-    const NODE_W = 240;  // node width + gap
-    const NODE_H = 180;  // pool row height
+    // 4. Agrupamento por Raias (Pools)
+    const poolOrder = [];
+    states.forEach(s => {
+        const { poolName } = getPoolData(s);
+        if (!poolOrder.includes(poolName)) poolOrder.push(poolName);
+    });
+
+    const poolGroups = {};
+    poolOrder.forEach(p => { poolGroups[p] = []; });
+    states.forEach(s => {
+        const { poolName } = getPoolData(s);
+        poolGroups[poolName].push(s);
+    });
+
+    // 5. Posicionamento espacial sem colisão:
+    // NODE_W: distância horizontal entre passos sucessivos
+    // ROW_H: distância vertical entre ramificações/bifurcações dentro da mesma raia
+    const NODE_W = 340;   // Largura generosa com espaço para setas e visualização clara
+    const ROW_H = 170;    // Altura suficiente para os cards não se tocarem verticalmente
     const PADDING_X = 80;
     const PADDING_Y = 60;
 
-    // Calculate pool Y offsets
+    // Calcula o espaçamento vertical e offset de cada pool
     const poolYOffset = {};
-    poolOrder.forEach((poolName, i) => {
-        poolYOffset[poolName] = PADDING_Y + i * NODE_H;
+    let currentY = PADDING_Y;
+
+    poolOrder.forEach(poolName => {
+        const pStates = poolGroups[poolName] || [];
+        // Conta quantos nós estão no mesmo level dentro desta raia (bifurcações)
+        const levelCount = {};
+        pStates.forEach(s => {
+            const lvl = levels.get(s.id) || 0;
+            levelCount[lvl] = (levelCount[lvl] || 0) + 1;
+        });
+        const maxBranches = Math.max(1, ...Object.values(levelCount));
+        poolYOffset[poolName] = currentY;
+        currentY += Math.max(220, maxBranches * ROW_H + 80);
     });
 
-    // Position each state: X = column level, Y = center of its pool row
+    // 6. Atribui coordenadas limpas e salva
+    const levelOccupancy = {}; // "pool_level" -> subRow
     const updates = [];
-    states.forEach(state => {
+
+    // Ordenar estados: nós iniciais primeiro, depois por level crescente
+    const sortedStates = [...states].sort((a, b) => {
+        const la = levels.get(a.id) || 0;
+        const lb = levels.get(b.id) || 0;
+        if (la !== lb) return la - lb;
+        return (a.label || '').localeCompare(b.label || '');
+    });
+
+    sortedStates.forEach(state => {
         const level = levels.get(state.id) || 0;
         const { poolName } = getPoolData(state);
-        const poolY = poolYOffset[poolName] ?? PADDING_Y;
+        const poolBaseY = poolYOffset[poolName] ?? PADDING_Y;
+
+        const key = `${poolName}_${level}`;
+        const subRow = levelOccupancy[key] || 0;
+        levelOccupancy[key] = subRow + 1;
 
         state.ui_pos_x = PADDING_X + level * NODE_W;
-        state.ui_pos_y = poolY + 30; // 30px offset from pool top for centering
+        state.ui_pos_y = poolBaseY + 45 + subRow * ROW_H;
+
+        // Atualiza na memória local
+        if (currentWorkflowData && currentWorkflowData.states) {
+            const st = currentWorkflowData.states.find(s => s.id === state.id);
+            if (st) {
+                st.ui_pos_x = state.ui_pos_x;
+                st.ui_pos_y = state.ui_pos_y;
+            }
+        }
+        if (window.workflowsData) {
+            const wf = window.workflowsData.find(w => w.id === currentWorkflowId);
+            if (wf && wf.states) {
+                const st = wf.states.find(s => s.id === state.id);
+                if (st) {
+                    st.ui_pos_x = state.ui_pos_x;
+                    st.ui_pos_y = state.ui_pos_y;
+                }
+            }
+        }
 
         updates.push(fetch(`${WORKFLOWS_API}/${currentWorkflowId}/states/${state.id}`, {
             method: 'PUT',
@@ -624,7 +811,10 @@ function organizeCurrentWorkflow() {
     });
 
     Promise.all(updates)
-        .then(() => renderDrawflow(states, transitions))
+        .then(() => {
+            renderDrawflow(states, transitions);
+            resetWorkflowDirty();
+        })
         .catch(error => {
             console.error('Erro ao organizar workflow', error);
             alert('Não foi possível salvar a organização do layout.');
@@ -1160,5 +1350,197 @@ async function createNodeAt(type, clientX, clientY) {
             alert(`Erro ao criar nó BPMN: ${error.detail || `HTTP ${resp.status}`}`);
         }
     } catch(e) { console.error(e); }
-    
+}
+
+/* -------------------------------------------------------------
+   MODELOS PRONTOS DE WORKFLOW (TEMPLATES BPMN COM RAIAS)
+------------------------------------------------------------- */
+function openWorkflowTemplatesModal() {
+    const modal = document.getElementById('modal-workflow-templates');
+    if (modal) modal.classList.add('active');
+}
+
+function closeWorkflowTemplatesModal() {
+    const modal = document.getElementById('modal-workflow-templates');
+    if (modal) modal.classList.remove('active');
+}
+
+const WORKFLOW_PRESETS = {
+    diploma_digital: {
+        name: "Emissão de Diploma Digital",
+        internal_name: "emissao_diploma_digital",
+        states: [
+            // Raia 1: Interação do Usuário / Documentação
+            { key: "inicio", label: "Início", node_type: "event_start", is_initial: true, is_completion: false, config: { pool: "Interação do Usuário / Documentação", color: "#3b82f6" } },
+            { key: "anexar_docs", label: "Anexar Documentos de Conclusão", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Interação do Usuário / Documentação", color: "#3b82f6", action_code: "UPLOAD_DOCS" } },
+            
+            // Raia 2: Validação de Documentos
+            { key: "conferir_academico", label: "Conferir Histórico e Carga Horária", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Validação de Documentos", color: "#10b981", action_code: "VALIDATE_ACADEMIC" } },
+            { key: "decisao_docs", label: "Documentação Completa?", node_type: "gateway_exclusive", is_initial: false, is_completion: false, config: { pool: "Validação de Documentos", color: "#10b981" } },
+            { key: "solicitar_pendencias", label: "Solicitar Documentos Pendentes", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Interação do Usuário / Documentação", color: "#3b82f6", action_code: "REQUEST_DOCS" } },
+
+            // Raia 3: Assinatura Digital
+            { key: "selecionar_signatarios", label: "Selecionar Signatários Institucionais", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Assinatura Digital", color: "#f59e0b", action_code: "SELECT_SIGNERS" } },
+            { key: "coletar_assinaturas", label: "Assinar Diploma (Reitor / Diretor)", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Assinatura Digital", color: "#f59e0b", action_code: "SIGN_DOCUMENT" } },
+
+            // Raia 4: Serviços Automáticos
+            { key: "gerar_xml", label: "Gerar XML do Diploma (Portaria MEC)", node_type: "task_service", is_initial: false, is_completion: false, config: { pool: "Serviços Automáticos (XML / Visual / Integração)", color: "#8b5cf6", action_code: "GENERATE_XML" } },
+            { key: "gerar_rvdd", label: "Emitir Representação Visual (RVDD)", node_type: "task_service", is_initial: false, is_completion: false, config: { pool: "Serviços Automáticos (XML / Visual / Integração)", color: "#8b5cf6", action_code: "RENDER_RVDD" } },
+            { key: "fim", label: "Diploma Emitido e Registrado", node_type: "event_end", is_initial: false, is_completion: true, config: { pool: "Serviços Automáticos (XML / Visual / Integração)", color: "#8b5cf6" } }
+        ],
+        transitions: [
+            { from: "inicio", to: "anexar_docs", label: "Iniciar Processo" },
+            { from: "anexar_docs", to: "conferir_academico", label: "Enviar para Secretaria" },
+            { from: "conferir_academico", to: "decisao_docs", label: "Avaliar" },
+            { from: "decisao_docs", to: "solicitar_pendencias", label: "Pendência" },
+            { from: "solicitar_pendencias", to: "conferir_academico", label: "Reenviar Documento" },
+            { from: "decisao_docs", to: "selecionar_signatarios", label: "Aprovado" },
+            { from: "selecionar_signatarios", to: "coletar_assinaturas", label: "Despachar Assinaturas" },
+            { from: "coletar_assinaturas", to: "gerar_xml", label: "Assinado com Sucesso" },
+            { from: "gerar_xml", to: "gerar_rvdd", label: "XML Validado" },
+            { from: "gerar_rvdd", to: "fim", label: "Concluir" }
+        ]
+    },
+
+    matricula: {
+        name: "Validação de Matrícula e Ingresso",
+        internal_name: "validacao_matricula",
+        states: [
+            { key: "inicio", label: "Início da Inscrição", node_type: "event_start", is_initial: true, is_completion: false, config: { pool: "Interação do Usuário / Documentação", color: "#3b82f6" } },
+            { key: "upload_identificacao", label: "Envio de RG, CPF e Histórico", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Interação do Usuário / Documentação", color: "#3b82f6", action_code: "UPLOAD_IDENTITY" } },
+            { key: "analise_secretaria", label: "Análise da Secretaria Geral", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Validação de Documentos", color: "#10b981", action_code: "VALIDATE_IDENTITY" } },
+            { key: "decisao_conforme", label: "Documentos Válidos?", node_type: "gateway_exclusive", is_initial: false, is_completion: false, config: { pool: "Validação de Documentos", color: "#10b981" } },
+            { key: "pedir_revisao", label: "Notificar Candidato para Correção", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Interação do Usuário / Documentação", color: "#3b82f6", action_code: "REQUEST_CORRECTION" } },
+            { key: "gerar_registro", label: "Criar RA e Prontuário no Sistema", node_type: "task_service", is_initial: false, is_completion: false, config: { pool: "Serviços Automáticos (XML / Visual / Integração)", color: "#8b5cf6", action_code: "GENERATE_STUDENT_RECORD" } },
+            { key: "fim_matricula", label: "Matrícula Efetivada", node_type: "event_end", is_initial: false, is_completion: true, config: { pool: "Serviços Automáticos (XML / Visual / Integração)", color: "#8b5cf6" } }
+        ],
+        transitions: [
+            { from: "inicio", to: "upload_identificacao", label: "Iniciar" },
+            { from: "upload_identificacao", to: "analise_secretaria", label: "Submeter Documentos" },
+            { from: "analise_secretaria", to: "decisao_conforme", label: "Verificar" },
+            { from: "decisao_conforme", to: "pedir_revisao", label: "Incompleto" },
+            { from: "pedir_revisao", to: "analise_secretaria", label: "Documento Retificado" },
+            { from: "decisao_conforme", to: "gerar_registro", label: "Documentação Aprovada" },
+            { from: "gerar_registro", to: "fim_matricula", label: "Finalizar Inscrição" }
+        ]
+    },
+
+    contrato: {
+        name: "Contrato de Prestação de Serviços Educacionais",
+        internal_name: "contrato_educacional",
+        states: [
+            { key: "inicio", label: "Solicitação de Contrato", node_type: "event_start", is_initial: true, is_completion: false, config: { pool: "Interação do Usuário / Documentação", color: "#3b82f6" } },
+            { key: "gerar_minuta", label: "Gerar Minuta do Contrato com Dados do Aluno", node_type: "task_service", is_initial: false, is_completion: false, config: { pool: "Serviços Automáticos (XML / Visual / Integração)", color: "#8b5cf6", action_code: "GENERATE_CONTRACT_DRAFT" } },
+            { key: "conferir_financeiro", label: "Conferir Plano de Pagamento e Bolsas", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Validação de Documentos", color: "#10b981", action_code: "VALIDATE_FINANCES" } },
+            { key: "assinatura_aluno", label: "Assinatura do Aluno / Responsável", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Assinatura Digital", color: "#f59e0b", action_code: "STUDENT_SIGNATURE" } },
+            { key: "assinatura_instituicao", label: "Assinatura Digital da Diretoria (A1)", node_type: "task_user", is_initial: false, is_completion: false, config: { pool: "Assinatura Digital", color: "#f59e0b", action_code: "DIRECTOR_SIGNATURE" } },
+            { key: "arquivar_contrato", label: "Carimbar Data/Hora e Arquivar no Acervo", node_type: "task_service", is_initial: false, is_completion: false, config: { pool: "Serviços Automáticos (XML / Visual / Integração)", color: "#8b5cf6", action_code: "ARCHIVE_CONTRACT" } },
+            { key: "fim_contrato", label: "Contrato Registrado e Válido", node_type: "event_end", is_initial: false, is_completion: true, config: { pool: "Serviços Automáticos (XML / Visual / Integração)", color: "#8b5cf6" } }
+        ],
+        transitions: [
+            { from: "inicio", to: "gerar_minuta", label: "Emitir" },
+            { from: "gerar_minuta", to: "conferir_financeiro", label: "Enviar para Financeiro" },
+            { from: "conferir_financeiro", to: "assinatura_aluno", label: "Liberar Assinatura" },
+            { from: "assinatura_aluno", to: "assinatura_instituicao", label: "Aluno Assinou" },
+            { from: "assinatura_instituicao", to: "arquivar_contrato", label: "Ambas as Partes Assinaram" },
+            { from: "arquivar_contrato", to: "fim_contrato", label: "Concluir" }
+        ]
+    }
+};
+
+async function applyWorkflowPreset(presetKey) {
+    const preset = WORKFLOW_PRESETS[presetKey];
+    if (!preset) return;
+
+    if (!confirm(`Deseja carregar o modelo "${preset.name}"? As alterações não salvas no canvas atual serão substituídas.`)) {
+        return;
+    }
+
+    closeWorkflowTemplatesModal();
+
+    try {
+        let targetWorkflowId = currentWorkflowId;
+
+        // Se nenhum workflow estiver aberto, cria um novo workflow no servidor com o nome do modelo
+        if (!targetWorkflowId) {
+            const respWf = await fetch(WORKFLOWS_API, {
+                method: 'POST',
+                headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: preset.name,
+                    internal_name: `${preset.internal_name}_${Date.now()}`,
+                    is_active: true
+                })
+            });
+            if (!respWf.ok) throw new Error("Erro ao criar o workflow.");
+            const newWf = await respWf.json();
+            targetWorkflowId = newWf.id;
+            currentWorkflowId = newWf.id;
+            currentWorkflowData = newWf;
+            await loadWorkflows();
+        }
+
+        // Se já tinha estados, remove os antigos para aplicar o modelo limpo
+        if (currentWorkflowData && currentWorkflowData.states && currentWorkflowData.states.length > 0) {
+            for (const s of currentWorkflowData.states) {
+                await fetch(`${WORKFLOWS_API}/${targetWorkflowId}/states/${s.id}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                }).catch(() => {});
+            }
+        }
+
+        // 1. Criar os estados do preset
+        const createdStatesMap = {}; // key -> stateObj
+        for (const st of preset.states) {
+            const respSt = await fetch(`${WORKFLOWS_API}/${targetWorkflowId}/states`, {
+                method: 'POST',
+                headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    label: st.label,
+                    node_type: st.node_type,
+                    is_initial: st.is_initial,
+                    is_completion: st.is_completion,
+                    ui_pos_x: 50,
+                    ui_pos_y: 50,
+                    config: st.config
+                })
+            });
+            if (respSt.ok) {
+                const created = await respSt.json();
+                createdStatesMap[st.key] = created;
+            }
+        }
+
+        // 2. Criar as transições
+        for (const tr of preset.transitions) {
+            const origin = createdStatesMap[tr.from];
+            const dest = createdStatesMap[tr.to];
+            if (origin && dest) {
+                await fetch(`${WORKFLOWS_API}/${targetWorkflowId}/transitions`, {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        origin_state_id: origin.id,
+                        destination_state_id: dest.id,
+                        label: tr.label
+                    })
+                });
+            }
+        }
+
+        // 3. Recarregar e organizar automaticamente o novo modelo com raias e setas
+        const wRes = await fetch(WORKFLOWS_API, { headers: getAuthHeaders() });
+        const wData = await wRes.json();
+        const workflows = wData.items ? wData.items : wData;
+        const updated = workflows.find(w => w.id === targetWorkflowId);
+        if (updated) {
+            selectWorkflow(updated);
+            setTimeout(() => organizeCurrentWorkflow(), 350);
+        }
+
+    } catch(err) {
+        console.error("Erro ao aplicar modelo de workflow:", err);
+        alert("Erro ao aplicar o modelo: " + err.message);
+    }
 }

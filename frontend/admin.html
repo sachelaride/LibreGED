@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EduGED Libre - Admin</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
@@ -30,17 +31,19 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59,130,246,0.25), 0 4px 20px rgba(59,130,246,0.2);
         }
-        /* Conexões ortogonais em linhas retas (L / I) */
+        /* Conexões ortogonais em linhas retas (L / I) com setas de direção */
         .drawflow .connection .main-path {
             stroke: #2563eb;
             stroke-width: 2.5px;
-            stroke-linecap: square;
-            stroke-linejoin: miter;
+            stroke-linecap: round;
+            stroke-linejoin: round;
             fill: none;
+            marker-end: url(#arrow-marker);
         }
         .drawflow .connection .main-path:hover {
             stroke: #1d4ed8;
             stroke-width: 3.5px;
+            marker-end: url(#arrow-marker-hover);
         }
         /* Connection dots */
         .drawflow-node .input, .drawflow-node .output {
@@ -52,7 +55,7 @@
         }
     </style>
     <link rel="stylesheet" href="css/style.css?v=5">
-    <link rel="stylesheet" href="css/workflow_editor.css?v=1">
+    <link rel="stylesheet" href="css/workflow_editor.css?v=2">
     <script src="js/theme.js"></script>
     <script>
         function parseJwt(token) {
@@ -90,7 +93,7 @@
                 <a href="#" class="menu-item role-admin-global" data-target="storage">
                     <span class="icon">🗄️</span> Armazenamento
                 </a>
-                <a href="#" class="menu-item role-admin-global" data-target="workflows">
+                <a href="#" class="menu-item role-admin-global role-admin-instituicao" data-target="workflows">
                     <span class="icon workflow-icon" aria-hidden="true">
                         <svg viewBox="0 0 32 32" role="img" aria-label="Trânsito">
                             <rect x="2.5" y="11" width="8" height="8" rx="2"></rect>
@@ -101,10 +104,10 @@
                         </svg>
                     </span> Workflows
                 </a>
-                <a href="#" class="menu-item role-admin-global" data-target="templates-html">
+                <a href="#" class="menu-item role-admin-global role-admin-instituicao" data-target="templates-html">
                     <span class="icon">📄</span> Templates (RVDD)
                 </a>
-                <a href="#" class="menu-item role-admin-global" data-target="representation-services">
+                <a href="#" class="menu-item role-admin-global role-admin-instituicao" data-target="representation-services">
                     <span class="icon">🖼️</span> Representação Visual XML
                 </a>
 
@@ -118,7 +121,7 @@
                 <a href="#" class="menu-item role-admin-instituicao" data-target="integrations" style="display: none;">
                     <span class="icon">🔌</span> Integrações (API)
                 </a>
-                <a href="#" class="menu-item role-admin-global" data-target="signers">
+                <a href="#" class="menu-item role-admin-global role-admin-instituicao" data-target="signers">
                     <span class="icon">🔏</span> Cofre de Assinaturas (ICP)
                 </a>
                 <a href="#" class="menu-item role-admin-instituicao" data-target="doc-types" style="display: none;">
@@ -306,20 +309,49 @@
 
                         <div class="workflow-editor-column workflow-editor-column-hidden" id="workflow-editor-column">
                             
-                            <!-- HEADER DA TELA CHEIA (Opcional, pode manter ações no topo) -->
-                            <div class="editor-header" style="pointer-events: none; position: absolute; z-index: 50; top: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between;">
+                            <!-- HEADER SUPERIOR INTEGRADO COM AS FERRAMENTAS -->
+                            <div class="editor-header" style="pointer-events: none; position: absolute; z-index: 50; top: 15px; left: 15px; right: 15px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
                                 <div class="header-left" style="pointer-events: auto;">
-                                    <div class="workflow-title-box" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.95); padding: 10px 16px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                                    <div class="workflow-title-box" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.95); padding: 8px 14px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
                                         <div class="workflow-title">
-                                            <h1 style="margin: 0; font-size: 16px; color: #0f172a;"><span id="current-workflow-name" style="color:var(--primary);">Selecione um workflow</span></h1>
+                                            <h1 style="margin: 0; font-size: 15px; color: #0f172a; white-space: nowrap;"><span id="current-workflow-name" style="color:var(--primary);">Selecione um workflow</span></h1>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- BARRA ADD INTEGRADA NO CABEÇALHO -->
+                                <div class="header-center" style="pointer-events: auto;">
+                                    <div class="floating-toolbar" style="position: static; margin: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 4px 10px; gap: 8px;">
+                                        <div class="toolbar-label" style="font-size: 11px; font-weight: 700;">ADD</div>
+                                        <div class="drag-tool tool-start bpmn-drag-item" draggable="true" data-type="event_start" style="padding: 4px 6px;">
+                                            <div class="drag-tool-icon" style="width: 28px; height: 28px; font-size: 13px;"><i class="fa-solid fa-play"></i></div><span style="font-size: 10px;">Início</span>
+                                        </div>
+                                        <div class="drag-tool tool-user bpmn-drag-item" draggable="true" data-type="task_user" style="padding: 4px 6px;">
+                                            <div class="drag-tool-icon" style="width: 28px; height: 28px; font-size: 13px;"><i class="fa-regular fa-user"></i></div><span style="font-size: 10px;">Usuário</span>
+                                        </div>
+                                        <div class="drag-tool tool-service bpmn-drag-item" draggable="true" data-type="task_service" style="padding: 4px 6px;">
+                                            <div class="drag-tool-icon" style="width: 28px; height: 28px; font-size: 13px;"><i class="fa-solid fa-gear"></i></div><span style="font-size: 10px;">Serviço</span>
+                                        </div>
+                                        <div class="drag-tool tool-script bpmn-drag-item" draggable="true" data-type="task_script" style="padding: 4px 6px;">
+                                            <div class="drag-tool-icon" style="width: 28px; height: 28px; font-size: 13px;"><i class="fa-solid fa-code"></i></div><span style="font-size: 10px;">Script</span>
+                                        </div>
+                                        <div class="drag-tool tool-gateway bpmn-drag-item" draggable="true" data-type="gateway_exclusive" style="padding: 4px 6px;">
+                                            <div class="drag-tool-icon" style="width: 28px; height: 28px; font-size: 13px;"><i class="fa-solid fa-xmark"></i></div><span style="font-size: 10px;">Decisão</span>
+                                        </div>
+                                        <div class="drag-tool tool-gateway bpmn-drag-item" draggable="true" data-type="gateway_parallel" style="padding: 4px 6px;">
+                                            <div class="drag-tool-icon" style="width: 28px; height: 28px; font-size: 13px;"><i class="fa-solid fa-plus"></i></div><span style="font-size: 10px;">Paralelo</span>
+                                        </div>
+                                        <div class="drag-tool tool-end bpmn-drag-item" draggable="true" data-type="event_end" style="padding: 4px 6px;">
+                                            <div class="drag-tool-icon" style="width: 28px; height: 28px; font-size: 13px;"><i class="fa-solid fa-stop"></i></div><span style="font-size: 10px;">Término</span>
                                         </div>
                                     </div>
                                 </div>
                                 
                                 <div class="header-right" style="pointer-events: auto;">
-                                    <div class="header-actions" style="display: flex; gap: 10px; background: rgba(255, 255, 255, 0.95); padding: 8px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+                                    <div class="header-actions" style="display: flex; gap: 8px; background: rgba(255, 255, 255, 0.95); padding: 6px 10px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; align-items: center;">
                                         <button class="btn-icon" id="btn-show-workflow-list" title="Mostrar lista" type="button" onclick="toggleWorkflowListPanel(false)" style="display:none;"><i class="fa-solid fa-list"></i></button>
                                         <button class="btn-icon" id="btn-toggle-fullscreen" title="Tela cheia" type="button" onclick="toggleWorkflowFullscreen()"><i class="fa-solid fa-expand"></i></button>
+                                        <button class="btn-icon" id="btn-workflow-templates" title="Modelos Prontos de Workflow" type="button" onclick="openWorkflowTemplatesModal()"><i class="fa-solid fa-shapes"></i></button>
                                         <button class="btn-icon" id="btn-organize-workflow" disabled title="Organizar" type="button" onclick="organizeCurrentWorkflow()"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
                                         <button class="btn-icon" id="btn-versions-workflow" disabled title="Versões" type="button" onclick="restoreWorkflowVersion()"><i class="fa-solid fa-code-commit"></i></button>
                                         <button class="btn-icon" id="btn-import-workflow" title="Importar JSON" onclick="document.getElementById('workflow-import-file').click()"><i class="fa-solid fa-file-import"></i></button>
@@ -328,32 +360,6 @@
                                         <button class="btn-primary-action" id="btn-publish-workflow" disabled onclick="publishCurrentWorkflow()" style="background:#10b981; color:white; border-color:#059669;"><i class="fa-solid fa-check"></i> Publicar</button>
                                         <span id="workflow-dirty-indicator" class="workflow-dirty-indicator" hidden></span>
                                     </div>
-                                </div>
-                            </div>
-
-                            <!-- TOOLBAR FLUTUANTE CENTRAL -->
-                            <div class="floating-toolbar">
-                                <div class="toolbar-label">Add</div>
-                                <div class="drag-tool tool-start bpmn-drag-item" draggable="true" data-type="event_start">
-                                    <div class="drag-tool-icon"><i class="fa-solid fa-play"></i></div><span>Início</span>
-                                </div>
-                                <div class="drag-tool tool-user bpmn-drag-item" draggable="true" data-type="task_user">
-                                    <div class="drag-tool-icon"><i class="fa-regular fa-user"></i></div><span>Usuário</span>
-                                </div>
-                                <div class="drag-tool tool-service bpmn-drag-item" draggable="true" data-type="task_service">
-                                    <div class="drag-tool-icon"><i class="fa-solid fa-gear"></i></div><span>Serviço</span>
-                                </div>
-                                <div class="drag-tool tool-script bpmn-drag-item" draggable="true" data-type="task_script">
-                                    <div class="drag-tool-icon"><i class="fa-solid fa-code"></i></div><span>Script</span>
-                                </div>
-                                <div class="drag-tool tool-gateway bpmn-drag-item" draggable="true" data-type="gateway_exclusive">
-                                    <div class="drag-tool-icon"><i class="fa-solid fa-xmark"></i></div><span>Decisão</span>
-                                </div>
-                                <div class="drag-tool tool-gateway bpmn-drag-item" draggable="true" data-type="gateway_parallel">
-                                    <div class="drag-tool-icon"><i class="fa-solid fa-plus"></i></div><span>Paralelo</span>
-                                </div>
-                                <div class="drag-tool tool-end bpmn-drag-item" draggable="true" data-type="event_end">
-                                    <div class="drag-tool-icon"><i class="fa-solid fa-stop"></i></div><span>Término</span>
                                 </div>
                             </div>
 
@@ -387,8 +393,17 @@
                                     </div>
                                     <div class="form-group" style="display: flex; gap: 15px;">
                                         <div style="flex: 1;">
-                                            <label>Swimlane (Raia)</label>
-                                            <input type="text" id="state-pool" placeholder="Ex.: Financeiro, Secretaria">
+                                            <label>Swimlane (Raia de Responsabilidade)</label>
+                                            <input type="text" id="state-pool" list="suggested-pools" placeholder="Ex.: Interação do Usuário, Assinatura...">
+                                            <datalist id="suggested-pools">
+                                                <option value="Interação do Usuário / Documentação"></option>
+                                                <option value="Validação de Documentos"></option>
+                                                <option value="Assinatura Digital"></option>
+                                                <option value="Serviços Automáticos (XML / Visual / Integração)"></option>
+                                                <option value="Secretaria Geral"></option>
+                                                <option value="Financeiro"></option>
+                                                <option value="Arquivo / Acervo"></option>
+                                            </datalist>
                                         </div>
                                         <div style="width: 80px;">
                                             <label>Cor</label>
@@ -431,100 +446,102 @@
                 <button class="btn-close" onclick="document.getElementById('modal-storage-rule').classList.remove('active')">X</button>
             </div>
             
-            <div class="form-group">
-                <label>Nome da Regra</label>
-                <input type="text" id="rule-name" placeholder="Ex: Regra para Contratos">
-            </div>
-            <input type="hidden" id="rule-id">
-
-            <div class="form-group">
-                <label>Tipo de Documento Vinculado</label>
-                <input type="text" id="rule-document-type" list="doc-types-list" placeholder="Selecione ou digite um novo tipo" onchange="suggestPathBasedOnType()" oninput="suggestPathBasedOnType()">
-                <datalist id="doc-types-list"></datalist>
-                <small style="color: rgba(255,255,255,0.6); display: block; margin-top: 5px;">Se não existir, criaremos um novo tipo de documento automaticamente.</small>
-            </div>
-
-            <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
-
-            <h4>Armazenamento Principal</h4>
-            <div class="form-group" style="margin-top: 10px;">
-                <label>Tipo de Armazenamento</label>
-                <select id="rule-storage-type" onchange="suggestPathBasedOnType(); toggleCredentialFields();">
-                    <option value="Local">Local (Servidor)</option>
-                    <option value="S3">Amazon S3</option>
-                    <option value="Glacier">Amazon Glacier</option>
-                    <option value="Google">Google Cloud Storage</option>
-                    <option value="Azure">Azure Blob Storage</option>
-                    <option value="SharePoint">Microsoft SharePoint / OneDrive</option>
-                    <option value="FTP">FTP / SFTP</option>
-                    <option value="SMB">Rede Windows (SMB/CIFS)</option>
-                    <option value="NFS">Rede Linux (NFS)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Caminho Base / Bucket / Caminho de Rede</label>
-                <input type="text" id="rule-base-path" placeholder="Ex: /var/lib/ged/contratos ou s3://meubucket">
-            </div>
-
-            <!-- Credential Fields -->
-            <div id="credential-fields" style="display: none; padding: 15px; background: rgba(0,0,0,0.1); border-radius: 8px; margin-bottom: 20px;">
-                <h5 id="cred-title" style="margin-top: 0; margin-bottom: 15px;">Credenciais de Acesso</h5>
-                <div class="form-group" id="group-domain" style="display: none;">
-                    <label id="lbl-domain">Domínio / Região</label>
-                    <input type="text" id="rule-network-domain" placeholder="">
+            <form onsubmit="event.preventDefault(); saveStorageRule();">
+                <div class="form-group">
+                    <label>Nome da Regra</label>
+                    <input type="text" id="rule-name" placeholder="Ex: Regra para Contratos">
                 </div>
-                <div style="display: flex; gap: 15px;">
-                    <div class="form-group" style="flex: 1;">
-                        <label id="lbl-user">Usuário / Access Key</label>
-                        <input type="text" id="rule-network-user" placeholder="">
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label id="lbl-pass">Senha / Secret Key</label>
-                        <input type="password" id="rule-network-password" placeholder="" autocomplete="current-password">
-                    </div>
+                <input type="hidden" id="rule-id">
+
+                <div class="form-group">
+                    <label>Tipo de Documento Vinculado</label>
+                    <input type="text" id="rule-document-type" list="doc-types-list" placeholder="Selecione ou digite um novo tipo" onchange="suggestPathBasedOnType()" oninput="suggestPathBasedOnType()">
+                    <datalist id="doc-types-list"></datalist>
+                    <small style="color: rgba(255,255,255,0.6); display: block; margin-top: 5px;">Se não existir, criaremos um novo tipo de documento automaticamente.</small>
                 </div>
-            </div>
 
-            <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
 
-            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                <input type="checkbox" id="rule-enable-duplication" style="width: auto;" onchange="toggleDuplicationFields()">
-                <label for="rule-enable-duplication" style="margin-bottom: 0; font-weight: bold;">Habilitar Duplicação (Backup Simultâneo)</label>
-            </div>
-
-            <div id="duplication-fields" style="display: none; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-top: 15px;">
-                <h4>Armazenamento Secundário (Backup)</h4>
+                <h4>Armazenamento Principal</h4>
                 <div class="form-group" style="margin-top: 10px;">
-                    <label>Tipo Secundário</label>
-                    <select id="rule-secondary-type">
+                    <label>Tipo de Armazenamento</label>
+                    <select id="rule-storage-type" onchange="suggestPathBasedOnType(); toggleCredentialFields();">
+                        <option value="Local">Local (Servidor)</option>
                         <option value="S3">Amazon S3</option>
                         <option value="Glacier">Amazon Glacier</option>
+                        <option value="Google">Google Cloud Storage</option>
                         <option value="Azure">Azure Blob Storage</option>
+                        <option value="SharePoint">Microsoft SharePoint / OneDrive</option>
                         <option value="FTP">FTP / SFTP</option>
-                        <option value="Local">Local Secundário</option>
+                        <option value="SMB">Rede Windows (SMB/CIFS)</option>
+                        <option value="NFS">Rede Linux (NFS)</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Caminho Secundário</label>
-                    <input type="text" id="rule-secondary-path" placeholder="Caminho para o backup">
+                    <label>Caminho Base / Bucket / Caminho de Rede</label>
+                    <input type="text" id="rule-base-path" placeholder="Ex: /var/lib/ged/contratos ou s3://meubucket">
                 </div>
-            </div>
 
-            <div style="display: flex; gap: 15px; margin-top: 15px;">
-                <div class="form-group" style="flex: 1;">
-                    <label>Max Files/Pasta</label>
-                    <input type="number" id="rule-max-files" value="10000">
+                <!-- Credential Fields -->
+                <div id="credential-fields" style="display: none; padding: 15px; background: rgba(0,0,0,0.1); border-radius: 8px; margin-bottom: 20px;">
+                    <h5 id="cred-title" style="margin-top: 0; margin-bottom: 15px;">Credenciais de Acesso</h5>
+                    <div class="form-group" id="group-domain" style="display: none;">
+                        <label id="lbl-domain">Domínio / Região</label>
+                        <input type="text" id="rule-network-domain" placeholder="">
+                    </div>
+                    <div style="display: flex; gap: 15px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label id="lbl-user">Usuário / Access Key</label>
+                            <input type="text" id="rule-network-user" placeholder="" autocomplete="username">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label id="lbl-pass">Senha / Secret Key</label>
+                            <input type="password" id="rule-network-password" placeholder="" autocomplete="current-password">
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group" style="flex: 1;">
-                    <label>Max GB/Pasta</label>
-                    <input type="number" step="0.1" id="rule-max-gb" value="100.0">
-                </div>
-            </div>
 
-            <div style="text-align: right; margin-top: 20px;">
-                <button class="btn-secondary" onclick="document.getElementById('modal-storage-rule').classList.remove('active')">Cancelar</button>
-                <button class="btn-primary" onclick="saveStorageRule()">Salvar Regra</button>
-            </div>
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+
+                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="rule-enable-duplication" style="width: auto;" onchange="toggleDuplicationFields()">
+                    <label for="rule-enable-duplication" style="margin-bottom: 0; font-weight: bold;">Habilitar Duplicação (Backup Simultâneo)</label>
+                </div>
+
+                <div id="duplication-fields" style="display: none; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-top: 15px;">
+                    <h4>Armazenamento Secundário (Backup)</h4>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label>Tipo Secundário</label>
+                        <select id="rule-secondary-type">
+                            <option value="S3">Amazon S3</option>
+                            <option value="Glacier">Amazon Glacier</option>
+                            <option value="Azure">Azure Blob Storage</option>
+                            <option value="FTP">FTP / SFTP</option>
+                            <option value="Local">Local Secundário</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Caminho Secundário</label>
+                        <input type="text" id="rule-secondary-path" placeholder="Caminho para o backup">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-top: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Max Files/Pasta</label>
+                        <input type="number" id="rule-max-files" value="10000">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Max GB/Pasta</label>
+                        <input type="number" step="0.1" id="rule-max-gb" value="100.0">
+                    </div>
+                </div>
+
+                <div style="text-align: right; margin-top: 20px;">
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('modal-storage-rule').classList.remove('active')">Cancelar</button>
+                    <button type="submit" class="btn-primary">Salvar Regra</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -567,7 +584,75 @@
                         </div>
                     </div>
                 </div>
-                
+
+                <!-- Modal Modelos Prontos de Workflow -->
+                <div class="modal-overlay" id="modal-workflow-templates">
+                    <div class="modal-content glass-panel" style="width: 760px; max-width: calc(100vw - 32px); padding: 25px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <div>
+                                <span class="eyebrow" style="color:var(--primary); font-size:11px; text-transform:uppercase; font-weight:700;">Biblioteca de Processos</span>
+                                <h2 style="margin:4px 0 0; font-size:18px;">Modelos Prontos de Workflow (BPMN)</h2>
+                            </div>
+                            <button class="btn-close" onclick="closeWorkflowTemplatesModal()">✖</button>
+                        </div>
+                        <p class="text-muted" style="font-size: 13px; margin-bottom: 20px;">Selecione um dos modelos baseados nas melhores práticas com raias divididas (Usuário, Validação, Assinatura e Serviços Automáticos):</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px;">
+                            <!-- Template 1: Emissão de Diploma Digital -->
+                            <div class="glass-panel" style="padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between; background: rgba(255,255,255,0.85); box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+                                <div>
+                                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                        <div style="width:32px; height:32px; border-radius:8px; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; font-size:14px;"><i class="fa-solid fa-graduation-cap"></i></div>
+                                        <h4 style="margin:0; font-size:14px; font-weight:700;">Diploma Digital (MEC)</h4>
+                                    </div>
+                                    <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin-bottom: 12px;">Fluxo completo com upload de documentos, validação acadêmica, seleção de signatários, coleta de assinatura e geração automática do XML + RVDD.</p>
+                                    <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:12px;">
+                                        <span class="badge" style="background:#dbeafe; color:#1e40af; font-size:10px;">4 Raias</span>
+                                        <span class="badge" style="background:#fef3c7; color:#92400e; font-size:10px;">Assinatura A1</span>
+                                        <span class="badge" style="background:#f3e8ff; color:#6b21a8; font-size:10px;">Auto XML/RVDD</span>
+                                    </div>
+                                </div>
+                                <button class="btn-primary w-100" style="padding:8px 12px; font-size:12px;" onclick="applyWorkflowPreset('diploma_digital')">Usar Este Modelo</button>
+                            </div>
+
+                            <!-- Template 2: Análise e Validação de Matrícula -->
+                            <div class="glass-panel" style="padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between; background: rgba(255,255,255,0.85); box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+                                <div>
+                                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                        <div style="width:32px; height:32px; border-radius:8px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; font-size:14px;"><i class="fa-solid fa-id-card"></i></div>
+                                        <h4 style="margin:0; font-size:14px; font-weight:700;">Ingresso / Matrícula</h4>
+                                    </div>
+                                    <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin-bottom: 12px;">Recepção de documentos do candidato (RG, histórico escolar), verificação da secretaria, solicitação de pendências e deferimento com notificação automática.</p>
+                                    <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:12px;">
+                                        <span class="badge" style="background:#d1fae5; color:#065f46; font-size:10px;">3 Raias</span>
+                                        <span class="badge" style="background:#e0e7ff; color:#3730a3; font-size:10px;">Decisão com Retorno</span>
+                                    </div>
+                                </div>
+                                <button class="btn-primary w-100" style="padding:8px 12px; font-size:12px;" onclick="applyWorkflowPreset('matricula')">Usar Este Modelo</button>
+                            </div>
+
+                            <!-- Template 3: Contrato com Assinatura e Arquivamento -->
+                            <div class="glass-panel" style="padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between; background: rgba(255,255,255,0.85); box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+                                <div>
+                                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                        <div style="width:32px; height:32px; border-radius:8px; background:#fffbeb; color:#d97706; display:flex; align-items:center; justify-content:center; font-size:14px;"><i class="fa-solid fa-file-contract"></i></div>
+                                        <h4 style="margin:0; font-size:14px; font-weight:700;">Contrato Educacional</h4>
+                                    </div>
+                                    <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin-bottom: 12px;">Geração automática da minuta, conferência jurídica/financeira, assinatura eletrônica das partes e arquivamento em partição criptografada.</p>
+                                    <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:12px;">
+                                        <span class="badge" style="background:#fef3c7; color:#92400e; font-size:10px;">4 Raias</span>
+                                        <span class="badge" style="background:#ede9fe; color:#5b21b6; font-size:10px;">Arquivamento RVDD</span>
+                                    </div>
+                                </div>
+                                <button class="btn-primary w-100" style="padding:8px 12px; font-size:12px;" onclick="applyWorkflowPreset('contrato')">Usar Este Modelo</button>
+                            </div>
+                        </div>
+
+                        <div style="text-align: right;">
+                            <button class="btn-secondary btn-small" onclick="closeWorkflowTemplatesModal()">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Modal Nova Transição -->
                 <div class="modal-overlay" id="modal-transition">
@@ -752,21 +837,59 @@
 
                 <!-- Modal Template -->
                 <div class="modal-overlay" id="modal-template">
-                    <div class="modal-content glass-panel" style="width: 800px; padding: 30px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                            <h2>Editor de Template HTML</h2>
+                    <div class="modal-content glass-panel" style="width: 860px; max-width: 95vw; padding: 25px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 style="margin:0;"><i class="fa-solid fa-file-code" style="color:var(--primary); margin-right:8px;"></i>Editor de Template RVDD (HTML / Jinja2)</h3>
                             <button class="btn-close" onclick="document.getElementById('modal-template').classList.remove('active')">✖</button>
                         </div>
-                        <div class="form-group">
-                            <label>Nome do Template</label>
-                            <input type="text" id="tpl-name" required>
+
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 15px; margin-bottom: 12px;">
+                            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                <label style="font-weight: 600;">Nome do Template</label>
+                                <input type="text" id="tpl-name" placeholder="Ex: RVDD Diploma Digital MEC 2026" required>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" class="btn-secondary btn-small" onclick="loadOfficialRvddPreset()" style="background: linear-gradient(135deg, #1e3a8a, #2563eb); color: white; border: none; font-weight: 600;">
+                                    <i class="fa-solid fa-certificate"></i> Carregar Modelo Oficial MEC (RVDD)
+                                </button>
+                                <button type="button" class="btn-secondary btn-small" onclick="previewCurrentTemplate()">
+                                    <i class="fa-solid fa-eye"></i> Pré-visualizar
+                                </button>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>Código HTML (Jinja2)</label>
-                            <textarea id="tpl-html" style="width:100%; height:300px; font-family:monospace; background:#111; color:#0f0; border:1px solid #4ade80; padding:10px; border-radius:4px;"></textarea>
+
+                        <div class="form-group" style="margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-weight: 600;">Código HTML / Jinja2</label>
+                                <div style="display: flex; gap: 4px; font-size: 11px;">
+                                    <span style="color: #64748b; margin-right: 4px;">Inserir variável:</span>
+                                    <a href="javascript:void(0)" onclick="insertTag('{{ nome_aluno }}')" class="badge" style="background:#e2e8f0; color:#1e293b; cursor:pointer;">{{ nome_aluno }}</a>
+                                    <a href="javascript:void(0)" onclick="insertTag('{{ cpf_aluno }}')" class="badge" style="background:#e2e8f0; color:#1e293b; cursor:pointer;">{{ cpf_aluno }}</a>
+                                    <a href="javascript:void(0)" onclick="insertTag('{{ curso }}')" class="badge" style="background:#e2e8f0; color:#1e293b; cursor:pointer;">{{ curso }}</a>
+                                    <a href="javascript:void(0)" onclick="insertTag('{{ data_conclusao }}')" class="badge" style="background:#e2e8f0; color:#1e293b; cursor:pointer;">{{ data_conclusao }}</a>
+                                    <a href="javascript:void(0)" onclick="insertTag('{{ qrcode_base64 }}')" class="badge" style="background:#e2e8f0; color:#1e293b; cursor:pointer;">{{ qrcode_base64 }}</a>
+                                    <a href="javascript:void(0)" onclick="insertTag('{{ codigo_validacao }}')" class="badge" style="background:#e2e8f0; color:#1e293b; cursor:pointer;">{{ codigo_validacao }}</a>
+                                    <a href="javascript:void(0)" onclick="insertTag('{{ url_validacao }}')" class="badge" style="background:#e2e8f0; color:#1e293b; cursor:pointer;">{{ url_validacao }}</a>
+                                </div>
+                            </div>
+                            <textarea id="tpl-html" style="width:100%; height:320px; font-family:Consolas, Monaco, monospace; font-size:12px; background:#0f172a; color:#38bdf8; border:1px solid #334155; padding:12px; border-radius:6px; resize:vertical;"></textarea>
                         </div>
-                        <p class="text-muted" style="font-size:12px;">Variáveis disponíveis: {{ nome_aluno }}, {{ cpf_aluno }}, {{ curso }}, {{ qrcode_base64 }}</p>
-                        <button class="btn-primary w-100" onclick="saveTemplate()">Salvar Template</button>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                            <button type="button" class="btn-secondary" onclick="document.getElementById('modal-template').classList.remove('active')">Cancelar</button>
+                            <button type="button" class="btn-primary" onclick="saveTemplate()" style="min-width: 140px;">Salvar Template</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Preview Template -->
+                <div class="modal-overlay" id="modal-template-preview" style="z-index: 10001;">
+                    <div class="modal-content glass-panel" style="width: 1100px; max-width: 96vw; height: 85vh; padding: 20px; display: flex; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h3 style="margin:0;"><i class="fa-solid fa-eye" style="color:var(--primary); margin-right:8px;"></i>Pré-visualização do Modelo RVDD</h3>
+                            <button class="btn-close" onclick="document.getElementById('modal-template-preview').classList.remove('active')">✖</button>
+                        </div>
+                        <iframe id="template-preview-frame" style="flex: 1; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff;"></iframe>
                     </div>
                 </div>
                 
@@ -1259,7 +1382,7 @@
             const verifyBtn = document.getElementById('btn-verify-audit');
             if (verifyBtn) verifyBtn.style.display = 'inline-block';
         } else if (payload && payload.role === 'admin_instituicao') {
-            document.querySelectorAll('.role-admin-global').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.role-admin-global:not(.role-admin-instituicao)').forEach(el => el.style.display = 'none');
             document.querySelectorAll('.role-admin-instituicao').forEach(el => el.style.display = 'flex');
         }
 
@@ -1285,6 +1408,7 @@
                 
                 document.getElementById('page-title').innerText = item.innerText.trim();
 
+                if(target === 'dashboard') loadDashboardStats();
                 if(target === 'storage') loadStorageRules();
                 if(target === 'institutions') loadInstitutions();
                 if(target === 'usuarios') loadUsers();
@@ -1292,32 +1416,39 @@
                 if(target === 'doc-types') loadDocTypes();
                 if(target === 'indices') loadIndices();
                 if(target === 'integrations') loadIntegrations();
-            if(target === 'signers') loadSigners();
-            if(target === 'workflows') loadWorkflows();
-            if(target === 'ingestions') loadIngestions();
-            if(target === 'quarantine') loadQuarantine();
-            if(target === 'audit') loadAuditEvents();
-            if(target === 'representation-services') loadRepresentationServices();
+                if(target === 'signers') loadSigners();
+                if(target === 'workflows') loadWorkflows();
+                if(target === 'ingestions') loadIngestions();
+                if(target === 'quarantine') loadQuarantine();
+                if(target === 'audit') loadAuditEvents();
+                if(target === 'representation-services') loadRepresentationServices();
+                if(target === 'templates-html') loadTemplates();
             });
         });
 
         document.addEventListener('DOMContentLoaded', () => {
-            const defaultWorkflowMenu = document.querySelector('.menu-item[data-target="workflows"]');
-            if (defaultWorkflowMenu) {
-            defaultWorkflowMenu.classList.add('active');
-            document.getElementById('page-title').innerText = defaultWorkflowMenu.innerText.trim();
-            document.querySelectorAll('.view').forEach(v => {
-                v.classList.remove('active');
-                v.style.display = 'none';
-            });
-            const workflowView = document.getElementById('view-workflows');
-            if (workflowView) {
-                workflowView.classList.add('active');
-                workflowView.style.display = 'block';
-            }
-            if (typeof loadWorkflows === 'function') {
-                loadWorkflows();
-            }
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetParam = urlParams.get('tab') || (urlParams.get('workflowEditor') ? 'workflows' : 'dashboard');
+            
+            const targetMenu = document.querySelector(`.menu-item[data-target="${targetParam}"]`) || document.querySelector('.menu-item[data-target="dashboard"]');
+            if (targetMenu) {
+                document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+                targetMenu.classList.add('active');
+                document.getElementById('page-title').innerText = targetMenu.innerText.trim();
+                
+                document.querySelectorAll('.view').forEach(v => {
+                    v.classList.remove('active');
+                    v.style.display = 'none';
+                });
+                
+                const activeView = document.getElementById('view-' + targetParam);
+                if (activeView) {
+                    activeView.classList.add('active');
+                    activeView.style.display = 'block';
+                }
+                
+                if (targetParam === 'dashboard' && typeof loadDashboardStats === 'function') loadDashboardStats();
+                if (targetParam === 'workflows' && typeof loadWorkflows === 'function') loadWorkflows();
             }
         });
     </script>
@@ -1325,11 +1456,11 @@
     <script src="js/admin_institutions.js"></script>
     <script src="js/admin_users.js?v=5"></script>
     <script src="js/admin_instituicao.js"></script>
-    <script src="js/admin_templates.js"></script>
+    <script src="js/admin_templates.js?v=2"></script>
     <script src="js/admin_representation.js"></script>
     <script src="js/admin_ged_config.js"></script>
     <script src="js/admin_privilegios.js?v=3"></script>
-    <script src="js/admin_workflows.js?v=5"></script>
+    <script src="js/admin_workflows.js?v=6"></script>
     <script src="js/admin_ingestions.js"></script>
     <script src="js/admin_quarantine.js"></script>
     <script src="js/admin_integrations.js"></script>
@@ -1341,31 +1472,33 @@
         <div class="modal-content glass-panel" style="max-width: 500px; padding: 30px;">
             <h3 id="signer-modal-title">Guardar Certificado no Cofre</h3>
             <p style="font-size: 13px; color: #64748b; margin-bottom: 15px;">Os certificados A1 (.p12 ou .pfx) serão armazenados de forma segura. A senha não é gravada no banco de dados e só será requisitada no ato da assinatura.</p>
-            <div class="form-group">
-                <label>Nome do Titular</label>
-                <input type="text" id="sig-name" placeholder="Ex: João da Silva" />
-            </div>
-            <div class="form-group">
-                <label>Cargo / Papel</label>
-                <input type="text" id="sig-role" placeholder="Ex: Reitor" />
-            </div>
-            <div class="form-group">
-                <label>CPF do Titular</label>
-                <input type="text" id="sig-cpf" placeholder="000.000.000-00" />
-            </div>
-            <div class="form-group">
-                <label>Arquivo do Certificado (.p12 ou .pfx)</label>
-                <input type="file" id="sig-p12" accept=".p12,.pfx" />
-            </div>
-            <div class="form-group">
-                <label for="sig-password">Senha do certificado</label>
-                <input type="password" id="sig-password" autocomplete="new-password" required placeholder="Senha usada para abrir o .p12/.pfx" />
-                <small style="color:#64748b;">A senha é usada somente para validar o certificado e não é armazenada no cofre.</small>
-            </div>
-            <div class="modal-actions">
-                <button class="btn-secondary" onclick="document.getElementById('modal-signer').classList.remove('active')">Cancelar</button>
-                <button class="btn-primary" id="btn-save-signer" onclick="saveSigner()">Salvar e Guardar no Cofre Seguro</button>
-            </div>
+            <form onsubmit="event.preventDefault(); saveSigner();">
+                <div class="form-group">
+                    <label>Nome do Titular</label>
+                    <input type="text" id="sig-name" placeholder="Ex: João da Silva" />
+                </div>
+                <div class="form-group">
+                    <label>Cargo / Papel</label>
+                    <input type="text" id="sig-role" placeholder="Ex: Reitor" />
+                </div>
+                <div class="form-group">
+                    <label>CPF do Titular</label>
+                    <input type="text" id="sig-cpf" placeholder="000.000.000-00" autocomplete="username" />
+                </div>
+                <div class="form-group">
+                    <label>Arquivo do Certificado (.p12 ou .pfx)</label>
+                    <input type="file" id="sig-p12" accept=".p12,.pfx" />
+                </div>
+                <div class="form-group">
+                    <label for="sig-password">Senha do certificado</label>
+                    <input type="password" id="sig-password" autocomplete="new-password" required placeholder="Senha usada para abrir o .p12/.pfx" />
+                    <small style="color:#64748b;">A senha é usada somente para validar o certificado e não é armazenada no cofre.</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('modal-signer').classList.remove('active')">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="btn-save-signer">Salvar e Guardar no Cofre Seguro</button>
+                </div>
+            </form>
         </div>
     </div>
 

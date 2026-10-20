@@ -230,10 +230,35 @@ function selectWorkflow(idOrObj) {
 }
 
 function installOrthogonalConnectionRenderer(instance) {
-    // Using Drawflow default smooth Bezier curves - no override needed
-    // Just ensure invalid coords don't crash
     if (!instance || instance.__orthogonalRendererInstalled) return;
     instance.__orthogonalRendererInstalled = true;
+
+    // Sobrescreve o cálculo de linhas do Drawflow para gerar caminhos retos ortogonais (Manhattan/em L)
+    instance.createCurvature = function(start_pos_x, start_pos_y, end_pos_x, end_pos_y, curvature_value, type) {
+        const x1 = Math.round(start_pos_x);
+        const y1 = Math.round(start_pos_y);
+        const x2 = Math.round(end_pos_x);
+        const y2 = Math.round(end_pos_y);
+
+        // Se estiver praticamente na mesma linha horizontal ou vertical, traça reta direta (I)
+        if (Math.abs(y1 - y2) < 4) {
+            return ` M ${x1} ${y1} L ${x2} ${y2}`;
+        }
+        if (Math.abs(x1 - x2) < 4) {
+            return ` M ${x1} ${y1} L ${x2} ${y2}`;
+        }
+
+        // Se o nó de destino está à direita (fluxo natural para a frente)
+        if (x2 >= x1 + 20) {
+            const midX = Math.round((x1 + x2) / 2);
+            return ` M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+        } else {
+            // Conexão em loop para trás ou para o mesmo lado (em L / Z estendido)
+            const offsetX = 35;
+            const midY = Math.round((y1 + y2) / 2);
+            return ` M ${x1} ${y1} L ${x1 + offsetX} ${y1} L ${x1 + offsetX} ${midY} L ${x2 - offsetX} ${midY} L ${x2 - offsetX} ${y2} L ${x2} ${y2}`;
+        }
+    };
 }
 
 function initDrawflow() {
@@ -242,10 +267,9 @@ function initDrawflow() {
     ensureWorkflowCanvasVisible();
     editor = new Drawflow(container);
     installOrthogonalConnectionRenderer(editor);
-    editor.reroute = true;
-    editor.curvature = 0.5;
-    editor.reroute_curvature = 0.5;
-    editor.reroute_fix_curvature = true;
+    editor.reroute = false;
+    editor.curvature = 0;
+    editor.reroute_curvature = 0;
     editor.draggable_inputs = false;
     editor.draggable_links = false;
     editor.start();

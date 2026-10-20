@@ -134,32 +134,36 @@ async function loadUsers() {
             const isActiveClass = u.is_active ? 'badge-success' : 'badge-danger';
             
             tr.innerHTML = `
-                <td>${u.username}</td>
+                <td><strong>${u.username}</strong></td>
                 <td><span class="badge ${u.role === 'admin_global' ? 'badge-danger' : 'badge-primary'}">${u.role}</span></td>
                 <td><span class="badge ${isActiveClass}">${isActiveText}</span></td>
-                <td style="display: flex; gap: 5px;"></td>
+                <td style="display: flex; gap: 8px; align-items: center; justify-content: flex-start; flex-wrap: nowrap; min-width: 420px;"></td>
             `;
             const tdActions = tr.lastElementChild;
             
             const btnPriv = document.createElement('button');
             btnPriv.className = 'btn-secondary btn-small';
+            btnPriv.style.whiteSpace = 'nowrap';
             btnPriv.textContent = 'Tipos e privilégios';
             btnPriv.onclick = () => abrirPermissoesDocumentais(u);
             
             const btnEdit = document.createElement('button');
             btnEdit.className = 'btn-primary btn-small';
+            btnEdit.style.whiteSpace = 'nowrap';
             btnEdit.textContent = 'Editar';
             btnEdit.title = 'Editar usuário';
             btnEdit.onclick = () => openEditUserModal(u);
 
             const btnPassword = document.createElement('button');
             btnPassword.className = 'btn-secondary btn-small';
+            btnPassword.style.whiteSpace = 'nowrap';
             btnPassword.textContent = 'Trocar senha';
             btnPassword.title = 'Trocar senha do usuário';
             btnPassword.onclick = () => openChangePasswordModal(u);
             
             const btnToggle = document.createElement('button');
             btnToggle.className = u.is_active ? 'btn-danger btn-small' : 'btn-success btn-small';
+            btnToggle.style.whiteSpace = 'nowrap';
             btnToggle.textContent = u.is_active ? 'Bloquear' : 'Desbloquear';
             btnToggle.title = u.is_active ? 'Bloquear usuário' : 'Desbloquear usuário';
             btnToggle.onclick = () => toggleUserStatus(u.id, !u.is_active);

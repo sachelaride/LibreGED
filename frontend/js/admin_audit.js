@@ -12,18 +12,33 @@ async function loadAuditEvents() {
             return;
         }
         
+        // Mapear IDs de usuários para seus nomes (usernames) para visualização amigável
+        let usersMap = {};
+        try {
+            const usersRes = await fetch(`${API_URL}/users?size=500`, { headers: getAuthHeaders() });
+            if (usersRes.ok) {
+                const usersData = await usersRes.json();
+                (usersData.items || []).forEach(u => {
+                    usersMap[u.id] = u.username;
+                });
+            }
+        } catch (_) {}
+
         data.forEach(event => {
             const tr = document.createElement('tr');
             
             const dateStr = new Date(event.created_at).toLocaleString('pt-BR');
-            const userId = event.user_id ? event.user_id.substring(0,8) + '...' : 'Sistema';
+            let userLabel = 'Sistema';
+            if (event.user_id) {
+                userLabel = usersMap[event.user_id] || (event.user_id.length > 12 ? event.user_id.substring(0, 8) + '...' : event.user_id);
+            }
             
             tr.innerHTML = `
                 <td>${dateStr}</td>
-                <td><span class="badge" style="background:var(--primary); color:#000;">${userId}</span></td>
+                <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:600;" title="${event.user_id || 'Sistema'}">${userLabel}</span></td>
                 <td><strong>${event.action}</strong></td>
-                <td>${event.entity} <em>(${event.entity_id.substring(0,8)}...)</em></td>
-                <td>${event.details}</td>
+                <td>${event.entity} <em>(${event.entity_id ? (event.entity_id.length > 8 ? event.entity_id.substring(0,8) + '...' : event.entity_id) : '-'})</em></td>
+                <td>${event.details || ''}</td>
             `;
             tbody.appendChild(tr);
         });

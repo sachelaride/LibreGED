@@ -89,6 +89,9 @@ class GEDDocument(Base):
     extracted_metadata = Column(Text, nullable=True) # Stores the JSON blob from OCR/AI
     # Relationships
     category_id = Column(String, ForeignKey("ged_document_categories.id"), nullable=False)
+    classification_id = Column(
+        String, ForeignKey("ged_document_classifications.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     student_id = Column(String, index=True, nullable=True) # Could be CPF or a foreign key to a Student table in the future
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=True, index=True)
     campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
@@ -108,6 +111,7 @@ class GEDDocument(Base):
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     
     category = relationship("DocumentCategory", back_populates="documents")
+    classification = relationship("DocumentClassification")
     institution = relationship("Institution")
     transitions = relationship("DocumentTransitionHistory", back_populates="document", cascade="all, delete-orphan")
     second_copy_of = relationship(

@@ -17,9 +17,7 @@ from app import models_representation
 INDICES_DEF = [
     {"name": "CPF", "type": "Caractere", "mask": "000.000.000-00"},
     {"name": "Nome do Aluno", "type": "Caractere", "mask": None},
-    {"name": "Matrícula", "type": "Caractere", "mask": None},
     {"name": "Curso", "type": "Caractere", "mask": None},
-    {"name": "Ano de Ingresso", "type": "Número", "mask": None},
     {"name": "Ano de Conclusão", "type": "Número", "mask": None},
 ]
 
@@ -32,38 +30,8 @@ DOCUMENT_TYPES_DEF = [
         "indices": ["CPF", "Nome do Aluno", "Matrícula"]
     },
     {
-        "name": "Documento de Identidade (RG)",
-        "retention_years": 5,
-        "signature_rule": {"required": False},
-        "indices": ["CPF", "Nome do Aluno"]
-    },
-    {
-        "name": "Cadastro de Pessoa Física (CPF)",
-        "retention_years": 5,
-        "signature_rule": {"required": False},
-        "indices": ["CPF", "Nome do Aluno"]
-    },
-    {
-        "name": "Certidão de Nascimento ou Casamento",
-        "retention_years": 5,
-        "signature_rule": {"required": False},
-        "indices": ["CPF", "Nome do Aluno"]
-    },
-    {
-        "name": "Certificado de Conclusão do Ensino Médio",
-        "retention_years": 5,
-        "signature_rule": {"required": False},
-        "indices": ["CPF", "Nome do Aluno"]
-    },
-    {
         "name": "Histórico Escolar da Graduação",
         "retention_years": 100, # Permanente
-        "signature_rule": {"required": True, "type": "ICP-Brasil"},
-        "indices": ["CPF", "Nome do Aluno", "Curso", "Ano de Conclusão"]
-    },
-    {
-        "name": "Ata de Colação de Grau",
-        "retention_years": 100,
         "signature_rule": {"required": True, "type": "ICP-Brasil"},
         "indices": ["CPF", "Nome do Aluno", "Curso", "Ano de Conclusão"]
     },

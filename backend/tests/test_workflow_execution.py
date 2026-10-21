@@ -167,7 +167,7 @@ def test_workflow_start_instance_and_complete_task():
 
         # Concluir a tarefa do usuário
         resp_complete = cliente.put(f"/api/workflows/tasks/{pending_task_id}/complete", json={
-            "action": "Aprovar",
+            "action": "APPROVE",
             "comment": "Tudo validado com sucesso."
         })
         assert resp_complete.status_code == 200, f"Erro ao completar tarefa: {resp_complete.text}"

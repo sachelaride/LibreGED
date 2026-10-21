@@ -1,4 +1,4 @@
-// Logica para Upload de Documentos e Listagem do Workflow
+// Logica para Upload de Documentos e Listagem do Fluxo de Trabalho
 const DOC_TYPES_API = `${API_URL}/ged-config/document-types`;
 const DOCS_API = `${API_URL}/documents`;
 const PERMISSIONS_API = `${API_URL}/users/me/document-permissions`;
@@ -178,7 +178,7 @@ async function loadUserDocuments() {
         tbody.innerHTML = '';
         
         if (docs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">Nenhum documento no workflow.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">Nenhum documento no fluxo de trabalho.</td></tr>';
             return;
         }
         
@@ -195,7 +195,7 @@ async function loadUserDocuments() {
             const podeExecutarTrânsito = typeId ? hasPermission(typeId, 'executar_trânsito') : true;
             
             let btnVer = podeVer ? `<button class="btn-secondary btn-small">Ver</button>` : '';
-            let btnTrânsito = podeExecutarTrânsito ? `<button class="btn-primary btn-small" onclick="alert('Funcionalidade sendo adaptada para o Workflow Engine!')">Avançar Trânsito</button>` : '';
+            let btnTrânsito = podeExecutarTrânsito ? `<button class="btn-primary btn-small" onclick="alert('Funcionalidade sendo adaptada para o mecanismo de fluxo de trabalho!')">Avançar Fluxo de Trabalho</button>` : '';
             
             tr.innerHTML = `
                 <td>${doc.name}</td>

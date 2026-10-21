@@ -1,7 +1,9 @@
 """Validação dos valores de índices antes de persistir um documento GED."""
 from datetime import date
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 import re
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 
@@ -9,11 +11,14 @@ from app.models_ged import GEDDocument, GEDDocumentIndexValue
 from app.models_ged_config import DocumentTypeIndex, GedIndex
 
 
-TIPOS_INDICE = {"texto", "caractere", "data", "número", "numero", "booleano", "lista"}
+TIPOS_INDICE = {
+    "texto", "caractere", "data", "data/hora", "data_hora", "datetime",
+    "número", "numero", "booleano", "lista",
+}
 
 
 def validar_configuracao_indice(tipo: str, opcoes: list[str], mascara: str | None,
-                                autonumeracao: bool) -> None:
+                                autonumeracao: bool, valor_padrao: str | None = None) -> None:
     tipo_normalizado = tipo.strip().lower()
     if tipo_normalizado not in TIPOS_INDICE:
         raise HTTPException(422, "Tipo de índice não suportado.")
@@ -31,6 +36,12 @@ def validar_configuracao_indice(tipo: str, opcoes: list[str], mascara: str | Non
             raise HTTPException(422, "A máscara deve ser uma expressão regular válida.") from erro
     if autonumeracao and tipo_normalizado not in {"texto", "caractere", "número", "numero"}:
         raise HTTPException(422, "Autonumeração exige índice textual ou numérico.")
+    if autonumeracao and valor_padrao is not None:
+        raise HTTPException(422, "Índice com autonumeração não pode ter valor padrão.")
+    if valor_padrao is not None:
+        _normalizar_valor(SimpleNamespace(
+            name="valor padrão", type=tipo, options=opcoes, mask=mascara
+        ), valor_padrao)
 
 
 def _normalizar_valor(indice: GedIndex, valor) -> str:
@@ -45,6 +56,11 @@ def _normalizar_valor(indice: GedIndex, valor) -> str:
             date.fromisoformat(texto)
         except ValueError as erro:
             raise HTTPException(422, f"O índice {indice.name} exige data no formato AAAA-MM-DD.") from erro
+    elif tipo in {"data/hora", "data_hora", "datetime"}:
+        try:
+            datetime.fromisoformat(texto)
+        except ValueError as erro:
+            raise HTTPException(422, f"O índice {indice.name} exige data e hora em formato ISO 8601.") from erro
     elif tipo in {"número", "numero"}:
         try:
             Decimal(texto.replace(",", "."))
@@ -88,7 +104,7 @@ def validar_valores_indices(db, tipo_documental_id: str, instituicao_id: str,
         if not indice.is_active and vinculo.index_id in recebidos:
             raise HTTPException(422, f"O índice {indice.name} está inativo.")
         valor = recebidos.get(vinculo.index_id)
-        if indice.auto_increment and (valor is None or str(valor).strip() == ""):
+        if (valor is None or str(valor).strip() == "") and indice.auto_increment:
             existentes = db.query(GEDDocumentIndexValue.value).join(
                 GEDDocument, GEDDocument.id == GEDDocumentIndexValue.document_id).filter(
                 GEDDocument.category_id == tipo_documental_id,
@@ -96,6 +112,8 @@ def validar_valores_indices(db, tipo_documental_id: str, instituicao_id: str,
                 GEDDocumentIndexValue.index_id == indice.id).all()
             numeros = [int(v[0]) for v in existentes if str(v[0]).isdigit()]
             valor = str(max(numeros, default=0) + 1)
+        elif valor is None or str(valor).strip() == "":
+            valor = indice.default_value
         if valor is None or str(valor).strip() == "":
             if vinculo.is_required:
                 raise HTTPException(422, f"O índice {indice.name} é obrigatório.")

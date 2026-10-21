@@ -12,7 +12,8 @@ from app.schemas_ged_config import (
     GedIndexCreate, GedIndexResponse,
     DocumentTypeCreate, DocumentTypeResponse,
     DocumentTypeIndexCreate, DocumentTypeIndexResponse,
-    DocumentTypeVersionCreate, DocumentTypeVersionResponse
+    DocumentTypeVersionCreate, DocumentTypeVersionResponse,
+    DocumentClassificationCreate, DocumentClassificationResponse,
 )
 from app.schemas_pagination import PaginatedResponse
 import math
@@ -33,13 +34,16 @@ def get_indices(page: int = 1, size: int = 50, db: Session = Depends(get_db), cu
 def create_index(index_in: GedIndexCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.role_checker(["admin_global"]))):
     from app.index_validation import validar_configuracao_indice
     validar_configuracao_indice(
-        index_in.type, index_in.options, index_in.mask, index_in.auto_increment)
+        index_in.type, index_in.options, index_in.mask, index_in.auto_increment,
+        index_in.default_value)
     new_index = models_ged_config.GedIndex(
         name=index_in.name,
         type=index_in.type,
         is_active=index_in.is_active,
         options=index_in.options,
         mask=index_in.mask,
+        default_value=index_in.default_value,
+        is_searchable=index_in.is_searchable,
         auto_increment=index_in.auto_increment,
     )
     new_index.id = str(uuid.uuid4())
@@ -172,6 +176,98 @@ def add_index_to_document_type(doc_type_id: str, mapping_in: DocumentTypeIndexCr
     return mapping
 
 
+@router.get(
+    "/document-types/{doc_type_id}/classifications",
+    response_model=List[DocumentClassificationResponse],
+    tags=["Admin - GED Config"],
+)
+def get_document_classifications(
+    doc_type_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_admin),
+):
+    obter_registro(db, models_ged_config.DocumentType, doc_type_id)
+    return db.query(models_ged_config.DocumentClassification).filter_by(
+        document_type_id=doc_type_id
+    ).order_by(models_ged_config.DocumentClassification.name.asc()).all()
+
+
+@router.post(
+    "/document-types/{doc_type_id}/classifications",
+    response_model=DocumentClassificationResponse,
+    tags=["Admin - GED Config"],
+)
+def create_document_classification(
+    doc_type_id: str,
+    dados: DocumentClassificationCreate,
+    db: Session = Depends(get_db),
+    usuario: models.User = Depends(auth.role_checker(["admin_global"])),
+):
+    obter_registro(db, models_ged_config.DocumentType, doc_type_id)
+    if db.query(models_ged_config.DocumentClassification).filter_by(
+        document_type_id=doc_type_id, name=dados.name
+    ).first():
+        raise HTTPException(409, "Classificação já cadastrada para este tipo documental.")
+    classification = models_ged_config.DocumentClassification(
+        document_type_id=doc_type_id, **dados.model_dump()
+    )
+    db.add(classification)
+    db.flush()
+    auditar(db, usuario, "classificacao_documental", classification.id, "criar", dados.model_dump_json())
+    concluir_configuracao(db)
+    db.refresh(classification)
+    return classification
+
+
+@router.put(
+    "/document-types/{doc_type_id}/classifications/{classification_id}",
+    response_model=DocumentClassificationResponse,
+    tags=["Admin - GED Config"],
+)
+def edit_document_classification(
+    doc_type_id: str,
+    classification_id: str,
+    dados: DocumentClassificationCreate,
+    db: Session = Depends(get_db),
+    usuario: models.User = Depends(auth.role_checker(["admin_global"])),
+):
+    classification = obter_registro(db, models_ged_config.DocumentClassification, classification_id)
+    if classification.document_type_id != doc_type_id:
+        raise HTTPException(404, "Classificação não encontrada neste tipo documental.")
+    if db.query(models_ged_config.DocumentClassification).filter(
+        models_ged_config.DocumentClassification.document_type_id == doc_type_id,
+        models_ged_config.DocumentClassification.name == dados.name,
+        models_ged_config.DocumentClassification.id != classification_id,
+    ).first():
+        raise HTTPException(409, "Classificação já cadastrada para este tipo documental.")
+    for campo, valor in dados.model_dump().items():
+        setattr(classification, campo, valor)
+    auditar(db, usuario, "classificacao_documental", classification.id, "editar", dados.model_dump_json())
+    concluir_configuracao(db)
+    return classification
+
+
+@router.delete(
+    "/document-types/{doc_type_id}/classifications/{classification_id}",
+    status_code=204,
+    tags=["Admin - GED Config"],
+)
+def delete_document_classification(
+    doc_type_id: str,
+    classification_id: str,
+    db: Session = Depends(get_db),
+    usuario: models.User = Depends(auth.role_checker(["admin_global"])),
+):
+    classification = obter_registro(db, models_ged_config.DocumentClassification, classification_id)
+    if classification.document_type_id != doc_type_id:
+        raise HTTPException(404, "Classificação não encontrada neste tipo documental.")
+    if db.query(GEDDocument).filter_by(classification_id=classification_id).first():
+        raise HTTPException(409, "Classificação em uso. Desative-a para preservar o histórico documental.")
+    auditar(db, usuario, "classificacao_documental", classification.id, "excluir", classification.name)
+    db.delete(classification)
+    concluir_configuracao(db)
+
+
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from app.document_permissions import auditar
@@ -184,6 +280,8 @@ class EdicaoIndice(BaseModel):
     type: str = Field(min_length=1, max_length=50)
     options: List[str] = Field(default_factory=list)
     mask: Optional[str] = Field(default=None, max_length=200)
+    default_value: Optional[str] = Field(default=None, max_length=500)
+    is_searchable: bool = True
     auto_increment: bool = False
     is_active: bool = True
 
@@ -211,7 +309,9 @@ def obter_registro(db, modelo, identificador):
 def editar_indice(indice_id: str, dados: EdicaoIndice, db: Session = Depends(get_db),
                   usuario: models.User = Depends(auth.role_checker(["admin_global"]))):
     from app.index_validation import validar_configuracao_indice
-    validar_configuracao_indice(dados.type, dados.options, dados.mask, dados.auto_increment)
+    validar_configuracao_indice(
+        dados.type, dados.options, dados.mask, dados.auto_increment, dados.default_value
+    )
     indice = obter_registro(db, models_ged_config.GedIndex, indice_id)
     if indice.type != dados.type and db.query(GEDDocumentIndexValue).filter_by(index_id=indice_id).first():
         raise HTTPException(409, "O tipo de dado não pode mudar após receber valores documentais.")

@@ -1,4 +1,4 @@
-// JS para gestão de Templates RVDD (Baseado no trânsito dinâmico)
+// JS para gestão de Templates RVDD (Baseado no fluxo de trabalho dinâmico)
 const TEMPLATES_API = `${API_URL}/templates`;
 
 async function loadTemplates() {

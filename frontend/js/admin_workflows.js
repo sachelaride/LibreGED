@@ -149,7 +149,7 @@ async function loadWorkflows() {
         tbody.innerHTML = '';
         
         if (!workflows || workflows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Nenhum workflow cadastrado.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Nenhum fluxo de trabalho cadastrado.</td></tr>';
             return;
         }
         
@@ -829,7 +829,7 @@ function openWorkflowModal() {
     document.getElementById('wf-name').value = '';
     document.getElementById('wf-internal').value = '';
     document.getElementById('wf-active').checked = true;
-    document.getElementById('workflow-modal-title').textContent = 'Novo Workflow';
+    document.getElementById('workflow-modal-title').textContent = 'Novo Fluxo de Trabalho';
     document.getElementById('modal-workflow').classList.add('active');
 }
 
@@ -837,7 +837,7 @@ async function exportCurrentWorkflow() {
     if (!currentWorkflowId) return;
     const response = await fetch(`${WORKFLOWS_API}/${currentWorkflowId}/export`, { headers: getAuthHeaders() });
     if (!response.ok) {
-        alert('Não foi possível baixar o workflow.');
+        alert('Não foi possível baixar o fluxo de trabalho.');
         return;
     }
     const blob = await response.blob();
@@ -859,12 +859,12 @@ async function importWorkflowFile(file) {
     });
     if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        alert(error.detail || 'Não foi possível importar o workflow.');
+        alert(error.detail || 'Não foi possível importar o fluxo de trabalho.');
         return;
     }
     document.getElementById('workflow-import-file').value = '';
     await loadWorkflows();
-    alert('Workflow importado como rascunho. Selecione-o e publique a versão quando estiver pronto.');
+    alert('Fluxo de trabalho importado como rascunho. Selecione-o e publique a versão quando estiver pronto.');
 }
 
 async function publishCurrentWorkflow() {
@@ -901,7 +901,7 @@ async function openWorkflowVersions(workflowId) {
     }
     const versions = await response.json();
     if (!versions.length) {
-        list.innerHTML = '<p class="workflow-empty-state">Este workflow ainda não possui versões publicadas.</p>';
+        list.innerHTML = '<p class="workflow-empty-state">Este fluxo de trabalho ainda não possui versões publicadas.</p>';
         return;
     }
     list.innerHTML = versions.map(version => `
@@ -993,14 +993,14 @@ async function toggleWorkflowActive(id, isActive) {
     });
     if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        alert(error.detail || 'Não foi possível alterar o status do workflow.');
+        alert(error.detail || 'Não foi possível alterar o status do fluxo de trabalho.');
         return;
     }
     await loadWorkflows();
 }
 
 async function deleteWorkflow(id) {
-    if(!confirm("Tem certeza que deseja excluir este workflow?")) return;
+    if(!confirm("Tem certeza que deseja excluir este fluxo de trabalho?")) return;
     
     try {
         const response = await fetch(`${WORKFLOWS_API}/${id}`, {
@@ -1009,7 +1009,7 @@ async function deleteWorkflow(id) {
         });
         
         if(response.ok || response.status === 204) {
-            alert('Workflow excluído com sucesso.');
+            alert('Fluxo de trabalho excluído com sucesso.');
             if (currentWorkflowId === id) {
                 currentWorkflowId = null;
                 document.getElementById('current-workflow-name').innerText = "Selecione um workflow";
@@ -1025,7 +1025,7 @@ async function deleteWorkflow(id) {
             loadWorkflows();
         } else {
             const err = await response.json();
-            alert("Erro ao excluir workflow: " + (err.detail || ""));
+            alert("Erro ao excluir fluxo de trabalho: " + (err.detail || ""));
         }
     } catch(e) {
         alert("Erro de conexão.");
@@ -1250,7 +1250,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (workflowDirty && currentWorkflowId && target !== 'workflows') {
                 event.preventDefault();
                 event.stopPropagation();
-                const shouldLeave = window.confirm('Há alterações não salvas no workflow. Deseja sair sem salvar?');
+                const shouldLeave = window.confirm('Há alterações não salvas no fluxo de trabalho. Deseja sair sem salvar?');
                 if (!shouldLeave) return;
                 resetWorkflowDirty();
                 menu.click();

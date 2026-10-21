@@ -58,7 +58,7 @@ async function editarCadastroAdmin(caminho, registro, indice, atualizar) {
             <label><input name="auto_increment" type="checkbox" ${registro.auto_increment ? 'checked' : ''}> Autonumeração</label>` : `
             <label>Grupo<input name="group_id" value="${escaparAdmin(registro.group_id || '')}"></label>
             <label>Anos de retenção<input name="retention_years" type="number" min="0" max="1000" value="${registro.retention_years}"></label>
-            <label>ID do trânsito<input name="workflow_id" value="${escaparAdmin(registro.workflow_id || '')}"></label>
+            <label>ID do fluxo de trabalho<input name="workflow_id" value="${escaparAdmin(registro.workflow_id || '')}"></label>
             <label>Área de armazenamento<input name="storage_area_id" value="${escaparAdmin(registro.storage_area_id || '')}"></label>
             <label>Partição<input name="storage_partition_id" value="${escaparAdmin(registro.storage_partition_id || '')}"></label>
             <label><input name="legal_hold" type="checkbox" ${registro.legal_hold ? 'checked' : ''}> Preservação legal</label>`}

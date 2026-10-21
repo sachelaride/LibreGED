@@ -1,6 +1,14 @@
 // app_operations.js - Lida com a busca e upload do app.html
 
 let searchDocumentTypes = [];
+let activeSearchIndexFilters = [];
+
+function redirectToLoginIfUnauthorized(response) {
+    if (response.status !== 401) return false;
+    localStorage.removeItem('ged_token');
+    window.location.href = 'login.html';
+    return true;
+}
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -17,6 +25,7 @@ async function loadSearchDocumentTypes() {
     if (!selector) return;
     try {
         const response = await fetch(`${API_URL}/documents/search/types`, { headers: getAuthHeaders() });
+        if (redirectToLoginIfUnauthorized(response)) return;
         if (!response.ok) return;
         const items = await response.json();
         searchDocumentTypes = Array.isArray(items) ? items : [];
@@ -78,21 +87,20 @@ function loadSearchGroups() {
 function updateSearchIndexHelp() {
     const typeId = document.getElementById('search-document-type')?.value;
     const groupId = document.getElementById('search-group')?.value;
-    const help = document.getElementById('search-indexes-help');
     const indexSelector = document.getElementById('search-index');
-    if (!help) return;
     const types = searchDocumentTypes.filter(item =>
         (!typeId || item.id === typeId) && (!groupId || item.group_id === groupId)
     );
     const indices = [...new Map(
-        types.flatMap(item => (item.indices || []).map(link => {
+        (typeId ? types : []).flatMap(item => (item.indices || []).map(link => {
             const index = link.index || link;
             return [index.id, index];
         }))
-    ).values()];
+    ).values()].filter(index => index.is_searchable !== false);
     const currentIndex = indexSelector?.value;
     if (indexSelector) {
-        indexSelector.innerHTML = '<option value="">Índice cadastrado</option>';
+        indexSelector.innerHTML = '<option value="">Índice</option>';
+        indexSelector.disabled = indices.length === 0;
         indices.forEach(index => {
             const option = document.createElement('option');
             option.value = index.id;
@@ -101,9 +109,64 @@ function updateSearchIndexHelp() {
         });
         if (indices.some(index => index.id === currentIndex)) indexSelector.value = currentIndex;
     }
-    help.textContent = indices.length
-        ? `Índices disponíveis: ${indices.map(index => index.name).join(', ')}.`
-        : 'Selecione um grupo ou tipo para ver os índices disponíveis.';
+    const classificationSelector = document.getElementById('search-classification');
+    if (classificationSelector) {
+        const currentClassification = classificationSelector.value;
+        const classifications = types.flatMap(item => item.classifications || []);
+        classificationSelector.innerHTML = '<option value="">Classificação</option>';
+        classifications.forEach(classification => {
+            const option = document.createElement('option');
+            option.value = classification.id;
+            option.textContent = classification.name;
+            classificationSelector.appendChild(option);
+        });
+        if (classifications.some(item => item.id === currentClassification)) {
+            classificationSelector.value = currentClassification;
+        }
+    }
+    activeSearchIndexFilters = activeSearchIndexFilters.filter(filter =>
+        indices.some(index => index.id === filter.index_id)
+    );
+    renderSearchIndexFilters();
+}
+
+function addSearchIndexFilter() {
+    const indexId = document.getElementById('search-index')?.value || '';
+    const value = document.getElementById('search-index-value')?.value.trim() || '';
+    if (!indexId || !value) {
+        document.getElementById('search-index-value')?.focus();
+        return;
+    }
+    if (activeSearchIndexFilters.some(filter => filter.index_id === indexId)) {
+        alert('Este índice já foi adicionado à pesquisa.');
+        return;
+    }
+    activeSearchIndexFilters.push({index_id: indexId, value});
+    document.getElementById('search-index-value').value = '';
+    renderSearchIndexFilters();
+}
+
+function renderSearchIndexFilters() {
+    const container = document.getElementById('search-index-filters');
+    if (!container) return;
+    container.replaceChildren();
+    activeSearchIndexFilters.forEach((filter, position) => {
+        const index = searchDocumentTypes.flatMap(type => type.indices || [])
+            .map(link => link.index || link).find(item => item.id === filter.index_id);
+        const chip = document.createElement('span');
+        chip.className = 'search-result-indices';
+        chip.textContent = `${index?.name || 'Índice'}: ${filter.value} `;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn-secondary btn-small';
+        remove.textContent = 'Remover';
+        remove.onclick = () => {
+            activeSearchIndexFilters.splice(position, 1);
+            renderSearchIndexFilters();
+        };
+        chip.append(remove);
+        container.append(chip);
+    });
 }
 
 function updateOcrHelp() {
@@ -127,6 +190,10 @@ function clearSearchFilters() {
     });
     const typeField = document.getElementById('search-document-type');
     if (typeField) typeField.value = '';
+    const classificationField = document.getElementById('search-classification');
+    if (classificationField) classificationField.value = '';
+    activeSearchIndexFilters = [];
+    renderSearchIndexFilters();
     loadSearchTypeOptions();
     updateSearchIndexHelp();
     document.getElementById('search-summary').textContent = '';
@@ -139,12 +206,14 @@ async function performSearch() {
     const studentId = document.getElementById('search-student')?.value || '';
     const groupId = document.getElementById('search-group')?.value || '';
     const docTypeId = document.getElementById('search-document-type')?.value || '';
+    const classificationId = document.getElementById('search-classification')?.value || '';
     const indexValue = document.getElementById('search-index-value')?.value.trim() || '';
     const indexId = document.getElementById('search-index')?.value || '';
     const resultsContainer = document.getElementById('search-results');
     const summary = document.getElementById('search-summary');
 
-    if (!query && !studentId && !groupId && !docTypeId && !indexId && !indexValue) {
+    if (!query && !studentId && !groupId && !docTypeId && !classificationId &&
+        !indexId && !indexValue && !activeSearchIndexFilters.length) {
         summary.textContent = '';
         resultsContainer.innerHTML = '<p class="text-muted" style="text-align:center;">Digite um termo ou use filtros para começar a busca.</p>';
         return;
@@ -159,8 +228,12 @@ async function performSearch() {
         if (studentId) params.set('student_id', studentId);
         if (groupId) params.set('group_id', groupId);
         if (docTypeId) params.set('document_type_id', docTypeId);
-        if (indexId) params.set('index_id', indexId);
-        if (indexValue) params.set('index_value', indexValue);
+        if (classificationId) params.set('classification_id', classificationId);
+        const indexFilters = [...activeSearchIndexFilters];
+        if (indexId && indexValue && !indexFilters.some(filter => filter.index_id === indexId)) {
+            indexFilters.push({index_id: indexId, value: indexValue});
+        }
+        if (indexFilters.length) params.set('index_filters', JSON.stringify(indexFilters));
 
         const response = await fetch(`${API_URL}/documents/search?${params.toString()}`, {
             headers: getAuthHeaders()
@@ -196,6 +269,12 @@ async function performSearch() {
             const typeText = doc.document_type?.name
                 ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Tipo: ${escapeHtml(doc.document_type.name)}</div>`
                 : '';
+            const classificationText = doc.classification?.name
+                ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Classificação: ${escapeHtml(doc.classification.name)}</div>`
+                : '';
+            const createdText = doc.created_at
+                ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Incluído em: ${escapeHtml(new Date(doc.created_at).toLocaleString('pt-BR'))}</div>`
+                : '';
             const indicesText = (doc.indices || []).length
                 ? `<div class="search-result-indices">${doc.indices.map(index =>
                     `<span><strong>${escapeHtml(index.name)}:</strong> ${escapeHtml(index.value)}</span>`
@@ -207,6 +286,9 @@ async function performSearch() {
                 : 'OCR não executado';
             const ocrClass = ocrIndexed ? 'ocr-status-indexed' : 'ocr-status-skipped';
             const documentId = encodeURIComponent(doc.document_id || doc.id || '');
+            const downloadButton = doc.can_download
+                ? `<button class="btn-secondary btn-small" onclick="downloadDocument(decodeURIComponent('${documentId}'))">Baixar</button>`
+                : '';
             html += `
                 <div class="glass-panel" style="padding: 20px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
                     <div style="flex:1;">
@@ -219,11 +301,14 @@ async function performSearch() {
                         ${studentText}
                         ${groupText}
                         ${typeText}
+                        ${classificationText}
+                        ${createdText}
                         ${indicesText}
                         <div class="search-result-snippet">${snippet || 'Sem prévia extraída por OCR.'}</div>
                     </div>
                     <div>
                         <button class="btn-secondary btn-small" onclick="viewDocument(decodeURIComponent('${documentId}'))">Visualizar</button>
+                        ${downloadButton}
                     </div>
                 </div>
             `;
@@ -240,6 +325,29 @@ async function performSearch() {
 
 function viewDocument(docId) {
     openDocumentPreview(docId, `documents/${encodeURIComponent(docId)}/preview`);
+}
+
+async function downloadDocument(docId) {
+    try {
+        const response = await fetch(`${API_URL}/documents/${encodeURIComponent(docId)}/download`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || 'Download não autorizado ou indisponível.');
+        }
+        const blob = await response.blob();
+        const filename = response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/i)?.[1]
+            || `documento-${docId}`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        alert(error.message);
+    }
 }
 
 let documentPreviewUrl = null;
@@ -374,12 +482,19 @@ async function carregarTiposUpload() {
         opcao.textContent = tipo.name;
         seletor.append(opcao);
     });
+    carregarIndicesUpload();
 }
 
 function carregarIndicesUpload() {
     const tipo = tiposDocumentaisUpload.find(item => item.id === document.getElementById('upload-document-type').value);
     const painel = document.getElementById('upload-indices');
+    const classificationSelector = document.getElementById('upload-document-classification');
     painel.replaceChildren();
+    classificationSelector.replaceChildren(new Option('Selecione a classificação', ''));
+    (tipo?.classifications || []).forEach(classification => {
+        classificationSelector.append(new Option(classification.name, classification.id));
+    });
+    classificationSelector.required = Boolean(tipo?.classifications?.length);
     if (!tipo) return;
     (tipo.indices || []).forEach(vinculo => {
         const indice = vinculo.index;
@@ -401,14 +516,19 @@ function carregarIndicesUpload() {
             campo.append(new Option('Selecione', ''), new Option('Sim', 'true'), new Option('Não', 'false'));
         } else {
             campo = document.createElement('input');
-            campo.type = indice.type.toLocaleLowerCase() === 'data' ? 'date' :
-                ['número', 'numero'].includes(indice.type.toLocaleLowerCase()) ? 'number' : 'text';
+            const tipoIndice = indice.type.toLocaleLowerCase();
+            campo.type = tipoIndice === 'data' ? 'date' :
+                ['data/hora', 'data_hora', 'datetime'].includes(tipoIndice) ? 'datetime-local' :
+                ['número', 'numero'].includes(tipoIndice) ? 'number' : 'text';
             if (indice.mask) campo.pattern = indice.mask;
         }
         campo.classList.add('form-control');
         campo.dataset.indexId = indice.id;
         campo.dataset.autoIncrement = indice.auto_increment ? 'true' : 'false';
         campo.required = vinculo.is_required && !indice.auto_increment;
+        if (indice.default_value !== null && indice.default_value !== undefined) {
+            campo.value = indice.default_value;
+        }
         grupo.append(rotulo, campo);
         painel.append(grupo);
     });
@@ -434,6 +554,7 @@ async function loadTaskMonitor() {
         const response = await fetch(`${API_URL}/workflows/tasks/my-tasks`, {
             headers: getAuthHeaders()
         });
+        if (redirectToLoginIfUnauthorized(response)) return;
         if (!response.ok) {
             renderOperationError(list, `Não foi possível carregar tarefas (HTTP ${response.status}).`);
             return;
@@ -464,20 +585,20 @@ async function loadTaskMonitor() {
 async function loadFlowMonitor() {
     const list = document.getElementById('flow-monitor-list');
     if (!list) return;
-    list.innerHTML = '<p class="text-muted">Carregando trânsitos...</p>';
+    list.innerHTML = '<p class="text-muted">Carregando fluxos de trabalho...</p>';
     try {
         const response = await fetch(`${API_URL}/workflows?page=1&size=100`, {
             headers: getAuthHeaders()
         });
         if (!response.ok) {
-            renderOperationError(list, `Monitor de trânsito indisponível para este perfil (HTTP ${response.status}).`);
+            renderOperationError(list, `Lista de fluxos de trabalho indisponível para este perfil (HTTP ${response.status}).`);
             document.getElementById('insight-flow-count')?.replaceChildren(document.createTextNode('-'));
             return;
         }
         const payload = await response.json();
         const flows = payload.items || [];
         if (!flows.length) {
-            list.innerHTML = '<p class="text-muted">Nenhum trânsito disponível.</p>';
+            list.innerHTML = '<p class="text-muted">Nenhum fluxo de trabalho disponível.</p>';
             return;
         }
         list.innerHTML = flows.map(flow => `
@@ -505,9 +626,9 @@ async function initNewFlowView() {
     const stateSelect = document.getElementById('new-flow-state-id');
 
     docTypeSelect.innerHTML = '<option value="">Selecione o Tipo Documental</option>';
-    workflowSelect.innerHTML = '<option value="">Selecione o Modelo de Workflow</option>';
+    workflowSelect.innerHTML = '<option value="">Selecione o fluxo de trabalho</option>';
     docSelect.innerHTML = '<option value="">Selecione primeiro o Tipo</option>';
-    stateSelect.innerHTML = '<option value="">Selecione primeiro o Modelo</option>';
+    stateSelect.innerHTML = '<option value="">Selecione primeiro o fluxo de trabalho</option>';
     docSelect.disabled = true;
     stateSelect.disabled = true;
 
@@ -518,7 +639,7 @@ async function initNewFlowView() {
         ]);
 
         if (!typesRes.ok) throw new Error('Não foi possível carregar os tipos documentais permitidos.');
-        if (!wfRes.ok) throw new Error('Não foi possível carregar os modelos de workflow.');
+        if (!wfRes.ok) throw new Error('Não foi possível carregar os fluxos de trabalho.');
 
         const types = await typesRes.json();
         const workflows = await wfRes.json();
@@ -542,12 +663,12 @@ async function initNewFlowView() {
             docTypeSelect.innerHTML = '<option value="">Nenhum tipo documental disponível para consulta</option>';
         }
         if (!workflowItems.some(workflow => workflow.is_active)) {
-            workflowSelect.innerHTML = '<option value="">Nenhum workflow ativo disponível</option>';
+            workflowSelect.innerHTML = '<option value="">Nenhum fluxo de trabalho ativo disponível</option>';
         }
     } catch (error) {
-        console.error('Falha ao inicializar o assistente de tramitação', error);
+        console.error('Falha ao inicializar o fluxo de trabalho', error);
         docTypeSelect.innerHTML = '<option value="">Falha ao carregar os tipos documentais</option>';
-        workflowSelect.innerHTML = '<option value="">Falha ao carregar os workflows</option>';
+        workflowSelect.innerHTML = '<option value="">Falha ao carregar os fluxos de trabalho</option>';
     }
 
     // Reset wizard to step 1
@@ -702,7 +823,7 @@ async function startFlowFromForm() {
         workflow_id: document.getElementById('new-flow-workflow-id').value.trim(),
         current_state_id: document.getElementById('new-flow-state-id').value.trim()
     };
-    feedback.textContent = 'Iniciando trânsito...';
+    feedback.textContent = 'Iniciando fluxo de trabalho...';
     try {
         const response = await fetch(`${API_URL}/workflows/instances`, {
             method: 'POST',
@@ -714,10 +835,10 @@ async function startFlowFromForm() {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            feedback.textContent = data.detail || `Não foi possível iniciar o trânsito (HTTP ${response.status}).`;
+            feedback.textContent = data.detail || `Não foi possível iniciar o fluxo de trabalho (HTTP ${response.status}).`;
             return;
         }
-        feedback.textContent = `Trânsito iniciado com sucesso: ${data.id || 'instância criada'}.`;
+        feedback.textContent = `Fluxo de trabalho iniciado com sucesso: ${data.id || 'instância criada'}.`;
         document.getElementById('new-flow-form').reset();
         window.location.hash = 'tasks';
     } catch (error) {
@@ -896,6 +1017,12 @@ async function handleFiles(files) {
         alert('Selecione o tipo documental antes de enviar.');
         return;
     }
+    const docType = tiposDocumentaisUpload.find(tipo => tipo.id === docTypeId);
+    const classificationId = document.getElementById('upload-document-classification').value;
+    if (docType?.classifications?.length && !classificationId) {
+        alert('Selecione a classificação do documento antes de enviar.');
+        return;
+    }
 
     const formularioValido = [...document.querySelectorAll('#upload-indices [data-index-id]')]
         .every(campo => campo.disabled || campo.reportValidity());
@@ -920,6 +1047,7 @@ async function handleFiles(files) {
         const formData = new FormData();
         formData.append("title", files[i].name);
         formData.append("document_type_id", docTypeId);
+        if (classificationId) formData.append("classification_id", classificationId);
         formData.append("document_purpose", document.getElementById('upload-document-purpose').value);
         formData.append("student_id", currentStudentId || '');
         formData.append("group_id", groupId);
@@ -976,6 +1104,7 @@ async function loadDashboard() {
             headers: getAuthHeaders()
         });
         const dashlet = document.getElementById('dashlet-tasks');
+        if (redirectToLoginIfUnauthorized(response)) return;
         if(!response.ok) {
             dashlet.innerHTML = '<p style="color:red; text-align:center;">Erro ao carregar tarefas.</p>';
             return;
@@ -1011,6 +1140,7 @@ async function completeTask(taskId) {
         const formResponse = await fetch(`${API_URL}/workflows/tasks/${taskId}/form`, {
             headers: getAuthHeaders()
         });
+        if (redirectToLoginIfUnauthorized(formResponse)) return;
         
         let formData = { action: 'COMPLETE' };
         
@@ -1040,12 +1170,14 @@ async function completeTask(taskId) {
             },
             body: JSON.stringify(formData)
         });
+        if (redirectToLoginIfUnauthorized(response)) return;
         
         if(response.ok) {
             alert('Tarefa concluída!');
             loadDashboard();
         } else {
-            alert('Erro ao concluir tarefa');
+            const error = await response.json().catch(() => ({}));
+            alert(error.detail || `Não foi possível concluir a tarefa (HTTP ${response.status}).`);
         }
     } catch(e) {
         alert('Erro de rede: ' + e);
@@ -1340,6 +1472,7 @@ async function loadLibrary(parentId = null) {
         const response = await fetch(url, {
             headers: getAuthHeaders()
         });
+        if (redirectToLoginIfUnauthorized(response)) return;
         
         if(!response.ok) throw new Error("Erro ao carregar");
         const nodes = await response.json();
@@ -1740,11 +1873,11 @@ async function startWorkflowForDocument() {
     // Fazemos um GET rapido para pegar um ID de workflow válido
     try {
         const wfResp = await fetch(`${API_URL}/workflows`, { headers: getAuthHeaders() });
-        if(!wfResp.ok) throw new Error("Não foi possível listar workflows");
+        if(!wfResp.ok) throw new Error("Não foi possível listar os fluxos de trabalho");
         const wfs = await wfResp.json();
         
         if(wfs.length === 0) {
-            alert('Nenhum modelo de Workflow foi criado pelo Administrador no sistema.');
+            alert('Nenhum fluxo de trabalho foi criado pela administração.');
             return;
         }
         
@@ -1767,7 +1900,7 @@ async function startWorkflowForDocument() {
             closeDocumentDetails();
         } else {
             const data = await response.json();
-            alert('Erro ao iniciar trânsito: ' + (data.detail || ''));
+            alert('Erro ao iniciar fluxo de trabalho: ' + (data.detail || ''));
         }
     } catch(e) {
         alert('Erro: ' + e);

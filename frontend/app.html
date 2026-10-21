@@ -71,11 +71,11 @@
                 </a>
                 <a href="#flow" class="menu-item" data-target="flow">
                     <i class="fa-solid fa-diagram-project" style="margin-right: 12px; font-size:18px;"></i>
-                    Monitor de Trânsito
+                    Fluxos de Trabalho
                 </a>
                 <a href="#new-flow" class="menu-item" data-target="new-flow">
                     <i class="fa-solid fa-code-branch" style="margin-right: 12px; font-size:18px;"></i>
-                    Novo Trânsito
+                    Iniciar Fluxo de Trabalho
                 </a>
                 <a href="#new-task" class="menu-item" data-target="new-task">
                     <i class="fa-solid fa-square-plus" style="margin-right: 12px; font-size:18px;"></i>
@@ -246,7 +246,7 @@
                                 
                                 <div style="display:flex; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
                                     <button id="tab-btn-meta" onclick="switchModalTab('meta')" style="background:none; border:none; color:var(--primary); padding:10px 20px; cursor:pointer; border-bottom: 2px solid var(--primary); font-weight:600;">Metadados</button>
-                                    <button id="tab-btn-flow" onclick="switchModalTab('flow')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Workflow</button>
+                                    <button id="tab-btn-flow" onclick="switchModalTab('flow')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Fluxo de Trabalho</button>
                                     <button id="tab-btn-sig" onclick="switchModalTab('sig')" style="background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; border-bottom: 2px solid transparent;">Assinatura (ICP)</button>
                                 </div>
                                 
@@ -293,15 +293,15 @@
                                     <div id="doc-version-history" style="margin-top:12px;"></div>
                                 </div>
                                 
-                                <!-- Aba Workflow -->
+                                <!-- Aba Fluxo de Trabalho -->
                                 <div id="tab-flow" style="display:none; text-align:center; padding: 20px 0;">
                                     <i class="fa-solid fa-code-merge" style="font-size:48px; color:var(--primary); margin-bottom:20px;"></i>
                                     <h4 style="margin-bottom:10px;">Iniciar Processo de Aprovação</h4>
                                     <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Envie este documento para revisão e aprovação pela chefia.</p>
                                     <select id="doc-modal-workflow-select" class="form-control" style="width:100%; margin-bottom:20px; padding:10px;">
-                                        <option value="Review_Approve">Workflow Padrão: Revisar & Aprovar</option>
+                                        <option value="Review_Approve">Fluxo de Trabalho Padrão: Revisar & Aprovar</option>
                                     </select>
-                                    <button class="btn-primary w-100" onclick="startWorkflowForDocument()"><i class="fa-solid fa-play"></i> Disparar Workflow</button>
+                                    <button class="btn-primary w-100" onclick="startWorkflowForDocument()"><i class="fa-solid fa-play"></i> Iniciar Fluxo de Trabalho</button>
                                 </div>
 
                                 <!-- Aba Assinatura Híbrida -->
@@ -373,13 +373,13 @@
                                 <select id="search-document-type" class="form-control" style="padding: 12px; border-radius: 8px;">
                                     <option value="">Tipo documental</option>
                                 </select>
+                                <select id="search-classification" class="form-control" style="padding: 12px; border-radius: 8px;">
+                                    <option value="">Classificação</option>
+                                </select>
                                 <select id="search-index" class="form-control" style="padding: 12px; border-radius: 8px;">
-                                    <option value="">Índice cadastrado</option>
+                                    <option value="">Índice</option>
                                 </select>
                                 <input type="text" id="search-index-value" class="form-control" placeholder="Valor do índice (CPF, RGM...)" style="padding: 12px; border-radius: 8px;">
-                            </div>
-                            <div id="search-indexes-help" class="search-indexes-help text-muted" aria-live="polite">
-                                Selecione um grupo ou tipo para ver os índices disponíveis.
                             </div>
                         </div>
                         <div id="search-summary" class="search-summary" aria-live="polite"></div>
@@ -423,25 +423,25 @@
                     </div>
                 </section>
 
-                <!-- View: Monitor de Trânsito -->
+                <!-- View: Fluxos de Trabalho -->
                 <section id="view-flow" class="view">
                     <div class="glass-panel" style="padding: 30px; min-height: 400px;">
                         <div class="section-heading">
                             <div>
-                                <h2>Monitor de Trânsito</h2>
-                                <p class="text-muted">Consulte os modelos de trânsito disponíveis para iniciar documentos.</p>
+                                <h2>Fluxos de Trabalho</h2>
+                                <p class="text-muted">Consulte os fluxos de trabalho disponíveis para iniciar documentos.</p>
                             </div>
                             <button class="btn-secondary" type="button" onclick="loadFlowMonitor()">
                                 <i class="fa-solid fa-rotate"></i> Atualizar
                             </button>
                         </div>
                         <div id="flow-monitor-list" class="operation-list">
-                            <p class="text-muted">Carregando trânsitos...</p>
+                            <p class="text-muted">Carregando fluxos de trabalho...</p>
                         </div>
                     </div>
                 </section>
 
-                <!-- View: Novo Trânsito -->
+                <!-- View: Iniciar Fluxo de Trabalho -->
                 <section id="view-new-flow" class="view">
                     <div class="new-flow-wizard">
                         <!-- Progress Bar -->
@@ -458,7 +458,7 @@
                             <div class="wizard-step-connector"></div>
                             <div class="wizard-step" data-step="3">
                                 <div class="wizard-step-icon"><i class="fa-solid fa-diagram-project"></i></div>
-                                <span>Workflow</span>
+                                <span>Fluxo de Trabalho</span>
                             </div>
                             <div class="wizard-step-connector"></div>
                             <div class="wizard-step" data-step="4">
@@ -474,7 +474,7 @@
                                     <div class="wizard-panel-icon"><i class="fa-solid fa-file-circle-check"></i></div>
                                     <div>
                                         <h3>Qual tipo de documento?</h3>
-                                        <p class="text-muted">Escolha a categoria do documento que entrará no fluxo de trânsito.</p>
+                                        <p class="text-muted">Escolha a categoria do documento que será associado ao fluxo de trabalho.</p>
                                     </div>
                                 </div>
                                 <select id="new-flow-doc-type-id" class="form-control wizard-select" required onchange="onNewFlowDocTypeChange()">
@@ -498,7 +498,7 @@
                                     <div class="wizard-panel-icon" style="background: linear-gradient(135deg, #10b981, #059669);"><i class="fa-solid fa-folder-open"></i></div>
                                     <div>
                                         <h3>Selecione o documento</h3>
-                                        <p class="text-muted">Escolha o documento indexado que será tramitado neste fluxo.</p>
+                                        <p class="text-muted">Escolha o documento indexado que será processado neste fluxo de trabalho.</p>
                                     </div>
                                 </div>
                                 <select id="new-flow-document-id" class="form-control wizard-select" required disabled>
@@ -518,30 +518,30 @@
                                 </div>
                             </div>
 
-                            <!-- Step 3: Workflow + Estado -->
+                            <!-- Step 3: Fluxo de Trabalho + Estado -->
                             <div class="wizard-panel" id="wizard-step-3">
                                 <div class="wizard-panel-header">
                                     <div class="wizard-panel-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);"><i class="fa-solid fa-diagram-project"></i></div>
                                     <div>
                                         <h3>Defina o fluxo de trabalho</h3>
-                                        <p class="text-muted">Selecione o modelo de workflow e o estado inicial da tramitação.</p>
+                                        <p class="text-muted">Selecione o fluxo de trabalho e o estado inicial da execução.</p>
                                     </div>
                                 </div>
                                 <div class="wizard-field-group">
-                                    <label for="new-flow-workflow-id"><i class="fa-solid fa-sitemap"></i> Modelo de Workflow</label>
+                                    <label for="new-flow-workflow-id"><i class="fa-solid fa-sitemap"></i> Fluxo de Trabalho</label>
                                     <select id="new-flow-workflow-id" class="form-control wizard-select" required onchange="onNewFlowWorkflowChange()">
-                                        <option value="">Selecione o Modelo</option>
+                                        <option value="">Selecione o Fluxo de Trabalho</option>
                                     </select>
                                 </div>
                                 <div class="wizard-field-group">
                                     <label for="new-flow-state-id"><i class="fa-solid fa-flag-checkered"></i> Estado Inicial</label>
                                     <select id="new-flow-state-id" class="form-control wizard-select" required disabled>
-                                        <option value="">Selecione primeiro o Modelo</option>
+                                        <option value="">Selecione primeiro o fluxo de trabalho</option>
                                     </select>
                                 </div>
                                 <div class="wizard-hint">
                                     <i class="fa-solid fa-circle-info"></i>
-                                    O estado inicial é o primeiro passo do fluxo. Os demais estados serão percorridos automaticamente conforme as regras do workflow.
+                                    O estado inicial é o primeiro passo do fluxo. Os demais estados serão percorridos automaticamente conforme as regras do fluxo de trabalho.
                                 </div>
                                 <div class="wizard-actions">
                                     <button type="button" class="btn-secondary wizard-btn-back" onclick="wizardGoTo(2)">
@@ -559,7 +559,7 @@
                                     <div class="wizard-panel-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);"><i class="fa-solid fa-clipboard-check"></i></div>
                                     <div>
                                         <h3>Confirme e inicie</h3>
-                                        <p class="text-muted">Revise as informações antes de iniciar o trânsito documental.</p>
+                                        <p class="text-muted">Revise as informações antes de iniciar o fluxo de trabalho.</p>
                                     </div>
                                 </div>
                                 <div class="wizard-summary">
@@ -572,7 +572,7 @@
                                         <div class="wizard-summary-value" id="wizard-review-doc">—</div>
                                     </div>
                                     <div class="wizard-summary-row">
-                                        <div class="wizard-summary-label"><i class="fa-solid fa-diagram-project"></i> Workflow</div>
+                                        <div class="wizard-summary-label"><i class="fa-solid fa-diagram-project"></i> Fluxo de Trabalho</div>
                                         <div class="wizard-summary-value" id="wizard-review-wf">—</div>
                                     </div>
                                     <div class="wizard-summary-row">
@@ -585,7 +585,7 @@
                                         <i class="fa-solid fa-arrow-left"></i> Voltar
                                     </button>
                                     <button class="btn-primary wizard-btn-submit" type="submit">
-                                        <i class="fa-solid fa-rocket"></i> Iniciar Trânsito
+                                        <i class="fa-solid fa-rocket"></i> Iniciar Fluxo de Trabalho
                                     </button>
                                 </div>
                             </div>
@@ -599,16 +599,16 @@
                 <section id="view-new-task" class="view">
                     <div class="glass-panel operation-form-panel">
                         <h2>Nova Tarefa</h2>
-                        <p class="text-muted">As tarefas são criadas pelo estado inicial ou pelas transições do workflow.</p>
+                        <p class="text-muted">As tarefas são criadas pelo estado inicial ou pelas transições do fluxo de trabalho.</p>
                         <div class="quick-action-grid">
                             <button class="btn-primary" type="button" onclick="window.location.hash='new-flow'">
-                                <i class="fa-solid fa-code-branch"></i> Iniciar trânsito que gera tarefa
+                                <i class="fa-solid fa-code-branch"></i> Iniciar fluxo de trabalho que gera tarefa
                             </button>
                             <button class="btn-secondary" type="button" onclick="window.location.hash='tasks'">
                                 <i class="fa-solid fa-list-check"></i> Ver minhas tarefas
                             </button>
                         </div>
-                        <div class="operation-feedback">A criação manual isolada de tarefa não está disponível na API operacional; isso evita tarefas sem documento e sem workflow.</div>
+                        <div class="operation-feedback">A criação manual isolada de tarefa não está disponível na API operacional; isso evita tarefas sem documento e sem fluxo de trabalho.</div>
                     </div>
                 </section>
 
@@ -636,7 +636,7 @@
                         <p class="text-muted">Indicadores rápidos baseados nos dados operacionais disponíveis.</p>
                         <div id="insights-grid" class="quick-action-grid">
                             <div class="insight-card"><strong id="insight-task-count">-</strong><span>Tarefas pendentes</span></div>
-                            <div class="insight-card"><strong id="insight-flow-count">-</strong><span>Trânsitos disponíveis</span></div>
+                            <div class="insight-card"><strong id="insight-flow-count">-</strong><span>Fluxos de trabalho disponíveis</span></div>
                             <div class="insight-card"><strong id="insight-upload-count">-</strong><span>Arquivos na fila de upload</span></div>
                         </div>
                         <button class="btn-secondary" type="button" onclick="loadInsights()"><i class="fa-solid fa-rotate"></i> Atualizar indicadores</button>
@@ -672,6 +672,10 @@
                                     <label for="upload-document-type">Tipo documental</label>
                                     <select id="upload-document-type" class="form-control" onchange="carregarIndicesUpload()">
                                         <option value="">Selecione o tipo documental</option>
+                                    </select>
+                                    <label for="upload-document-classification" style="display:block; margin-top:12px;">Classificação</label>
+                                    <select id="upload-document-classification" class="form-control">
+                                        <option value="">Selecione a classificação</option>
                                     </select>
                                     <label for="upload-document-purpose" style="display:block; margin-top:12px;">Finalidade do documento</label>
                                     <select id="upload-document-purpose" class="form-control" aria-describedby="upload-document-purpose-help">

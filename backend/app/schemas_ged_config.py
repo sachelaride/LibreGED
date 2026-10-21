@@ -9,6 +9,8 @@ class GedIndexBase(BaseModel):
     type: str = Field(min_length=1, max_length=50)
     options: List[str] = Field(default_factory=list)
     mask: Optional[str] = Field(default=None, max_length=200)
+    default_value: Optional[str] = Field(default=None, max_length=500)
+    is_searchable: bool = True
     auto_increment: bool = False
     is_active: bool = True
 
@@ -37,6 +39,20 @@ class DocumentTypeIndexResponse(DocumentTypeIndexBase):
     
     class Config:
         from_attributes = True
+
+
+class DocumentClassificationCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    is_active: bool = True
+
+
+class DocumentClassificationResponse(DocumentClassificationCreate):
+    id: str
+    document_type_id: str
+    created_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Document Types ---
 class DocumentTypeBase(BaseModel):

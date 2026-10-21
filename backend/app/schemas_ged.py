@@ -34,6 +34,7 @@ class DocumentCategoryResponse(DocumentCategoryBase):
 class GEDDocumentBase(BaseModel):
     title: str
     category_id: str
+    classification_id: Optional[str] = None
     student_id: Optional[str] = None
     campus_id: Optional[str] = None
     academic_phase: Optional[GEDAcademicPhase] = None

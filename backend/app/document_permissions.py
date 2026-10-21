@@ -12,9 +12,9 @@ ACOES = {
     'consultar': 'Visualizar e pesquisar', 'cadastrar': 'Cadastrar documento',
     'editar': 'Editar documento', 'arquivar': 'Arquivar documento',
     'excluir': 'Excluir documento', 'download': 'Baixar arquivo',
-    'assinar': 'Assinar documento', 'iniciar_fluxo': 'Iniciar trânsito',
+    'assinar': 'Assinar documento', 'iniciar_fluxo': 'Iniciar fluxo de trabalho',
     'segunda_via': 'Emitir segunda via',
-    'executar_fluxo': 'Executar trânsito', 'liberar_quarentena': 'Liberar quarentena',
+    'executar_fluxo': 'Executar fluxo de trabalho', 'liberar_quarentena': 'Liberar quarentena',
     'editar_indices': 'Editar índices', 'exportar': 'Exportar documento',
     'imprimir': 'Imprimir', 'comentar': 'Comentar',
 }
@@ -49,16 +49,24 @@ def tem_permissao(db, usuario, tipo_id, acao):
     if any(acao in (v.permissions or []) for v in vinculos):
         return True
 
-    group_ids = [membership.group_id for membership in db.query(PermissionGroupMember).filter_by(user_id=usuario.id).all()]
+    group_query = db.query(PermissionGroupMember.group_id).join(
+        PermissionGroup, PermissionGroup.id == PermissionGroupMember.group_id
+    ).filter(PermissionGroupMember.user_id == usuario.id)
+    if usuario.institution_id:
+        group_query = group_query.filter(PermissionGroup.institution_id == usuario.institution_id)
+    group_ids = [group_id for group_id, in group_query.all()]
     inherited_ids = set(group_ids)
     pending = list(group_ids)
     while pending:
-        parent_ids = [
-            parent_id for parent_id, in db.query(PermissionGroup.parent_group_id).filter(
-                PermissionGroup.id.in_(pending),
-                PermissionGroup.parent_group_id.is_not(None),
-            ).all()
-        ]
+        parent_query = db.query(PermissionGroup.parent_group_id).filter(
+            PermissionGroup.id.in_(pending),
+            PermissionGroup.parent_group_id.is_not(None),
+        )
+        if usuario.institution_id:
+            parent_query = parent_query.filter(
+                PermissionGroup.institution_id == usuario.institution_id
+            )
+        parent_ids = [parent_id for parent_id, in parent_query.all()]
         pending = [group_id for group_id in parent_ids if group_id not in inherited_ids]
         inherited_ids.update(pending)
     if not inherited_ids:

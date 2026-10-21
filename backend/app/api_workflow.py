@@ -729,6 +729,11 @@ def complete_task(
     conditional_matching = [item for item in matching if item.condition_key is not None]
     if conditional_matching:
         matching = conditional_matching
+    if not matching and action in {"approve", "complete"}:
+        matching = [
+            item for item in transitions
+            if item.is_default and item.condition_key is None
+        ]
     transition = next(
         iter(sorted(
             matching,
@@ -788,7 +793,7 @@ def execute_transition(
     documento_autorizado = obter_documento(db, user, instance.document_id, "executar_fluxo")
     from app.models_ged import GEDDocumentStatus
     if documento_autorizado.status in (GEDDocumentStatus.ASSINADO, GEDDocumentStatus.ARQUIVADO):
-        raise HTTPException(409, "Documento assinado ou arquivado não permite alteração pelo trânsito.")
+        raise HTTPException(409, "Documento assinado ou arquivado não permite alteração pelo fluxo de trabalho.")
     # Advance state
     instance.current_state_id = transition.destination_state_id
     

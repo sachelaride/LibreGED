@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.storage import save_file
 from app.models_ged import GEDDocument, GEDDocumentStatus, GEDAcademicPhase, GEDDocumentIndexValue, DocumentTransitionHistory, DocumentCategory
-from app.models_ged_config import DocumentType
+from app.models_ged_config import DocumentType, DocumentClassification
 from app.models_workflow import DocumentWorkflowInstance, WorkflowState
 from app.schemas_ged import GEDDocumentResponse
 from app.search import SearchService
@@ -30,6 +30,7 @@ router = APIRouter()
 async def upload_document(
     title: str = Form(...),
     document_type_id: str = Form(...),
+    classification_id: Optional[str] = Form(None),
     indices_json: str = Form("[]"), # Expects JSON string of list of dicts [{"index_id": "...", "value": "..."}]
     document_purpose: str = Form("official"),
     student_id: Optional[str] = Form(None),
@@ -51,6 +52,20 @@ async def upload_document(
     exigir_permissao(db, current_user, document_type_id, "cadastrar")
     if not doc_type.is_active:
         raise HTTPException(409, "Tipo documental inativo.")
+
+    classification = None
+    if classification_id:
+        classification = db.query(DocumentClassification).filter_by(
+            id=classification_id,
+            document_type_id=document_type_id,
+            is_active=True,
+        ).first()
+        if not classification:
+            raise HTTPException(422, "Classificação inválida para o tipo documental selecionado.")
+    elif db.query(DocumentClassification).filter_by(
+        document_type_id=document_type_id, is_active=True
+    ).first():
+        raise HTTPException(422, "Selecione uma classificação para o tipo documental.")
 
     if not current_user.institution_id:
         raise HTTPException(422, "Selecione uma instituição para cadastrar documentos.")
@@ -117,6 +132,9 @@ async def upload_document(
     metadata_payload = {
         "student_id": student_id,
         "group_id": group_id,
+        "classification_id": classification.id if classification else None,
+        "classification_name": classification.name if classification else None,
+        "uploaded_by_user_id": persisted_user_id,
         "ocr_engine": ocr_result.get("engine"),
         "ocr_status": ocr_result.get("status"),
         "ocr_reason": ocr_result.get("reason"),
@@ -129,6 +147,7 @@ async def upload_document(
         file_path=saved_path,
         file_hash=file_hash,
         category_id=doc_type.id, # Backward compatibility for existing schemas
+        classification_id=classification.id if classification else None,
         status=initial_doc_status,
         institution_id=current_user.institution_id,
         campus_id=current_user.campus_id,

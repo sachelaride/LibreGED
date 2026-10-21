@@ -109,7 +109,9 @@ O LibreGED cobre nativamente todas as exigências das seguintes legislações e 
 
 ### 1. GED — Gestão de Documentos e Temporalidade
 - **Catálogo de Tipos Documentais:** Cadastro estruturado de tipos (ex.: RG, CPF, Certidão de Nascimento, Histórico do Ensino Médio, Contrato Educacional, Ata de Colação).
-- **Metadados e Índices Personalizados:** Criação de campos customizados por tipo documental com máscaras (CPF, Data, Matrícula) e validação por expressões regulares (regex).
+- **Classificações por Tipo:** Cadastro de classificações como RG, CPF e Diploma associadas a um tipo documental; documentos mantêm a classificação selecionada e ela não pode ser excluída enquanto estiver em uso.
+- **Metadados e Índices Personalizados:** Criação de campos de texto, data, data/hora, número, booleano ou lista por tipo documental, com obrigatoriedade, valor padrão, pesquisa configurável, unicidade e validação por máscaras.
+- **Upload e Pesquisa Documental:** Upload com validação, classificação, índices, responsável, data, OCR e auditoria; consulta combina vários índices e respeita permissões por tipo, instituição e campus.
 - **Tabela de Temporalidade Documental (TTD):**
   - Definição de prazos de guarda na fase corrente e fase intermediária.
   - Destinação final automatizada: expurgo controlado ou recolhimento para guarda permanente.
@@ -279,9 +281,28 @@ Set-Location backend
 
 *(Opcional)* Carregar dados de demonstração (catálogo documental e workflow de diplomas):
 ```powershell
+..\.venv\Scripts\python.exe app/scripts/seed_academic_types.py
 ..\.venv\Scripts\python.exe scripts/seed_document_catalog.py
 ..\.venv\Scripts\python.exe scripts/seed_diploma_workflow.py
 ```
+
+Os seeds criam somente cinco tipos essenciais para testes: Documento Pessoal - Identidade, Documento Pessoal - CPF, Termo de Responsabilidade, Histórico Escolar da Graduação e Diploma Digital (Oficial). Eles são aditivos e não removem tipos já existentes no banco.
+
+#### Recriar ambiente de validação do GED
+
+> **Destrutivo:** este comando apaga os dados da aplicação e o conteúdo atual de `backend/storage`. Preserva as definições de fluxos de trabalho e serviços de representação, e cria um administrador temporário com senha aleatória exibida uma única vez no terminal. Use somente no banco de testes autorizado.
+
+Prévia sem alterações:
+```powershell
+..\.venv\Scripts\python.exe -m app.scripts.reset_validation_environment --confirm-database eduged_libre --dry-run
+```
+
+Executar a limpeza e gerar o conjunto de validação:
+```powershell
+..\.venv\Scripts\python.exe -m app.scripts.reset_validation_environment --confirm-database eduged_libre --apply
+```
+
+O conjunto contém cinco tipos documentais, nove índices, três alunos fictícios, quinze PDFs textuais vinculados aos índices e tarefas pendentes no fluxo de validação/assinatura. Os arquivos são demonstrativos e não possuem validade nem assinatura digital criptográfica.
 
 ### 4. Inicialização dos Serviços
 

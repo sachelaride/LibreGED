@@ -12,6 +12,8 @@ class GedIndex(Base):
     type = Column(String, nullable=False) # e.g., Caractere, Data, Lista, Booleano
     options = Column(JSONB, nullable=False, default=list)
     mask = Column(String, nullable=True)
+    default_value = Column(String, nullable=True)
+    is_searchable = Column(Boolean, nullable=False, default=True, server_default="true")
     auto_increment = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utc_now)
@@ -34,7 +36,27 @@ class DocumentType(Base):
     created_at = Column(DateTime, default=utc_now)
     
     indices = relationship("DocumentTypeIndex", back_populates="document_type", cascade="all, delete-orphan")
+    classifications = relationship(
+        "DocumentClassification", back_populates="document_type", cascade="all, delete-orphan"
+    )
     versions = relationship("DocumentTypeVersion", back_populates="document_type", cascade="all, delete-orphan")
+
+
+class DocumentClassification(Base):
+    __tablename__ = "ged_document_classifications"
+    __table_args__ = (
+        UniqueConstraint("document_type_id", "name", name="uq_document_classification_type_name"),
+    )
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_type_id = Column(
+        String, ForeignKey("ged_document_types.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name = Column(String, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+    document_type = relationship("DocumentType", back_populates="classifications")
 
 
 class DocumentTypeVersion(Base):

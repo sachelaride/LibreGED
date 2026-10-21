@@ -24,7 +24,7 @@ async function loadIndices() {
                 <td><span class="badge badge-primary">${idx.type}</span></td>
                 <td><span class="badge badge-success">${idx.is_active ? 'Ativo' : 'Inativo'}</span></td>
                 <td>
-                    <button class="btn-secondary btn-small" onclick="editIndex('${idx.id}', '${idx.name}', '${idx.type}', '${(idx.options || []).join('\\n')}', '${idx.mask || ''}', ${idx.auto_increment}, ${idx.is_active})">Editar</button>
+                    <button class="btn-secondary btn-small" onclick="editIndex('${idx.id}', '${idx.name}', '${idx.type}', '${(idx.options || []).join('\\n')}', '${idx.mask || ''}', ${idx.auto_increment}, ${idx.is_active}, '${idx.default_value || ''}', ${idx.is_searchable !== false})">Editar</button>
                     <button class="btn-danger btn-small" onclick="deleteIndex('${idx.id}')">Excluir</button>
                 </td>
             `;
@@ -42,12 +42,12 @@ function openIndexModal() {
     renderIndexModal();
 }
 
-function editIndex(id, name, type, options, mask, auto_increment, is_active) {
+function editIndex(id, name, type, options, mask, auto_increment, is_active, default_value, is_searchable) {
     currentIndexId = id;
-    renderIndexModal(name, type, options, mask, auto_increment, is_active);
+    renderIndexModal(name, type, options, mask, auto_increment, is_active, default_value, is_searchable);
 }
 
-function renderIndexModal(name = '', type = 'Texto', options = '', mask = '', auto_increment = false, is_active = true) {
+function renderIndexModal(name = '', type = 'Texto', options = '', mask = '', auto_increment = false, is_active = true, default_value = '', is_searchable = true) {
     const existing = document.getElementById('modal-index');
     if (existing) existing.remove();
 
@@ -67,6 +67,7 @@ function renderIndexModal(name = '', type = 'Texto', options = '', mask = '', au
                     <select id="idx-type" onchange="toggleIndexOptions()">
                         <option value="Texto" ${type === 'Texto' ? 'selected' : ''}>Texto</option>
                         <option value="Data" ${type === 'Data' ? 'selected' : ''}>Data</option>
+                        <option value="Data/Hora" ${type === 'Data/Hora' ? 'selected' : ''}>Data/Hora</option>
                         <option value="Número" ${type === 'Número' ? 'selected' : ''}>Número</option>
                         <option value="Booleano" ${type === 'Booleano' ? 'selected' : ''}>Booleano</option>
                         <option value="Lista" ${type === 'Lista' ? 'selected' : ''}>Lista</option>
@@ -82,6 +83,13 @@ function renderIndexModal(name = '', type = 'Texto', options = '', mask = '', au
                 </div>
                 <div class="form-group">
                     <label><input type="checkbox" id="idx-auto" ${auto_increment ? 'checked' : ''}> Gerar número automaticamente</label>
+                </div>
+                <div class="form-group">
+                    <label>Valor padrão (opcional)</label>
+                    <input type="text" id="idx-default-value" value="${default_value || ''}" maxlength="500">
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="idx-searchable" ${is_searchable ? 'checked' : ''}> Disponível para pesquisa</label>
                 </div>
                 ${currentIndexId ? `<div class="form-group">
                     <label><input type="checkbox" id="idx-active" ${is_active ? 'checked' : ''}> Ativo</label>
@@ -104,6 +112,8 @@ async function saveIndex() {
     const options = document.getElementById('idx-options').value.split('\\n').map(v => v.trim()).filter(Boolean);
     const mask = document.getElementById('idx-mask').value.trim() || null;
     const auto_increment = document.getElementById('idx-auto').checked;
+    const default_value = document.getElementById('idx-default-value').value.trim() || null;
+    const is_searchable = document.getElementById('idx-searchable').checked;
     const is_active_el = document.getElementById('idx-active');
     const is_active = is_active_el ? is_active_el.checked : true;
     
@@ -117,7 +127,7 @@ async function saveIndex() {
                 ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ name, type, options, mask, auto_increment, is_active })
+            body: JSON.stringify({ name, type, options, mask, default_value, is_searchable, auto_increment, is_active })
         });
         if(response.ok) {
             document.getElementById('modal-index').remove();
@@ -215,10 +225,127 @@ function selectDocType(id, name) {
     currentDocTypeId = id;
     document.getElementById('current-doctype-name').innerText = name;
     document.getElementById('btn-add-index').disabled = false;
+    document.getElementById('btn-add-classification').disabled = false;
     document.getElementById('btn-add-xsd').disabled = false;
     
     loadMappedIndices(id);
+    loadDocumentClassifications(id);
     loadXsds(id);
+}
+
+async function loadDocumentClassifications(docTypeId = currentDocTypeId) {
+    const tbody = document.getElementById('table-document-classifications-body');
+    if (!tbody || !docTypeId) return;
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Carregando...</td></tr>';
+    try {
+        const response = await fetch(`${API_URL}/document-types/${docTypeId}/classifications`, {
+            headers: getAuthHeaders()
+        });
+        const items = await response.json();
+        if (!response.ok) throw new Error(items.detail || 'Falha ao carregar classificações');
+        tbody.replaceChildren();
+        if (!items.length) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Nenhuma classificação cadastrada</td></tr>';
+            return;
+        }
+        items.forEach(item => {
+            const row = document.createElement('tr');
+            const name = document.createElement('td');
+            name.textContent = item.name;
+            const status = document.createElement('td');
+            status.textContent = item.is_active ? 'Ativa' : 'Inativa';
+            const actions = document.createElement('td');
+            const edit = document.createElement('button');
+            edit.className = 'btn-secondary btn-small';
+            edit.textContent = 'Editar';
+            edit.onclick = () => editDocumentClassification(item);
+            const remove = document.createElement('button');
+            remove.className = 'btn-danger btn-small';
+            remove.textContent = 'Excluir';
+            remove.onclick = () => deleteDocumentClassification(item);
+            const toggle = document.createElement('button');
+            toggle.className = 'btn-secondary btn-small';
+            toggle.textContent = item.is_active ? 'Desativar' : 'Ativar';
+            toggle.onclick = () => toggleDocumentClassification(item);
+            actions.append(edit, toggle, remove);
+            row.append(name, status, actions);
+            tbody.append(row);
+        });
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="3" style="color:red">Erro: ${error.message}</td></tr>`;
+    }
+}
+
+async function saveDocumentClassification(classification = null) {
+    const name = prompt('Nome da classificação (ex.: RG, CPF, Diploma):', classification?.name || '');
+    if (name === null || !name.trim()) return;
+    const is_active = classification ? classification.is_active : true;
+    const path = `${API_URL}/document-types/${currentDocTypeId}/classifications`;
+    const response = await fetch(
+        classification ? `${path}/${classification.id}` : path,
+        {
+            method: classification ? 'PUT' : 'POST',
+            headers: {...getAuthHeaders(), 'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name.trim(), is_active})
+        }
+    );
+    const data = response.status === 204 ? null : await response.json();
+    if (!response.ok) throw new Error(data?.detail || 'Não foi possível salvar a classificação.');
+    await loadDocumentClassifications();
+}
+
+async function createDocumentClassification() {
+    try {
+        await saveDocumentClassification();
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function editDocumentClassification(classification) {
+    try {
+        await saveDocumentClassification(classification);
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function toggleDocumentClassification(classification) {
+    try {
+        const response = await fetch(
+            `${API_URL}/document-types/${currentDocTypeId}/classifications/${classification.id}`,
+            {
+                method: 'PUT',
+                headers: {...getAuthHeaders(), 'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    name: classification.name,
+                    is_active: !classification.is_active
+                })
+            }
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Não foi possível alterar a classificação.');
+        await loadDocumentClassifications();
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function deleteDocumentClassification(classification) {
+    if (!confirm(`Excluir a classificação "${classification.name}"?`)) return;
+    try {
+        const response = await fetch(
+            `${API_URL}/document-types/${currentDocTypeId}/classifications/${classification.id}`,
+            {method: 'DELETE', headers: getAuthHeaders()}
+        );
+        if (!response.ok && response.status !== 204) {
+            const data = await response.json();
+            throw new Error(data.detail || 'Não foi possível excluir a classificação.');
+        }
+        await loadDocumentClassifications();
+    } catch (error) {
+        alert(error.message);
+    }
 }
 
 async function loadMappedIndices(docTypeId = currentDocTypeId) {

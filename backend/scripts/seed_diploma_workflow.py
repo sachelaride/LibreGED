@@ -12,12 +12,10 @@ import app.models_ged
 
 DOCUMENTS_TO_CHECK = [
     "Termo de Responsabilidade",
-    "Documento de Identidade (RG)",
-    "Cadastro de Pessoa Física (CPF)",
-    "Certidão de Nascimento ou Casamento",
-    "Certificado de Conclusão do Ensino Médio",
+    "Documento Pessoal - Identidade",
+    "Documento Pessoal - CPF",
     "Histórico Escolar da Graduação",
-    "Ata de Colação de Grau"
+    "Diploma Digital (Oficial)"
 ]
 
 def create_seed():

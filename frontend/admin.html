@@ -95,14 +95,14 @@
                 </a>
                 <a href="#" class="menu-item role-admin-global role-admin-instituicao" data-target="workflows">
                     <span class="icon workflow-icon" aria-hidden="true">
-                        <svg viewBox="0 0 32 32" role="img" aria-label="Trânsito">
+                        <svg viewBox="0 0 32 32" role="img" aria-label="Fluxo de trabalho">
                             <rect x="2.5" y="11" width="8" height="8" rx="2"></rect>
                             <rect x="21.5" y="2.5" width="8" height="8" rx="2"></rect>
                             <rect x="21.5" y="21.5" width="8" height="8" rx="2"></rect>
                             <path d="M10.5 15h5a3 3 0 0 0 3-3V8.5h3"></path>
                             <path d="M10.5 15h5a3 3 0 0 1 3 3v5.5h3"></path>
                         </svg>
-                    </span> Workflows
+                    </span> Fluxos de Trabalho
                 </a>
                 <a href="#" class="menu-item role-admin-global role-admin-instituicao" data-target="templates-html">
                     <span class="icon">📄</span> Templates (RVDD)
@@ -209,7 +209,7 @@
                                 <span id="dash-quarantine-count" style="font-weight: bold;">-</span>
                             </div>
                             <div style="display: flex; justify-content: space-between;">
-                                <span>Workflows Ativos:</span>
+                                <span>Fluxos de Trabalho Ativos:</span>
                                 <span id="dash-wf-active" style="font-weight: bold;">-</span>
                             </div>
                         </div>
@@ -288,12 +288,12 @@
                     </div>
                 </section>
 
-                <!-- View: Workflows -->
+                <!-- View: Fluxos de Trabalho -->
                 <section id="view-workflows" class="view" style="display: none;">
                     <div class="workflow-layout">
                         <div class="glass-panel workflow-list-panel">
                             <div class="workflow-list-header">
-                                <h4>Workflows</h4>
+                                <h4>Fluxos de Trabalho</h4>
                                 <div class="workflow-list-actions">
                                     <button class="btn-primary btn-small" onclick="openWorkflowEditor()">+ Novo</button>
                                     <button class="btn-secondary btn-small workflow-list-collapse" type="button" onclick="toggleWorkflowListPanel()" title="Ocultar lista">⟨</button>
@@ -314,7 +314,7 @@
                                 <div class="header-left" style="pointer-events: auto;">
                                     <div class="workflow-title-box" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.95); padding: 8px 14px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
                                         <div class="workflow-title">
-                                            <h1 style="margin: 0; font-size: 15px; color: #0f172a; white-space: nowrap;"><span id="current-workflow-name" style="color:var(--primary);">Selecione um workflow</span></h1>
+                                            <h1 style="margin: 0; font-size: 15px; color: #0f172a; white-space: nowrap;"><span id="current-workflow-name" style="color:var(--primary);">Selecione um fluxo de trabalho</span></h1>
                                         </div>
                                     </div>
                                 </div>
@@ -351,7 +351,7 @@
                                     <div class="header-actions" style="display: flex; gap: 8px; background: rgba(255, 255, 255, 0.95); padding: 6px 10px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; align-items: center;">
                                         <button class="btn-icon" id="btn-show-workflow-list" title="Mostrar lista" type="button" onclick="toggleWorkflowListPanel(false)" style="display:none;"><i class="fa-solid fa-list"></i></button>
                                         <button class="btn-icon" id="btn-toggle-fullscreen" title="Tela cheia" type="button" onclick="toggleWorkflowFullscreen()"><i class="fa-solid fa-expand"></i></button>
-                                        <button class="btn-icon" id="btn-workflow-templates" title="Modelos Prontos de Workflow" type="button" onclick="openWorkflowTemplatesModal()"><i class="fa-solid fa-shapes"></i></button>
+                                        <button class="btn-icon" id="btn-workflow-templates" title="Modelos Prontos de Fluxo de Trabalho" type="button" onclick="openWorkflowTemplatesModal()"><i class="fa-solid fa-shapes"></i></button>
                                         <button class="btn-icon" id="btn-organize-workflow" disabled title="Organizar" type="button" onclick="organizeCurrentWorkflow()"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
                                         <button class="btn-icon" id="btn-versions-workflow" disabled title="Versões" type="button" onclick="restoreWorkflowVersion()"><i class="fa-solid fa-code-commit"></i></button>
                                         <button class="btn-icon" id="btn-import-workflow" title="Importar JSON" onclick="document.getElementById('workflow-import-file').click()"><i class="fa-solid fa-file-import"></i></button>
@@ -545,11 +545,11 @@
         </div>
     </div>
 
-    <!-- Modal Novo Workflow -->
+    <!-- Modal Novo Fluxo de Trabalho -->
                 <div class="modal-overlay" id="modal-workflow">
                     <div class="modal-content glass-panel" style="width: 520px; max-width: calc(100vw - 32px); padding: 30px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                            <h2 id="workflow-modal-title">Novo Workflow</h2>
+                            <h2 id="workflow-modal-title">Novo Fluxo de Trabalho</h2>
                             <button class="btn-close" onclick="document.getElementById('modal-workflow').classList.remove('active')">✖</button>
                         </div>
                         <form onsubmit="event.preventDefault(); saveWorkflow();">
@@ -562,7 +562,7 @@
                                 <input type="text" id="wf-internal" required>
                             </div>
                             <div class="form-group workflow-active-field">
-                                <label><input type="checkbox" id="wf-active" checked> Workflow ativo</label>
+                                <label><input type="checkbox" id="wf-active" checked> Fluxo de trabalho ativo</label>
                             </div>
                             <input type="hidden" id="wf-id">
                             <button type="submit" class="btn-primary w-100">Salvar</button>
@@ -575,7 +575,7 @@
                         <div class="workflow-modal-heading">
                             <div>
                                 <span class="eyebrow">Histórico</span>
-                                <h2>Versões do workflow</h2>
+                                <h2>Versões do fluxo de trabalho</h2>
                             </div>
                             <button class="btn-close" onclick="closeWorkflowVersions()">✖</button>
                         </div>
@@ -585,13 +585,13 @@
                     </div>
                 </div>
 
-                <!-- Modal Modelos Prontos de Workflow -->
+                <!-- Modal Modelos Prontos de Fluxo de Trabalho -->
                 <div class="modal-overlay" id="modal-workflow-templates">
                     <div class="modal-content glass-panel" style="width: 760px; max-width: calc(100vw - 32px); padding: 25px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <div>
                                 <span class="eyebrow" style="color:var(--primary); font-size:11px; text-transform:uppercase; font-weight:700;">Biblioteca de Processos</span>
-                                <h2 style="margin:4px 0 0; font-size:18px;">Modelos Prontos de Workflow (BPMN)</h2>
+                                <h2 style="margin:4px 0 0; font-size:18px;">Modelos Prontos de Fluxo de Trabalho (BPMN)</h2>
                             </div>
                             <button class="btn-close" onclick="closeWorkflowTemplatesModal()">✖</button>
                         </div>
@@ -719,6 +719,7 @@
                                 <h4>Schemas XSD e Índices: <span id="current-doctype-name" style="color:var(--primary);">Nenhum selecionado</span></h4>
                                 <div>
                                     <button class="btn-secondary btn-small" id="btn-add-index" disabled onclick="openDocTypeIndexModal()">+ Índice</button>
+                                    <button class="btn-secondary btn-small" id="btn-add-classification" disabled onclick="createDocumentClassification()">+ Classificação</button>
                                     <button class="btn-primary btn-small" id="btn-add-xsd" disabled onclick="openXsdModal()">+ Schema XSD</button>
                                 </div>
                             </div>
@@ -729,6 +730,11 @@
                                     <table class="data-table mt-10">
                                         <thead><tr><th>Índice</th><th>Tipo</th><th>Obrigatório</th><th>Ações</th></tr></thead>
                                         <tbody id="table-mapped-indices-body"></tbody>
+                                    </table>
+                                    <h5 style="margin-top:18px;">Classificações</h5>
+                                    <table class="data-table mt-10">
+                                        <thead><tr><th>Nome</th><th>Status</th><th>Ações</th></tr></thead>
+                                        <tbody id="table-document-classifications-body"></tbody>
                                     </table>
                                 </div>
                                 <div style="flex:1 1 0; min-width:0; padding-left:10px; overflow-y:auto; overflow-x:hidden;">
@@ -963,7 +969,7 @@
                                 <input type="number" id="dt-retention" value="5" min="0" max="1000" required>
                             </div>
                             <div class="form-group">
-                                <label>ID do trânsito (opcional)</label>
+                                <label>ID do fluxo de trabalho (opcional)</label>
                                 <input type="text" id="dt-workflow">
                             </div>
                             <div class="form-group" style="display: flex; align-items: center; gap: 10px;">

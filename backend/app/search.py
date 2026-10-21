@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models_ged import GEDDocument, GEDDocumentIndexValue
-from app.models_ged_config import GedIndex, DocumentType
+from app.models_ged_config import GedIndex, DocumentType, DocumentClassification
 
 
 class SearchService:
@@ -51,8 +51,10 @@ class SearchService:
         student_id: str = None,
         group_id: str = None,
         document_type_id: str = None,
+        classification_id: str = None,
         index_id: str = None,
         index_value: str = None,
+        index_filters: List[Dict[str, str]] = None,
     ) -> Dict:
         if page < 1 or size < 1:
             return {"items": [], "total": 0, "page": page, "size": size, "pages": 0}
@@ -60,7 +62,10 @@ class SearchService:
         normalized_query = (query_string or "").strip()
         if user and user.role != "admin_global" and allowed_document_type_ids == []:
             return {"items": [], "total": 0, "page": page, "size": size, "pages": 0}
-        if not normalized_query and not student_id and not group_id and not document_type_id and not index_id and not index_value:
+        if (
+            not normalized_query and not student_id and not group_id and not document_type_id
+            and not classification_id and not index_id and not index_value and not index_filters
+        ):
             return {"items": [], "total": 0, "page": page, "size": size, "pages": 0}
 
         query = db.query(GEDDocument).filter(
@@ -98,16 +103,19 @@ class SearchService:
 
         if document_type_id:
             query = query.filter(GEDDocument.category_id == document_type_id)
+        if classification_id:
+            query = query.filter(GEDDocument.classification_id == classification_id)
 
-        if index_id:
-            query = query.join(
-                GEDDocumentIndexValue,
+        filters = list(index_filters or [])
+        if not filters and index_id and index_value:
+            filters.append({"index_id": index_id, "value": index_value})
+        for index_filter in filters:
+            matching_documents = db.query(GEDDocumentIndexValue.document_id).filter(
                 GEDDocumentIndexValue.document_id == GEDDocument.id,
-            ).filter(GEDDocumentIndexValue.index_id == index_id)
-            if index_value:
-                query = query.filter(
-                    GEDDocumentIndexValue.value.ilike(f"%{index_value.strip()}%")
-                )
+                GEDDocumentIndexValue.index_id == index_filter["index_id"],
+                GEDDocumentIndexValue.value.ilike(f"%{index_filter['value'].strip()}%"),
+            )
+            query = query.filter(matching_documents.exists())
 
         if user and user.role != "admin_global":
             if user.institution_id:
@@ -147,6 +155,15 @@ class SearchService:
                 "name": index.name,
                 "value": value_row.value,
             })
+        classification_ids = {
+            document.classification_id for document in documents if document.classification_id
+        }
+        classifications = {
+            item.id: item
+            for item in db.query(DocumentClassification).filter(
+                DocumentClassification.id.in_(classification_ids)
+            ).all()
+        } if classification_ids else {}
 
         hits = []
         for document in documents:
@@ -175,8 +192,18 @@ class SearchService:
                     if (document_type := document_types.get(document.category_id))
                     else None
                 ),
+                "classification": (
+                    {
+                        "id": classification.id,
+                        "name": classification.name,
+                    }
+                    if (classification := classifications.get(document.classification_id))
+                    else None
+                ),
                 "indices": indices_by_document.get(document.id, []),
                 "status": document.status.value if hasattr(document.status, "value") else document.status,
+                "created_at": document.created_at,
+                "uploaded_by_user_id": document.uploaded_by_user_id,
                 "snippet": searchable_text[:180],
                 "ocr_engine": metadata.get("ocr_engine", "none"),
                 "ocr_status": metadata.get("ocr_status", "skipped"),

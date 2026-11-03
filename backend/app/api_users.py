@@ -64,6 +64,9 @@ def create_user(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(auth.role_checker(["admin_global", "admin_instituicao"]))
 ):
+    if user.role not in auth.AVAILABLE_ROLES:
+        raise HTTPException(status_code=422, detail="Papel de usuário inválido.")
+
     existing = db.query(models.User).filter_by(username=user.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="Usuário já existe")
@@ -106,6 +109,9 @@ def update_user(
     user = db.query(models.User).filter_by(id=user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    if user_in.role is not None and user_in.role not in auth.AVAILABLE_ROLES:
+        raise HTTPException(status_code=422, detail="Papel de usuário inválido.")
 
     if current_user.role != "admin_global" and user.institution_id != current_user.institution_id:
         raise HTTPException(status_code=403, detail="Não permitido")

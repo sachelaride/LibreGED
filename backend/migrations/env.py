@@ -15,6 +15,7 @@ from app import models_xsd
 from app import models_config
 from app import models_integration
 from app import models_academic_dossier
+from app import models_academic_catalog
 
 
 config = context.config
@@ -66,6 +67,5 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-
 
 

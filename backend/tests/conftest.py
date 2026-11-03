@@ -11,7 +11,16 @@ def override_get_current_active_user():
     db = SessionLocal()
     try:
         institution = db.query(models.Institution).first()
-        institution_id = institution.id if institution else None
+        if institution is None:
+            institution = models.Institution(
+                id="test-institution-id",
+                name="Instituição de Teste",
+                cnpj="12.345.678/0001-90",
+                legal_name="Instituição de Teste Ltda.",
+            )
+            db.add(institution)
+            db.commit()
+        institution_id = institution.id
     finally:
         db.close()
     return models.User(
@@ -39,12 +48,24 @@ def setup_db(request):
     models.Base.metadata.drop_all(bind=engine, checkfirst=True)
     models.Base.metadata.create_all(bind=engine)
     db = SessionLocal()
+    institution = db.query(models.Institution).first()
+    if institution is None:
+        institution = models.Institution(
+            id="test-institution-id",
+            name="Instituição de Teste",
+            cnpj="12.345.678/0001-90",
+            legal_name="Instituição de Teste Ltda.",
+        )
+        db.add(institution)
+        db.flush()
+
     db.add(
         models.User(
             id="test-admin-id",
             username="admin_test",
             hashed_password="...",
             role="admin_global",
+            institution_id=institution.id,
         )
     )
     db.commit()

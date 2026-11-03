@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EAD — Educação a Distância</title>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../js/theme.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+</head>
+<body>
+  <div class="app-container">
+    <nav class="sidebar glass-panel">
+      <div class="logo">
+        <h2>Libre<span>GED</span></h2>
+      </div>
+      <div class="sidebar-nav-content">
+        <a href="../app.html?module=ead" class="menu-item active">
+          <i class="fa-solid fa-arrow-left" style="margin-right: 12px; font-size:18px;"></i>
+          Voltar ao painel
+        </a>
+        <a href="#" class="menu-item active">
+          <i class="fa-solid fa-laptop" style="margin-right: 12px; font-size:18px;"></i>
+          EAD
+        </a>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <header class="topbar glass-panel">
+        <div>
+          <h1 id="page-title">EAD — Educação a Distância</h1>
+          <p id="page-subtitle" class="text-muted">Polos, tutores, turmas e acompanhamento dos estudantes virtuais.</p>
+        </div>
+        <button class="btn-primary" type="button" onclick="window.location.href='../app.html?module=ead'">
+          <i class="fa-solid fa-house"></i> Dashboard geral
+        </button>
+      </header>
+
+      <div class="content-area">
+        <section class="view active">
+          <div class="glass-panel" style="padding: 24px; margin-bottom: 20px; border-left: 4px solid #14b8a6;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <div>
+                <div class="text-muted" style="font-size:12px; text-transform:uppercase; letter-spacing:.08em;">Módulo</div>
+                <h3 id="module-banner-title" style="margin: 8px 0 4px;">EAD — Educação a Distância</h3>
+                <p id="module-banner-text" class="text-muted" style="margin:0;">Polo, tutoria, acompanhamento e gestão de atividades virtuais.</p>
+              </div>
+              <button class="btn-secondary" type="button">
+                <i class="fa-solid fa-plus"></i> Novo polo
+              </button>
+            </div>
+          </div>
+
+          <div id="stats-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px;"></div>
+
+          <div class="glass-panel" style="padding: 18px; margin-bottom: 20px; border-left: 4px solid #14b8a6;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom: 12px;">
+              <h3 style="margin:0;"><i class="fa-solid fa-filter" style="margin-right:8px;"></i> Filtros operacionais</h3>
+              <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                <label style="display:flex; flex-direction:column; font-size:12px; color:var(--text-muted);">
+                  Polo
+                  <select id="filter-polo" style="min-width: 180px; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid rgba(148,163,184,.25); background: rgba(15,23,42,.2); color: var(--text-color);">
+                    <option value="">Todos</option>
+                  </select>
+                </label>
+                <label style="display:flex; flex-direction:column; font-size:12px; color:var(--text-muted);">
+                  Tutor
+                  <select id="filter-tutor" style="min-width: 180px; margin-top:4px; padding:8px 10px; border-radius:8px; border:1px solid rgba(148,163,184,.25); background: rgba(15,23,42,.2); color: var(--text-color);">
+                    <option value="">Todos</option>
+                  </select>
+                </label>
+                <button class="btn-secondary" type="button" id="btn-aplicar-filtros">Aplicar</button>
+              </div>
+            </div>
+            <div class="text-muted" style="font-size:12px;">Acompanhamento semanal de aulas presenciais e virtuais, atividades e pendências por polo/tutor.</div>
+          </div>
+
+          <div id="acompanhamento-grid" style="display:grid; grid-template-columns: 1.2fr 1fr; gap:20px; margin-bottom:20px;">
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-calendar-days" style="margin-right:8px; color:var(--primary);"></i> Calendário de aulas</h3>
+              <div id="calendar-list" style="margin-top:16px; display:grid; gap:12px;"></div>
+            </div>
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-list-check" style="margin-right:8px; color:var(--primary);"></i> Resumo operacional</h3>
+              <div id="summary-cards" style="margin-top:16px; display:grid; gap:12px;"></div>
+            </div>
+          </div>
+
+          <div id="acompanhamento-secondary-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:20px; margin-bottom:20px;">
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-clipboard-check" style="margin-right:8px; color:var(--primary);"></i> Atividades</h3>
+              <div id="activities-list" style="margin-top:16px; display:grid; gap:12px;"></div>
+            </div>
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-pen-to-square" style="margin-right:8px; color:var(--primary);"></i> Avaliações</h3>
+              <div id="evaluations-list" style="margin-top:16px; display:grid; gap:12px;"></div>
+            </div>
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-triangle-exclamation" style="margin-right:8px; color:var(--primary);"></i> Pendências</h3>
+              <div id="pending-list" style="margin-top:16px; display:grid; gap:12px;"></div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-laptop" style="margin-right:8px; color:var(--primary);"></i> Registros do módulo</h3>
+              <div id="primary-list" style="margin-top: 16px;"></div>
+            </div>
+
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-bolt" style="margin-right:8px; color:var(--primary);"></i> Ações rápidas</h3>
+              <div id="quick-actions" style="display:flex; flex-direction:column; gap:10px; margin-top: 16px;"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function renderSummaryCards(summary = {}) {
+      const summaryCards = document.getElementById('summary-cards');
+      if (!summaryCards) return;
+      const cards = [
+        { label: 'Aulas agendadas', value: summary.aulas_agendadas ?? 0 },
+        { label: 'Atividades pendentes', value: summary.atividades_pendentes ?? 0 },
+        { label: 'Avaliações em andamento', value: summary.avaliacoes_em_andamento ?? 0 },
+        { label: 'Pendências críticas', value: summary.pendencias_criticas ?? 0 },
+      ];
+      summaryCards.innerHTML = cards.map((card) => `
+        <div style="padding:12px 14px; border:1px solid rgba(148,163,184,.2); border-radius:12px; background: rgba(148,163,184,.06);">
+          <div class="text-muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.08em;">${card.label}</div>
+          <div style="font-size:1.7rem; font-weight:800; margin-top:8px;">${card.value}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderCalendar(items = []) {
+      const container = document.getElementById('calendar-list');
+      if (!container) return;
+      container.innerHTML = items.slice(0, 4).map((item) => `
+        <div style="padding:12px; border:1px solid rgba(148,163,184,.15); border-radius:12px; background: rgba(20,184,166,.06);">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <strong>${item.title}</strong>
+            <span class="status-badge neutral">${item.status}</span>
+          </div>
+          <div class="text-muted" style="margin-top:8px; font-size:12px;">${item.date} • ${item.time} • ${item.polo}</div>
+          <div style="margin-top:6px; font-size:12px;">Tutor: ${item.tutor} • ${item.modality} • ${item.attendance} alunos</div>
+        </div>
+      `).join('') || '<p class="text-muted">Nenhuma aula cadastrada.</p>';
+    }
+
+    function renderActivities(items = []) {
+      const container = document.getElementById('activities-list');
+      if (!container) return;
+      container.innerHTML = items.slice(0, 4).map((item) => `
+        <div style="padding:12px; border:1px solid rgba(148,163,184,.15); border-radius:12px; background: rgba(91,122,255,.04);">
+          <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
+            <strong>${item.title}</strong>
+            <span class="status-badge warning">${item.status}</span>
+          </div>
+          <div class="text-muted" style="margin-top:8px; font-size:12px;">${item.discipline} • ${item.polo}</div>
+          <div style="margin-top:6px; font-size:12px;">Prazo: ${item.due_date} • Progresso: ${item.completion}%</div>
+        </div>
+      `).join('') || '<p class="text-muted">Nenhuma atividade cadastrada.</p>';
+    }
+
+    function renderEvaluations(items = []) {
+      const container = document.getElementById('evaluations-list');
+      if (!container) return;
+      container.innerHTML = items.slice(0, 4).map((item) => `
+        <div style="padding:12px; border:1px solid rgba(148,163,184,.15); border-radius:12px; background: rgba(168,85,247,.04);">
+          <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
+            <strong>${item.title}</strong>
+            <span class="status-badge neutral">${item.status}</span>
+          </div>
+          <div class="text-muted" style="margin-top:8px; font-size:12px;">${item.discipline} • ${item.polo}</div>
+          <div style="margin-top:6px; font-size:12px;">Data: ${item.date} • Média esperada: ${item.average}</div>
+        </div>
+      `).join('') || '<p class="text-muted">Nenhuma avaliação cadastrada.</p>';
+    }
+
+    function renderPending(items = []) {
+      const container = document.getElementById('pending-list');
+      if (!container) return;
+      container.innerHTML = items.slice(0, 4).map((item) => `
+        <div style="padding:12px; border:1px solid rgba(148,163,184,.15); border-radius:12px; background: rgba(251,146,60,.06);">
+          <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
+            <strong>${item.student}</strong>
+            <span class="status-badge warning">${item.priority}</span>
+          </div>
+          <div class="text-muted" style="margin-top:8px; font-size:12px;">${item.tutor} • ${item.polo}</div>
+          <div style="margin-top:6px; font-size:12px;">${item.issue}</div>
+        </div>
+      `).join('') || '<p class="text-muted">Nenhuma pendência registrada.</p>';
+    }
+
+    function buildAcompanhamentoUrl() {
+      const polo = document.getElementById('filter-polo')?.value || '';
+      const tutor = document.getElementById('filter-tutor')?.value || '';
+      const params = new URLSearchParams();
+      if (polo) params.set('polo', polo);
+      if (tutor) params.set('tutor', tutor);
+      return `http://${window.location.hostname || 'localhost'}:8000/ead/acompanhamento${params.toString() ? `?${params.toString()}` : ''}`;
+    }
+
+    async function populateEadFilters() {
+      const token = localStorage.getItem('ged_token');
+      if (!token) return;
+      try {
+        const [polosRes, tutoresRes] = await Promise.all([
+          fetch(`http://${window.location.hostname || 'localhost'}:8000/ead/polos`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`http://${window.location.hostname || 'localhost'}:8000/ead/tutores`, { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        if (!polosRes.ok || !tutoresRes.ok) return;
+        const polos = await polosRes.json();
+        const tutores = await tutoresRes.json();
+        const poloSelect = document.getElementById('filter-polo');
+        const tutorSelect = document.getElementById('filter-tutor');
+        if (!poloSelect || !tutorSelect) return;
+
+        const poloOptions = ['<option value="">Todos</option>'] + (polos.items || []).map((item) => `<option value="${item.name}">${item.name}</option>`);
+        const tutorOptions = ['<option value="">Todos</option>'] + (tutores.items || []).map((item) => `<option value="${item.name}">${item.name}</option>`);
+        poloSelect.innerHTML = poloOptions.join('');
+        tutorSelect.innerHTML = tutorOptions.join('');
+      } catch (error) {
+        console.error('Não foi possível carregar filtros do EAD', error);
+      }
+    }
+
+    async function loadEadAcompanhamento() {
+      const token = localStorage.getItem('ged_token');
+      if (!token) return;
+      try {
+        const response = await fetch(buildAcompanhamentoUrl(), {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        if (!response.ok) {
+          throw new Error('Erro ao buscar acompanhamento do EAD');
+        }
+        const data = await response.json();
+        renderSummaryCards(data.summary || {});
+        renderCalendar(data.calendar || []);
+        renderActivities(data.activities || []);
+        renderEvaluations(data.evaluations || []);
+        renderPending(data.pending || []);
+      } catch (error) {
+        console.error(error);
+        const summaryCards = document.getElementById('summary-cards');
+        if (summaryCards) {
+          summaryCards.innerHTML = '<div class="text-muted">Não foi possível carregar o acompanhamento do EAD.</div>';
+        }
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initModulePage('ead');
+      populateEadFilters().finally(() => loadEadAcompanhamento());
+      document.getElementById('btn-aplicar-filtros')?.addEventListener('click', () => loadEadAcompanhamento());
+    });
+  </script>
+  <script src="./module-page.js"></script>
+</body>
+</html>

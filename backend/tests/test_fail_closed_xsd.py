@@ -98,3 +98,36 @@ def test_xml_with_unapproved_schema_is_blocked():
     )
     assert response.status_code == 409
     assert "not approved" in response.json()["detail"]
+
+
+def test_history_xml_generation_is_blocked_until_v105_data_and_signature_exist():
+    document_type_id = _document_type_id()
+    document_id = _document_id(document_type_id)
+    created = client.post(
+        "/api/xsd",
+        json={
+            "document_type_id": document_type_id,
+            "code": "history-1.05",
+            "namespace": "https://portal.mec.gov.br/diplomadigital/arquivos-em-xsd",
+            "xsd_hash": "c" * 64,
+            "environment": "homologation",
+        },
+    )
+    assert created.status_code == 200, created.json()
+
+    approved = client.post(f"/api/xsd/{created.json()['id']}/approve")
+    assert approved.status_code == 200, approved.json()
+
+    response = client.post(
+        f"/api/documents/{document_id}/xml",
+        json=_request(document_type="historico", schema_version="history-1.05"),
+    )
+
+    assert response.status_code == 409
+    assert "complete MEC v1.05" in response.json()["detail"]
+    audit = client.get("/api/audit").json()
+    assert any(
+        event["action"] == "xml_generation_blocked"
+        and "XML signatures" in event.get("details", "")
+        for event in audit
+    )

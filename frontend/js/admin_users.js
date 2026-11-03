@@ -64,8 +64,16 @@ async function openUserModal() {
                 <div class="form-group">
                     <label>Papel (Role)</label>
                     <select id="new-role">
-                        <option value="operador">Secretaria (Operador)</option>
-                        <option value="leitor">Auditor / Leitor</option>
+                        <option value="secretaria">Secretaria Acadêmica</option>
+                        <option value="coordenador">Coordenação</option>
+                        <option value="professor">Professor</option>
+                        <option value="tutor">Tutor EAD</option>
+                        <option value="aluno">Aluno</option>
+                        <option value="operador">Operador (legado)</option>
+                        <option value="academico">Acadêmico (legado)</option>
+                        <option value="auditor">Auditor</option>
+                        <option value="leitor">Leitor</option>
+                        <option value="recepcao">Recepção</option>
                         <option value="admin_instituicao">Gestor de Instituição</option>
                         ${currentUser && currentUser.role === 'admin_global' ? '<option value="admin_global">Administrador Global</option>' : ''}
                     </select>
@@ -282,8 +290,16 @@ function openEditUserModal(user) {
                 <div class="form-group">
                     <label>Papel (Role)</label>
                     <select id="edit-role">
-                        <option value="operador" ${user.role === 'operador' ? 'selected' : ''}>Secretaria (Operador)</option>
-                        <option value="leitor" ${user.role === 'leitor' ? 'selected' : ''}>Auditor / Leitor</option>
+                        <option value="secretaria" ${user.role === 'secretaria' ? 'selected' : ''}>Secretaria Acadêmica</option>
+                        <option value="coordenador" ${user.role === 'coordenador' ? 'selected' : ''}>Coordenação</option>
+                        <option value="professor" ${user.role === 'professor' ? 'selected' : ''}>Professor</option>
+                        <option value="tutor" ${user.role === 'tutor' ? 'selected' : ''}>Tutor EAD</option>
+                        <option value="aluno" ${user.role === 'aluno' ? 'selected' : ''}>Aluno</option>
+                        <option value="operador" ${user.role === 'operador' ? 'selected' : ''}>Operador (legado)</option>
+                        <option value="academico" ${user.role === 'academico' ? 'selected' : ''}>Acadêmico (legado)</option>
+                        <option value="auditor" ${user.role === 'auditor' ? 'selected' : ''}>Auditor</option>
+                        <option value="leitor" ${user.role === 'leitor' ? 'selected' : ''}>Leitor</option>
+                        <option value="recepcao" ${user.role === 'recepcao' ? 'selected' : ''}>Recepção</option>
                         <option value="admin_global" ${user.role === 'admin_global' ? 'selected' : ''}>Administrador Global</option>
                         <option value="admin_instituicao" ${user.role === 'admin_instituicao' ? 'selected' : ''}>Gestor de Instituição</option>
                     </select>

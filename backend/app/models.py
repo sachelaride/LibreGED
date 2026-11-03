@@ -78,9 +78,26 @@ class Student(Base):
     id = Column(String, primary_key=True, index=True)
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=False, index=True)
     full_name = Column(String, nullable=False, index=True)
+    social_name = Column(String(160), nullable=True)
+    sex = Column(String(40), nullable=True)
+    nationality = Column(String(100), nullable=True)
+    birthplace_municipality_code = Column(String(10), nullable=True)
+    birthplace_municipality_name = Column(String(120), nullable=True)
+    birthplace_state = Column(String(2), nullable=True)
     birth_date = Column(String, nullable=False)  # Stored as ISO string
+    rg_number = Column(String(30), nullable=True)
+    rg_issuing_authority = Column(String(40), nullable=True)
+    rg_state = Column(String(2), nullable=True)
     cpf = Column(String, nullable=False, unique=True, index=True)
     email = Column(String, nullable=False, index=True)
+    phone = Column(String(32), nullable=True)
+    address_street = Column(String(160), nullable=True)
+    address_number = Column(String(20), nullable=True)
+    address_complement = Column(String(120), nullable=True)
+    address_neighborhood = Column(String(120), nullable=True)
+    address_city = Column(String(120), nullable=True)
+    address_state = Column(String(2), nullable=True)
+    address_postal_code = Column(String(12), nullable=True)
     campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now)
 
@@ -98,6 +115,14 @@ class Guardian(Base):
     full_name = Column(String, nullable=False, index=True)
     cpf = Column(String, nullable=False, unique=True, index=True)
     email = Column(String, nullable=False, index=True)
+    phone = Column(String(32), nullable=True)
+    address_street = Column(String(160), nullable=True)
+    address_number = Column(String(20), nullable=True)
+    address_complement = Column(String(120), nullable=True)
+    address_neighborhood = Column(String(120), nullable=True)
+    address_city = Column(String(120), nullable=True)
+    address_state = Column(String(2), nullable=True)
+    address_postal_code = Column(String(12), nullable=True)
     relationship_type = Column(String, nullable=False)
     created_at = Column(DateTime, default=utc_now)
 
@@ -110,16 +135,19 @@ class Enrollment(Base):
     id = Column(String, primary_key=True, index=True)
     institution_id = Column(String, ForeignKey("institutions.id"), nullable=False, index=True)
     student_id = Column(String, ForeignKey("students.id"), nullable=False, index=True)
+    academic_class_id = Column(String, ForeignKey("academic_classes.id"), nullable=True, index=True)
     course_name = Column(String, nullable=False, index=True)
     class_name = Column(String, nullable=False)
     year = Column(Integer, nullable=False, index=True)
     status = Column(String, nullable=False, index=True)  # active, inactive, transferred, graduated
+    result = Column(String, nullable=False, default="pending", server_default="pending", index=True)
     campus_id = Column(String, ForeignKey("campuses.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now)
 
     institution = relationship("Institution", back_populates="enrollments")
     campus = relationship("Campus", back_populates="enrollments")
     student = relationship("Student", back_populates="enrollments")
+    academic_class = relationship("AcademicClass")
 
 
 class IngestionJob(Base):
@@ -170,3 +198,6 @@ from app import models_config
 
 # Import visual representation models so they are registered with Base metadata.
 from app import models_representation
+
+# Register academic catalog tables on the shared metadata.
+from app import models_academic_catalog

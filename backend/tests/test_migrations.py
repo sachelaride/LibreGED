@@ -21,6 +21,31 @@ EXPECTED_TABLES = {
     "enrollments",
     "guardians",
     "institutions",
+    "academic_courses",
+    "academic_departments",
+    "academic_disciplines",
+    "academic_terms",
+    "academic_curricula",
+    "academic_curriculum_disciplines",
+    "academic_curriculum_equivalences",
+    "academic_curriculum_elective_groups",
+    "academic_curriculum_elective_disciplines",
+    "academic_curriculum_prerequisites",
+    "academic_credit_recognitions",
+    "institution_transcript_profiles",
+    "course_transcript_profiles",
+    "student_course_transcript_profiles",
+    "academic_staff",
+    "academic_coordinator_assignments",
+    "academic_coordination_actions",
+    "academic_assessments",
+    "academic_grades",
+    "academic_attendance",
+    "academic_sectors",
+    "academic_offerings",
+    "academic_rooms",
+    "academic_classes",
+    "academic_class_schedules",
     "ged_schema_versions",
     "students",
     "users",
@@ -60,6 +85,36 @@ def test_migration_upgrade_matches_models_and_downgrades_cleanly():
         engine = create_engine(database_url)
         try:
             assert EXPECTED_TABLES.issubset(set(inspect(engine).get_table_names()))
+            staff_columns = {column["name"] for column in inspect(engine).get_columns("academic_staff")}
+            assert {"transcript_title", "transcript_cpf", "transcript_lattes"} <= staff_columns
+            assignment_columns = {
+                column["name"]
+                for column in inspect(engine).get_columns("academic_coordinator_assignments")
+            }
+            assert {
+                "coordinator_id",
+                "course_id",
+                "campus_id",
+                "starts_on",
+                "ends_on",
+            } <= assignment_columns
+            assert "user_id" in staff_columns
+            action_columns = {
+                column["name"]
+                for column in inspect(engine).get_columns("academic_coordination_actions")
+            }
+            assert {
+                "institution_id",
+                "student_id",
+                "course_id",
+                "campus_id",
+                "issue",
+                "priority",
+                "status",
+                "created_by",
+                "resolved_by",
+                "resolved_at",
+            } <= action_columns
         finally:
             engine.dispose()
 

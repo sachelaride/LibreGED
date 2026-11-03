@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.main import app
 from app.models_ged_config import DocumentType
+from app.xsd_validator import validate_xml_against_xsd
 
 
 client = TestClient(app)
@@ -62,3 +63,23 @@ def test_xsd_validation():
     result = validation.json()
     assert result["valid"] is False
     assert result["errors"]
+
+
+def test_official_history_v105_validator_uses_local_schema_bundle():
+    response = client.post(
+        "/api/xsd/validator/historico/v1.05",
+        json={"xml_content": "<InvalidHistory/>"},
+    )
+
+    assert response.status_code == 200, response.json()
+    result = response.json()
+    assert result["schema_code"] == "HistoricoEscolarDigital_v1.05"
+    assert result["valid"] is False
+    assert any("No matching global declaration" in error for error in result["errors"])
+
+
+def test_xsd_validator_rejects_paths_outside_the_schema_directory():
+    valid, errors = validate_xml_against_xsd("<Invalid/>", "../mock_diploma.xsd")
+
+    assert valid is False
+    assert errors == ["Schema path must remain inside the XSD directory"]

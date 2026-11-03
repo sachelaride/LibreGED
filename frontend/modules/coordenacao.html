@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coordenação</title>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../js/theme.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+</head>
+<body>
+  <div class="app-container">
+    <nav class="sidebar glass-panel">
+      <div class="logo">
+        <h2>Libre<span>GED</span></h2>
+      </div>
+      <div class="sidebar-nav-content">
+        <a href="../app.html?module=coordenacao" class="menu-item active">
+          <i class="fa-solid fa-arrow-left" style="margin-right: 12px; font-size:18px;"></i>
+          Voltar ao painel
+        </a>
+        <a href="#" class="menu-item active">
+          <i class="fa-solid fa-briefcase" style="margin-right: 12px; font-size:18px;"></i>
+          Coordenação
+        </a>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <header class="topbar glass-panel">
+        <div>
+          <h1 id="page-title">Coordenação</h1>
+          <p id="page-subtitle" class="text-muted">Acompanhamento acadêmico e pendências institucionais.</p>
+        </div>
+        <button class="btn-primary" type="button" onclick="window.location.href='../app.html?module=coordenacao'">
+          <i class="fa-solid fa-house"></i> Dashboard geral
+        </button>
+      </header>
+
+      <div class="content-area">
+        <section class="view active">
+          <div class="glass-panel" style="padding: 24px; margin-bottom: 20px; border-left: 4px solid #a855f7;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <div>
+                <div class="text-muted" style="font-size:12px; text-transform:uppercase; letter-spacing:.08em;">Módulo</div>
+                <h3 id="module-banner-title" style="margin: 8px 0 4px;">Coordenação</h3>
+                <p id="module-banner-text" class="text-muted" style="margin:0;">Acompanhamento acadêmico e pendências institucionais.</p>
+              </div>
+              <button class="btn-secondary" type="button">
+                <i class="fa-solid fa-list-check"></i> Nova pendência
+              </button>
+            </div>
+          </div>
+
+          <div id="stats-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px;"></div>
+
+          <div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-user-check" style="margin-right:8px; color:var(--primary);"></i> Registros do módulo</h3>
+              <div id="primary-list" style="margin-top: 16px;"></div>
+            </div>
+
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-bolt" style="margin-right:8px; color:var(--primary);"></i> Ações rápidas</h3>
+              <div id="quick-actions" style="display:flex; flex-direction:column; gap:10px; margin-top: 16px;"></div>
+            </div>
+          </div>
+
+          <div id="coordination-request-error" class="glass-panel" role="alert" hidden style="padding:14px; margin-top:20px; color:#fca5a5;"></div>
+          <section class="glass-panel" style="padding:20px; margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <div>
+                <h3 style="margin:0;">Alunos vinculados a curso e turma</h3>
+                <p class="text-muted">Registros acadêmicos limitados aos cursos, campi e responsabilidades vigentes da sua conta.</p>
+              </div>
+              <button id="coordination-students-reload" class="btn-secondary" type="button">Atualizar alunos</button>
+            </div>
+            <div id="coordination-students" style="overflow:auto; margin-top:14px;"></div>
+          </section>
+
+          <section class="glass-panel" style="padding:20px; margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <div>
+                <h3 style="margin:0;">Pendências acadêmicas</h3>
+                <p class="text-muted">Acompanhe e conclua ações registradas nos cursos e campi sob sua responsabilidade.</p>
+              </div>
+              <button id="coordination-actions-reload" class="btn-secondary" type="button">Atualizar pendências</button>
+            </div>
+            <div id="coordination-actions" style="overflow:auto; margin-top:14px;"></div>
+          </section>
+
+          <section class="glass-panel" style="padding:20px; margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <div>
+                <h3 style="margin:0;">Solicitações de aproveitamento de estudos</h3>
+                <p class="text-muted">Analise pedidos vinculados aos cursos e campi sob sua responsabilidade vigente.</p>
+              </div>
+              <button id="coordination-request-reload" class="btn-secondary" type="button">Atualizar solicitações</button>
+            </div>
+            <div id="coordination-requests" style="overflow:auto; margin-top:14px;"></div>
+          </section>
+
+          <section class="glass-panel" style="padding:20px; margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <div>
+                <h3 style="margin:0;">Matrículas pendentes de aprovação</h3>
+                <p class="text-muted">Aprove matrículas de turmas vinculadas aos cursos e campi sob sua responsabilidade vigente.</p>
+              </div>
+              <button id="coordination-enrollment-reload" class="btn-secondary" type="button">Atualizar matrículas</button>
+            </div>
+            <div id="coordination-enrollments" style="overflow:auto; margin-top:14px;"></div>
+          </section>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => initModulePage('coordenacao'));
+  </script>
+  <script src="./module-page.js"></script>
+  <script src="./coordenacao-academico.js"></script>
+</body>
+</html>

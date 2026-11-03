@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Professores</title>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../js/theme.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    #professor-assessments, #professor-grades, #professor-attendance { overflow:auto; margin-top:14px; }
+    #professor-assessments table, #professor-grades table, #professor-attendance table { width:100%; min-width:620px; border-collapse:collapse; }
+    #professor-assessments th, #professor-assessments td, #professor-grades th, #professor-grades td, #professor-attendance th, #professor-attendance td { padding:9px; text-align:left; border-bottom:1px solid rgba(255,255,255,.08); vertical-align:top; }
+    #professor-assessments input, #professor-assessments textarea, #professor-grades input, #professor-attendance input, #professor-attendance select { width:100%; min-width:110px; }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <nav class="sidebar glass-panel">
+      <div class="logo">
+        <h2>Libre<span>GED</span></h2>
+      </div>
+      <div class="sidebar-nav-content">
+        <a href="../app.html?module=professores" class="menu-item active">
+          <i class="fa-solid fa-arrow-left" style="margin-right: 12px; font-size:18px;"></i>
+          Voltar ao painel
+        </a>
+        <a href="#" class="menu-item active">
+          <i class="fa-solid fa-chalkboard-user" style="margin-right: 12px; font-size:18px;"></i>
+          Professores
+        </a>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <header class="topbar glass-panel">
+        <div>
+          <h1 id="page-title">Professores</h1>
+          <p id="page-subtitle" class="text-muted">Turmas, notas e acompanhamento didático.</p>
+        </div>
+        <button class="btn-primary" type="button" onclick="window.location.href='../app.html?module=professores'">
+          <i class="fa-solid fa-house"></i> Dashboard geral
+        </button>
+      </header>
+
+      <div class="content-area">
+        <section class="view active">
+          <div class="glass-panel" style="padding: 24px; margin-bottom: 20px; border-left: 4px solid #22c55e;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <div>
+                <div class="text-muted" style="font-size:12px; text-transform:uppercase; letter-spacing:.08em;">Módulo</div>
+                <h3 id="module-banner-title" style="margin: 8px 0 4px;">Professores</h3>
+                <p id="module-banner-text" class="text-muted" style="margin:0;">Turmas, notas e acompanhamento didático.</p>
+              </div>
+              <button class="btn-secondary" type="button" onclick="document.getElementById('professor-assessment-form').scrollIntoView({ behavior: 'smooth' })">
+                <i class="fa-solid fa-clipboard-list"></i> Lançar notas
+              </button>
+            </div>
+          </div>
+
+          <div id="stats-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px;"></div>
+
+          <div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-book-open" style="margin-right:8px; color:var(--primary);"></i> Registros do módulo</h3>
+              <div id="primary-list" style="margin-top: 16px;"></div>
+            </div>
+
+            <div class="glass-panel" style="padding: 20px;">
+              <h3><i class="fa-solid fa-bolt" style="margin-right:8px; color:var(--primary);"></i> Ações rápidas</h3>
+              <div id="quick-actions" style="display:flex; flex-direction:column; gap:10px; margin-top: 16px;"></div>
+            </div>
+          </div>
+
+          <div id="professor-academic-error" class="glass-panel" role="alert" hidden style="padding:14px; margin-bottom:18px; color:#fca5a5;"></div>
+          <section class="glass-panel" style="padding:20px; margin-bottom:20px;">
+            <div style="display:flex; align-items:end; gap:12px; flex-wrap:wrap;">
+              <div class="form-group" style="margin:0; min-width:260px; flex:1;">
+                <label for="professor-class">Turma vinculada</label>
+                <select id="professor-class" required></select>
+              </div>
+              <button id="professor-reload" class="btn-secondary" type="button">Atualizar dados</button>
+            </div>
+          </section>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; margin-bottom:20px;">
+            <section class="glass-panel" style="padding:20px;">
+              <h3>Avaliações</h3>
+              <form id="professor-assessment-form" style="display:grid; gap:10px;">
+                <div class="form-group" style="margin:0;"><label for="assessment-name">Nome</label><input id="assessment-name" name="name" required minlength="2" maxlength="160"></div>
+                <div class="form-group" style="margin:0;"><label for="assessment-description">Descrição</label><textarea id="assessment-description" name="description" maxlength="2000" rows="2"></textarea></div>
+                <div class="form-group" style="margin:0;"><label for="assessment-max-score">Pontuação máxima</label><input id="assessment-max-score" name="max_score" type="number" min="0.01" max="1000" step="0.01" required></div>
+                <div class="form-group" style="margin:0;"><label for="assessment-due-date">Data prevista</label><input id="assessment-due-date" name="due_date" type="date"></div>
+                <button class="btn-primary" type="submit">Criar avaliação</button>
+                <div class="catalog-feedback" aria-live="polite"></div>
+              </form>
+              <div id="professor-assessments" class="catalog-list"></div>
+            </section>
+
+            <section class="glass-panel" style="padding:20px;">
+              <h3>Notas</h3>
+              <div class="form-group">
+                <label for="professor-grade-assessment">Avaliação</label>
+                <select id="professor-grade-assessment"></select>
+              </div>
+              <div id="professor-grades" class="catalog-list"></div>
+            </section>
+          </div>
+
+          <section class="glass-panel" style="padding:20px;">
+            <div style="display:flex; align-items:end; gap:12px; flex-wrap:wrap;">
+              <div class="form-group" style="margin:0;">
+                <label for="professor-attendance-date">Data da aula</label>
+                <input id="professor-attendance-date" type="date" required>
+              </div>
+              <button id="professor-load-attendance" class="btn-secondary" type="button">Carregar frequência</button>
+            </div>
+            <div id="professor-attendance" class="catalog-list"></div>
+          </section>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => initModulePage('professores'));
+  </script>
+  <script src="./module-page.js"></script>
+  <script src="./professores-academico.js"></script>
+</body>
+</html>

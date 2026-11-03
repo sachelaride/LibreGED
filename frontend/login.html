@@ -18,17 +18,94 @@
             justify-content: center;
             height: 100vh;
             margin: 0;
-            background: var(--bg-gradient);
+            background:
+                radial-gradient(circle at top left, rgba(59,130,246,0.18), transparent 30%),
+                radial-gradient(circle at bottom right, rgba(34,197,94,0.15), transparent 35%),
+                var(--bg-gradient);
         }
         .login-card {
             width: 100%;
-            max-width: 400px;
+            max-width: 440px;
+            padding: 28px 24px 20px;
+            border-radius: 22px;
+            background: linear-gradient(180deg, rgba(15,23,42,0.8), rgba(15,23,42,0.58));
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            box-shadow: 0 25px 60px rgba(15,23,42,0.3);
         }
 
         .login-theme-toggle {
             position: fixed;
             top: 20px;
             right: 20px;
+        }
+
+        .logo {
+            margin-bottom: 1.5rem;
+        }
+
+        .logo h2 {
+            font-size: clamp(2rem, 4vw, 2.6rem);
+            letter-spacing: 0.08em;
+        }
+
+        .module-option {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: var(--text-main);
+            border-radius: 12px;
+            padding: 11px 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 700;
+            font-size: 13px;
+        }
+
+        .module-option:hover {
+            transform: translateY(-1px);
+            border-color: rgba(96, 165, 250, 0.3);
+        }
+
+        .module-option.selected {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(16, 185, 129, 0.18));
+            border-color: rgba(96, 165, 250, 0.5);
+            box-shadow: 0 0 0 1px rgba(96,165,250,0.2);
+            color: var(--primary);
+        }
+
+        .form-group label {
+            font-size: 12px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            background: rgba(15, 23, 42, 0.18);
+            color: var(--text-main);
+            font-size: 15px;
+        }
+
+        input[type="text"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: rgba(96, 165, 250, 0.42);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+        }
+
+        .btn-primary {
+            width: 100%;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .error-msg {
+            min-height: 20px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            color: #f87171;
         }
     </style>
 </head>
@@ -44,6 +121,20 @@
         </div>
         <form id="login-form">
             <div class="form-group">
+                <label>Módulo</label>
+                <div id="module-picker" style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:8px;">
+                    <button type="button" class="module-option selected" data-module="sead">SEAD</button>
+                    <button type="button" class="module-option" data-module="ead">EAD</button>
+                    <button type="button" class="module-option" data-module="secretaria">Secretaria</button>
+                    <button type="button" class="module-option" data-module="professores">Professores</button>
+                    <button type="button" class="module-option" data-module="ged">GED</button>
+                    <button type="button" class="module-option" data-module="financeiro">Financeiro</button>
+                    <button type="button" class="module-option" data-module="coordenacao">Coordenação</button>
+                    <button type="button" class="module-option" data-module="aluno">Aluno</button>
+                    <button type="button" class="module-option" data-module="admin" style="grid-column: 1 / -1;">Administração</button>
+                </div>
+            </div>
+            <div class="form-group">
                 <label>Usuário</label>
                 <input type="text" id="login-username" required autocomplete="username">
             </div>
@@ -58,52 +149,89 @@
             </div>
             <p id="login-error" class="error-msg"></p>
             <button type="submit" class="btn-primary w-100" id="btn-login">Entrar no Sistema</button>
-            <div style="margin-top: 15px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-                <button type="button" class="btn-secondary btn-small" style="font-size: 11px;" onclick="prefill('demo.academico', 'Demo@123456')">Preencher demo.academico</button>
-                <button type="button" class="btn-secondary btn-small" style="font-size: 11px;" onclick="prefill('consultor', 'Demo@123456')">Preencher consultor</button>
+            <div style="margin-top: 18px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px; border-radius: 999px;" onclick="selectedModule='sead'; document.querySelectorAll('.module-option').forEach((btn) => btn.classList.toggle('selected', btn.dataset.module === 'sead')); prefill('secretaria', 'secretaria123')">SEAD</button>
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px; border-radius: 999px;" onclick="selectedModule='ead'; document.querySelectorAll('.module-option').forEach((btn) => btn.classList.toggle('selected', btn.dataset.module === 'ead')); prefill('secretaria', 'secretaria123')">EAD</button>
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px; border-radius: 999px;" onclick="selectedModule='secretaria'; document.querySelectorAll('.module-option').forEach((btn) => btn.classList.toggle('selected', btn.dataset.module === 'secretaria')); prefill('secretaria', 'secretaria123')">Secretaria</button>
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px; border-radius: 999px;" onclick="prefill('professor', 'professor123')">Professor</button>
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px; border-radius: 999px;" onclick="prefill('ged', 'ged123')">GED</button>
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px; border-radius: 999px;" onclick="prefill('financeiro', 'financeiro123')">Financeiro</button>
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px; border-radius: 999px;" onclick="prefill('coordenacao', 'coordenacao123')">Coordenação</button>
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px; border-radius: 999px;" onclick="prefill('aluno', 'aluno123')">Aluno</button>
+                <button type="button" class="btn-secondary btn-small" style="font-size: 11px; border-radius: 999px;" onclick="prefill('admin', 'admin123')">Admin</button>
             </div>
         </form>
     </div>
 
     <script>
         const API_URL = `http://${window.location.hostname || 'localhost'}:8000/api`;
+        const requestedModule = new URLSearchParams(window.location.search).get('module');
+        let selectedModule = requestedModule || 'sead';
+
+        document.querySelectorAll('.module-option').forEach((button) => {
+            button.classList.toggle('selected', button.dataset.module === selectedModule);
+            button.addEventListener('click', () => {
+                selectedModule = button.dataset.module;
+                document.querySelectorAll('.module-option').forEach((item) => item.classList.toggle('selected', item === button));
+            });
+        });
 
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn-login');
             const err = document.getElementById('login-error');
-            
+
             btn.innerHTML = 'Processando...';
             btn.disabled = true;
             err.innerText = '';
-            
+
             const usernameInput = document.getElementById('login-username').value.trim();
             const passwordInput = document.getElementById('login-password').value.trim();
+
+            if (!usernameInput || !passwordInput) {
+                err.innerText = 'Informe usuário e senha.';
+                btn.disabled = false;
+                btn.innerHTML = 'Entrar no Sistema';
+                return;
+            }
 
             const formData = new URLSearchParams();
             formData.append('username', usernameInput);
             formData.append('password', passwordInput);
-            
+            formData.append('module', selectedModule);
+
+            const controller = new AbortController();
+            const requestTimeout = window.setTimeout(() => controller.abort(), 15000);
             try {
                 const response = await fetch(`${API_URL}/auth/token`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
-                
+
                 if (response.ok) {
                     const data = await response.json();
+                    if (!data.access_token || data.module !== selectedModule) {
+                        throw new Error('O servidor retornou uma sessão inválida para o módulo selecionado.');
+                    }
                     localStorage.setItem('ged_token', data.access_token);
+                    localStorage.setItem('selected_module', data.module);
                     redirectBasedOnRole(data.access_token);
                 } else {
-                    err.innerText = 'Usuário ou senha inválidos.';
+                    const errorData = await response.json().catch(() => ({}));
+                    err.innerText = errorData.detail || 'Usuário ou senha inválidos.';
                     btn.disabled = false;
                     btn.innerHTML = 'Entrar no Sistema';
                 }
             } catch (error) {
-                err.innerText = 'Falha ao conectar no servidor. ' + error.message;
+                err.innerText = error.name === 'AbortError'
+                    ? 'A API não respondeu em 15 segundos. Verifique se o backend está em execução e tente novamente.'
+                    : 'Falha ao conectar no servidor. ' + error.message;
                 btn.disabled = false;
                 btn.innerHTML = 'Entrar no Sistema';
+            } finally {
+                window.clearTimeout(requestTimeout);
             }
         });
 
@@ -123,12 +251,19 @@
         function redirectBasedOnRole(token) {
             const payload = parseJwt(token);
             const requestedDestination = new URLSearchParams(window.location.search).get('next');
+            const moduleName = payload && payload.module ? payload.module : selectedModule;
+            const normalizedRequested = (requestedDestination || '').toLowerCase();
+            const isAdminRequest = moduleName === 'admin' || normalizedRequested === 'admin' || normalizedRequested === 'admin/' || normalizedRequested === 'admin.html';
             const isAdmin = payload && (payload.role === 'admin_global' || payload.role === 'admin_instituicao');
-            if (requestedDestination === 'admin/' && isAdmin) {
-                window.location.href = 'admin/';
-            } else {
-                window.location.href = 'app.html';
+
+            if (isAdminRequest && isAdmin) {
+                window.location.href = 'admin.html';
+                return;
             }
+
+            const target = new URL('app.html', window.location.href);
+            target.searchParams.set('module', moduleName);
+            window.location.href = target.toString();
         }
 
         // Auto redirect if already logged in
@@ -137,7 +272,7 @@
             const payload = parseJwt(token);
             // Check expiry
             const now = Math.floor(Date.now() / 1000);
-            if (payload && payload.exp > now) {
+            if (payload && payload.exp > now && (!requestedModule || requestedModule === payload.module)) {
                 redirectBasedOnRole(token);
             } else {
                 localStorage.removeItem('ged_token');

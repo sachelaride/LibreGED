@@ -16,6 +16,11 @@ class XSDValidatorRequest(BaseModel):
     document_type_code: str
     environment: str = "homologation"
 
+
+class OfficialHistoryValidatorRequest(BaseModel):
+    xml_content: str
+
+
 class XSDValidatorResponse(BaseModel):
     valid: bool
     schema_code: Optional[str] = None
@@ -56,5 +61,24 @@ def validate_xml_agnostic(
     return XSDValidatorResponse(
         valid=valid,
         schema_code=schema.code,
+        errors=errors,
+    )
+
+
+@router.post(
+    "/api/xsd/validator/historico/v1.05",
+    response_model=XSDValidatorResponse,
+)
+def validate_official_history_v105(
+    payload: OfficialHistoryValidatorRequest,
+    current_user: models.User = Depends(get_current_active_user),
+):
+    valid, errors = validate_xml_against_xsd(
+        payload.xml_content,
+        "mec_v1_05/historicoEscolarDigital_v1.05.xsd",
+    )
+    return XSDValidatorResponse(
+        valid=valid,
+        schema_code="HistoricoEscolarDigital_v1.05",
         errors=errors,
     )

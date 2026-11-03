@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.auth import get_current_active_user
 from app.database import SessionLocal
-from app.models import Institution, Student, User, AuditEvent, utc_now
+from app.models import Campus, Enrollment, Institution, Student, User, AuditEvent, utc_now
 from app.models_ged import DocumentCategory, GEDDocument, GEDDocumentStatus
 from app.models_ged_config import (
     DocumentType, DocumentTypeIndex, GedIndex, UserDocumentType, PermissionGroup,
@@ -483,3 +483,171 @@ def test_busca_aluno_por_cpf_fica_restrita_a_instituicao_e_retorna_dado_mascarad
     assert resposta.json()[0]["id"] == aluno_id
     assert resposta.json()[0]["cpf"] == "123.***.***-01"
     assert cliente.get("/api/students", params={"cpf": "12345678902"}).json() == []
+
+
+def test_student_and_enrollment_lists_respect_user_campus(cenario, autenticar):
+    with SessionLocal() as db:
+        campus_usuario = Campus(
+            id=str(uuid4()),
+            institution_id=cenario["instituicao"],
+            name="Campus do usuário",
+        )
+        outro_campus = Campus(
+            id=str(uuid4()),
+            institution_id=cenario["instituicao"],
+            name="Outro campus",
+        )
+        aluno_usuario = Student(
+            id=str(uuid4()),
+            institution_id=cenario["instituicao"],
+            campus_id=campus_usuario.id,
+            full_name="Aluno do campus",
+            birth_date="2005-01-01",
+            cpf="12345678903",
+            email="aluno.campus@example.org",
+        )
+        outro_aluno = Student(
+            id=str(uuid4()),
+            institution_id=cenario["instituicao"],
+            campus_id=outro_campus.id,
+            full_name="Aluno de outro campus",
+            birth_date="2005-01-01",
+            cpf="12345678904",
+            email="outro.campus@example.org",
+        )
+        usuario = db.get(User, cenario["usuario"])
+        usuario.campus_id = campus_usuario.id
+        db.add_all([campus_usuario, outro_campus, aluno_usuario, outro_aluno])
+        db.flush()
+        outra_matricula = Enrollment(
+            id=str(uuid4()),
+            institution_id=cenario["instituicao"],
+            student_id=outro_aluno.id,
+            campus_id=outro_campus.id,
+            course_name="Curso outro campus",
+            class_name="B",
+            year=2026,
+            status="active",
+        )
+        db.add(outra_matricula)
+        db.commit()
+        aluno_id = aluno_usuario.id
+        outro_aluno_id = outro_aluno.id
+
+    autenticar(cenario["usuario"])
+    matricula_response = cliente.post("/api/enrollments", json={
+        "institution_id": cenario["instituicao"],
+        "student_id": aluno_id,
+        "course_name": "Curso campus",
+        "class_name": "A",
+        "year": 2026,
+        "status": "active",
+    })
+    assert matricula_response.status_code == 200, matricula_response.json()
+    outra_matricula_response = cliente.post("/api/enrollments", json={
+        "institution_id": cenario["instituicao"],
+        "student_id": outro_aluno_id,
+        "course_name": "Curso outro campus",
+        "class_name": "B",
+        "year": 2026,
+        "status": "active",
+    })
+    assert outra_matricula_response.status_code == 403
+
+    students_response = cliente.get("/api/students")
+    enrollments_response = cliente.get("/api/enrollments")
+
+    assert students_response.status_code == 200
+    assert [student["id"] for student in students_response.json()] == [aluno_id]
+    assert enrollments_response.status_code == 200
+    assert [enrollment["id"] for enrollment in enrollments_response.json()] == [
+        matricula_response.json()["id"]
+    ]
+
+
+def test_student_and_guardian_updates_are_scoped_and_mask_contacts(cenario, autenticar):
+    with SessionLocal() as db:
+        student = Student(
+            id=str(uuid4()),
+            institution_id=cenario["instituicao"],
+            full_name="Aluno de teste",
+            birth_date="2005-01-01",
+            cpf="12345678903",
+            email="aluno@example.org",
+            phone="(81) 99999-1234",
+            address_street="Rua Particular",
+            address_number="55",
+            address_city="Recife",
+            address_state="PE",
+        )
+        other_institution = Institution(
+            id=str(uuid4()),
+            name="Outra instituição",
+            cnpj=f"7{uuid4().int % 10**13:013d}",
+            legal_name="Outra instituição",
+        )
+        db.add_all([student, other_institution])
+        db.flush()
+        foreign_student = Student(
+            id=str(uuid4()),
+            institution_id=other_institution.id,
+            full_name="Aluno externo",
+            birth_date="2005-01-01",
+            cpf="12345678904",
+            email="externo@example.org",
+        )
+        db.add(foreign_student)
+        db.commit()
+        student_id = student.id
+        foreign_student_id = foreign_student.id
+
+    autenticar(cenario["usuario"])
+    updated_student = cliente.patch(
+        f"/api/students/{student_id}",
+        json={"phone": "(81) 98888-5678"},
+    )
+    assert updated_student.status_code == 200, updated_student.json()
+    assert updated_student.json()["phone"] == "(81) *****-78"
+    assert updated_student.json()["address_street"] is None
+    assert cliente.patch(
+        f"/api/students/{foreign_student_id}",
+        json={"phone": "(81) 97777-9999"},
+    ).status_code == 404
+    assert cliente.get(
+        f"/api/students/{foreign_student_id}/history"
+    ).status_code == 404
+
+    guardian_payload = {
+        "full_name": "Responsável de teste",
+        "cpf": "12345678905",
+        "email": "responsavel@example.org",
+        "phone": "(81) 96666-4321",
+        "relationship_type": "mãe",
+        "address_street": "Rua Particular",
+        "address_number": "55",
+        "address_city": "Recife",
+        "address_state": "PE",
+    }
+    assert cliente.post(
+        f"/api/students/{foreign_student_id}/guardians",
+        json=guardian_payload,
+    ).status_code == 403
+    created_guardian = cliente.post(
+        f"/api/students/{student_id}/guardians",
+        json=guardian_payload,
+    )
+    assert created_guardian.status_code == 200, created_guardian.json()
+    guardian_id = created_guardian.json()["id"]
+
+    guardian_list = cliente.get(f"/api/students/{student_id}/guardians")
+    assert guardian_list.status_code == 200, guardian_list.json()
+    assert guardian_list.json()[0]["cpf"] == "123.***.***-05"
+    assert guardian_list.json()[0]["phone"] == "(81) *****-21"
+    assert guardian_list.json()[0]["address_street"] is None
+
+    updated_guardian = cliente.patch(
+        f"/api/students/{student_id}/guardians/{guardian_id}",
+        json={"phone": "(81) 95555-9876"},
+    )
+    assert updated_guardian.status_code == 200, updated_guardian.json()
+    assert updated_guardian.json()["phone"] == "(81) *****-76"

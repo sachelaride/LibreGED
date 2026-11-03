@@ -15,11 +15,39 @@ from fastapi.security import OAuth2PasswordBearer
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/token")
 
+MODULE_ROLE_ACCESS = {
+    "admin": {"admin_global", "admin_instituicao"},
+    "sead": {"admin_global", "admin_instituicao", "operador", "academico", "secretaria", "recepcao"},
+    "ead": {"admin_global", "admin_instituicao", "operador", "academico", "leitor", "professor", "tutor"},
+    "secretaria": {"admin_global", "admin_instituicao", "operador", "academico", "secretaria", "recepcao"},
+    "professores": {"admin_global", "admin_instituicao", "operador", "academico", "professor"},
+    "ged": {"admin_global", "admin_instituicao", "operador", "auditor", "leitor"},
+    "financeiro": {"admin_global", "admin_instituicao", "operador"},
+    "coordenacao": {"admin_global", "admin_instituicao", "operador", "academico", "coordenador"},
+    "aluno": {"admin_global", "admin_instituicao", "operador", "academico", "leitor", "aluno"},
+    "geral": {
+        "admin_global", "admin_instituicao", "operador", "academico", "auditor",
+        "leitor", "secretaria", "recepcao", "coordenador", "professor", "tutor", "aluno",
+    },
+}
+
+AVAILABLE_MODULES = tuple(MODULE_ROLE_ACCESS.keys())
+AVAILABLE_ROLES = tuple(sorted(
+    {role for roles in MODULE_ROLE_ACCESS.values() for role in roles}
+    | {"gestor_clinica"}
+))
+
+
+def has_module_access(role: str | None, module: str | None) -> bool:
+    normalized_module = (module or "").strip().lower()
+    return role in MODULE_ROLE_ACCESS.get(normalized_module, set())
+
 class TokenData(BaseModel):
     username: str | None = None
     role: str | None = None
     institution_id: str | None = None
     campus_id: str | None = None
+    module: str | None = None
 
 # We are using bcrypt directly because passlib has a known bug with bcrypt >= 4.0.0
 def get_password_hash(password: str) -> str:
@@ -55,7 +83,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
             username=username,
             role=payload.get("role"),
             institution_id=payload.get("institution_id"),
-            campus_id=payload.get("campus_id")
+            campus_id=payload.get("campus_id"),
+            module=payload.get("module")
         )
     except JWTError:
         raise credentials_exception
@@ -78,6 +107,31 @@ def role_checker(allowed_roles: list[str]):
             raise HTTPException(status_code=403, detail="Operation not permitted")
         return user
     return check_roles
+
+
+def require_module_access(required_module: str):
+    normalized_module = (required_module or "").strip().lower()
+
+    def check_module(
+        user: models.User = Depends(get_current_active_user),
+        token: str = Depends(oauth2_scheme),
+    ):
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        except JWTError as exc:
+            raise HTTPException(status_code=401, detail="Could not validate credentials") from exc
+
+        selected_module = (payload.get("module") or "").strip().lower()
+        if selected_module != normalized_module:
+            raise HTTPException(status_code=403, detail=f"Module mismatch. Required module: {normalized_module}")
+
+        if not has_module_access(user.role, normalized_module):
+            raise HTTPException(status_code=403, detail="Module access denied for this role")
+
+        return user
+
+    return check_module
+
 
 get_current_admin = role_checker(["admin_instituicao", "gestor_clinica"])
 

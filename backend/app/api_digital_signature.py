@@ -61,34 +61,96 @@ class SignRequest(BaseModel):
     password: str
     comments: str = "Assinatura Digital ICP-Brasil / PAdES-XMLDSig"
 
+
+def _normalize_signature_requirements(signature_rule):
+    if not signature_rule:
+        return []
+
+    def as_role_tuple(rule_item, fallback_index):
+        if isinstance(rule_item, str):
+            return str(rule_item), fallback_index + 1
+        if isinstance(rule_item, dict):
+            role = rule_item.get("role") or rule_item.get("name") or rule_item.get("cargo")
+            if not role:
+                return None, None
+            order = rule_item.get("order")
+            return str(role), int(order) if order is not None else fallback_index + 1
+        return None, None
+
+    if isinstance(signature_rule, list):
+        normalized = []
+        for index, item in enumerate(signature_rule):
+            role, order = as_role_tuple(item, index)
+            if role:
+                normalized.append({"role": role, "order": order})
+        return normalized
+
+    if not isinstance(signature_rule, dict):
+        return []
+
+    signatures = signature_rule.get("signatures") or []
+    if isinstance(signatures, list):
+        normalized = []
+        for index, item in enumerate(signatures):
+            role, order = as_role_tuple(item, index)
+            if role:
+                normalized.append({"role": role, "order": order})
+        if normalized:
+            return normalized
+
+    order = signature_rule.get("order") or []
+    if isinstance(order, list):
+        normalized = []
+        for index, item in enumerate(order):
+            role, _ = as_role_tuple(item, index)
+            if role:
+                normalized.append({"role": role, "order": index + 1})
+        if normalized:
+            return normalized
+
+    roles = signature_rule.get("roles") or []
+    if isinstance(roles, list):
+        normalized = []
+        for index, item in enumerate(roles):
+            role, _ = as_role_tuple(item, index)
+            if role:
+                normalized.append({"role": role, "order": index + 1})
+        if normalized:
+            return normalized
+
+    if isinstance(signature_rule.get("required"), bool):
+        return [{"role": str(signature_rule.get("role")), "order": 1}] if signature_rule.get("role") else []
+
+    return []
+
+
 @router.post("/api/documents/{document_id}/request-signatures", tags=["Assinaturas Híbridas"])
 def request_signatures(document_id: str, db: Session = Depends(get_db), usuario: User = Depends(get_current_active_user)):
     doc = db.query(GEDDocument).filter(GEDDocument.id == document_id).first()
     if not doc:
         raise HTTPException(404, "Documento não encontrado.")
     exigir_documento(db, usuario, doc, "assinar")
-    
+
     doc_type = db.query(DocumentType).filter(DocumentType.id == doc.category_id).first()
     if not doc_type or not doc_type.signature_rule:
         raise HTTPException(400, "O tipo documental não possui regras de assinatura configuradas.")
-        
-    rule = doc_type.signature_rule
-    signatures_needed = rule.get("signatures", [])
+
+    signatures_needed = _normalize_signature_requirements(doc_type.signature_rule)
     if not signatures_needed:
         raise HTTPException(400, "Nenhuma assinatura configurada na regra.")
-        
+
     # Limpa requests anteriores se estiver re-solicitando
     db.query(SignatureRequest).filter(SignatureRequest.document_id == document_id, SignatureRequest.status == "PENDING").delete()
-    
+
     created = []
-    for sig in signatures_needed:
+    for sig in sorted(signatures_needed, key=lambda item: int(item.get("order", 1))):
         role = sig.get("role")
         order = sig.get("order", 1)
         signer = db.query(Signer).filter(Signer.role == role, Signer.is_active == 1).first()
         if not signer:
             db.rollback()
             raise HTTPException(400, f"Nenhum signatário ativo encontrado para o cargo: {role}")
-            
+
         req = SignatureRequest(
             document_id=document_id,
             signer_id=signer.id,
@@ -97,7 +159,7 @@ def request_signatures(document_id: str, db: Session = Depends(get_db), usuario:
         )
         db.add(req)
         created.append(req)
-        
+
     db.commit()
     return {"message": "Solicitações criadas", "count": len(created)}
 
@@ -157,7 +219,7 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
         SignatureRequest.document_id == doc.id,
         SignatureRequest.status == "PENDING"
     ).order_by(SignatureRequest.order.asc()).all()
-    
+
     current_req = None
     if requests:
         first_pending_order = requests[0].order
@@ -166,7 +228,7 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
             raise HTTPException(403, "O signatário informado não possui solicitação pendente para este documento.")
         if current_req.order > first_pending_order:
             raise HTTPException(403, "Não é o turno deste signatário. Aguarde os signatários anteriores.")
-            
+
     # Criar SignatureLog PENDING
     persisted_user_id = db.query(User.id).filter(User.id == usuario.id).scalar()
     sig_log = SignatureLog(
@@ -201,6 +263,7 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
         if current_req:
             current_req.status = "SIGNED"
             current_req.signed_at = sig_log.tsa_timestamp
+            db.flush()
             
     except Exception as e:
         sig_log.status = "FAILED"
@@ -208,20 +271,32 @@ def sign_document(document_id: str, payload: SignRequest, db: Session = Depends(
         db.commit()
         raise HTTPException(status_code=500, detail=f"Erro durante assinatura: {str(e)}")
         
-    # Atualiza Status
-    old_status = doc.status
-    doc.status = GEDDocumentStatus.ASSINADO
-    
-    transition = DocumentTransitionHistory(
-        document_id=doc.id,
-        from_status=old_status,
-        to_status=GEDDocumentStatus.ASSINADO,
-        changed_by_user_id=persisted_user_id,
-        comments=payload.comments
-    )
-    db.add(transition)
+    # Atualiza status somente quando todas as assinaturas configuradas forem concluídas.
+    pending_after_signature = db.query(SignatureRequest).filter(
+        SignatureRequest.document_id == doc.id,
+        SignatureRequest.status == "PENDING",
+    ).count()
+
+    has_any_signature_requests = db.query(SignatureRequest).filter(
+        SignatureRequest.document_id == doc.id,
+    ).count() > 0
+
+    if pending_after_signature == 0 and has_any_signature_requests:
+        old_status = doc.status
+        doc.status = GEDDocumentStatus.ASSINADO
+        db.flush()
+
+        transition = DocumentTransitionHistory(
+            document_id=doc.id,
+            from_status=old_status,
+            to_status=GEDDocumentStatus.ASSINADO,
+            changed_by_user_id=persisted_user_id,
+            comments=payload.comments
+        )
+        db.add(transition)
+
     db.commit()
-    
+
     return {"message": "Documento assinado com sucesso", "log_id": sig_log.id, "type": sig_type}
 
 @router.get("/api/signers", tags=["Assinaturas Híbridas"])

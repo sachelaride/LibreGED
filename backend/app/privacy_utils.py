@@ -71,5 +71,9 @@ def redact_text_for_log(text: Optional[str]) -> str:
     value = re.sub(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b", mask_cpf, value)
     value = re.sub(r"\b\d{11}\b", lambda m: mask_cpf(m.group(0)), value)
     value = re.sub(r"(?i)\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", lambda m: mask_email(m.group(0)), value)
-    value = re.sub(r"\(\d{2}\)\s*\d{5}-\d{4}|\d{2}\s*\d{9,10}", lambda m: mask_phone(m.group(0)), value)
+    value = re.sub(
+        r"(?<![A-Za-z0-9])(?:\(\d{2}\)\s*\d{5}-\d{4}|\d{2}\s*\d{9,10})(?![A-Za-z0-9])",
+        lambda m: mask_phone(m.group(0)),
+        value,
+    )
     return value

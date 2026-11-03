@@ -77,3 +77,15 @@ def test_academic_validation_accepts_consistent_documents():
     ))
 
     assert errors == []
+
+
+def test_academic_validation_ignores_partial_or_missing_data():
+    empty_errors = validate_documents(ValidationRequest())
+    assert empty_errors == []
+
+    diploma, historico, curriculo = create_payloads()
+    historico.documentoHistoricoEscolarFinal.historicoEscolar = None
+    curriculo.criterioIntegralizacaoRotulos = []
+    errors = validate_documents(ValidationRequest(diploma=diploma, historico=historico, curriculo=curriculo))
+
+    assert "Carga horária" not in "\n".join(errors)

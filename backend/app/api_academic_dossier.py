@@ -81,6 +81,8 @@ def add_document_to_dossier(
     dossier = db.query(AcademicDossier).filter(AcademicDossier.id == dossier_id).first()
     if not dossier:
         raise HTTPException(status_code=404, detail="Dossier not found")
+    if not dossier.student:
+        raise HTTPException(status_code=404, detail="Student not found for dossier")
     if (
         current_user.role != "admin_global"
         and dossier.student.institution_id != current_user.institution_id
@@ -115,6 +117,10 @@ def validate_dossier(
     dossier = db.query(AcademicDossier).filter(AcademicDossier.id == dossier_id).first()
     if not dossier:
         raise HTTPException(status_code=404, detail="Dossier not found")
+    if not dossier.student:
+        raise HTTPException(status_code=404, detail="Student not found for dossier")
+    if not dossier.enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found for dossier")
 
     if current_user.role != "admin_global" and dossier.student.institution_id != current_user.institution_id:
         raise HTTPException(status_code=403, detail="Dossiê fora da instituição do usuário.")
@@ -182,6 +188,10 @@ def close_dossier(
     dossier = db.query(AcademicDossier).filter(AcademicDossier.id == dossier_id).first()
     if not dossier:
         raise HTTPException(status_code=404, detail="Dossier not found")
+    if not dossier.student:
+        raise HTTPException(status_code=404, detail="Student not found for dossier")
+    if not dossier.enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found for dossier")
     if (
         current_user.role != "admin_global"
         and dossier.student.institution_id != current_user.institution_id
@@ -218,6 +228,10 @@ async def export_dossier(
     dossier = db.query(AcademicDossier).filter(AcademicDossier.id == dossier_id).first()
     if not dossier:
         raise HTTPException(status_code=404, detail="Dossier not found")
+    if not dossier.student:
+        raise HTTPException(status_code=404, detail="Student not found for dossier")
+    if not dossier.enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found for dossier")
     if (
         current_user.role != "admin_global"
         and dossier.student.institution_id != current_user.institution_id

@@ -55,7 +55,7 @@ def test_xmldsig_flow():
     # 1. Preparar o certificado falso em memória
     p12_password = "teste"
     p12_bytes = generate_test_p12(p12_password.encode())
-    
+
     institution_res = client.post(
         "/api/institutions",
         json={
@@ -123,3 +123,89 @@ def test_xmldsig_flow():
     signatures_res = client.get(f"/api/documents/{doc_id}/signatures")
     assert signatures_res.status_code == 200
     assert signatures_res.json()[0]["status"] == "SUCCESS"
+
+
+def test_multistep_signature_order_finalizes_only_after_last_signer():
+    password = "teste"
+    first_p12 = generate_test_p12(password.encode())
+    second_p12 = generate_test_p12(password.encode())
+
+    db = SessionLocal()
+    document_type_id = str(uuid.uuid4())
+    db.add(
+        DocumentType(
+            id=document_type_id,
+            name="Documento com duas assinaturas",
+            storage_area_id="dummy_area",
+            storage_partition_id="dummy_partition",
+            is_active=True,
+            signature_rule={"required": True, "order": ["Reitor", "Diretoria"]},
+        )
+    )
+    db.commit()
+    db.close()
+
+    first_signer_res = client.post(
+        "/api/signers",
+        data={
+            "name": "João Reitor",
+            "role": "Reitor",
+            "cpf": "11122233345",
+            "password": password,
+        },
+        files={"p12_file": ("reitor.p12", first_p12, "application/x-pkcs12")},
+    )
+    assert first_signer_res.status_code == 200, first_signer_res.json()
+    first_signer_id = first_signer_res.json()["id"]
+
+    second_signer_res = client.post(
+        "/api/signers",
+        data={
+            "name": "Maria Diretoria",
+            "role": "Diretoria",
+            "cpf": "22233344455",
+            "password": password,
+        },
+        files={"p12_file": ("diretoria.p12", second_p12, "application/x-pkcs12")},
+    )
+    assert second_signer_res.status_code == 200, second_signer_res.json()
+    second_signer_id = second_signer_res.json()["id"]
+
+    doc_res = client.post(
+        "/api/documents/upload",
+        data={
+            "title": "Atestado com ordem de assinatura",
+            "document_type_id": document_type_id,
+            "indices_json": "[]",
+        },
+        files={"file": ("atestado.xml", b"<Atestado><Aluno>Maria</Aluno></Atestado>", "application/xml")},
+    )
+    assert doc_res.status_code == 200, doc_res.json()
+    doc_id = doc_res.json()["id"]
+
+    request_res = client.post(f"/api/documents/{doc_id}/request-signatures")
+    assert request_res.status_code == 200, request_res.json()
+
+    first_sign = client.post(
+        f"/api/documents/{doc_id}/sign",
+        json={
+            "signer_id": first_signer_id,
+            "password": password,
+            "comments": "Primeira assinatura",
+        },
+    )
+    assert first_sign.status_code == 200, first_sign.text
+    assert client.get(f"/api/documents/{doc_id}/lifecycle").json()["status"] != "ASSINADO"
+
+    second_sign = client.post(
+        f"/api/documents/{doc_id}/sign",
+        json={
+            "signer_id": second_signer_id,
+            "password": password,
+            "comments": "Segunda assinatura",
+        },
+    )
+    assert second_sign.status_code == 200, second_sign.text
+    final_lifecycle = client.get(f"/api/documents/{doc_id}/lifecycle")
+    assert final_lifecycle.status_code == 200, final_lifecycle.text
+    assert final_lifecycle.json()["status"] == "ASSINADO"

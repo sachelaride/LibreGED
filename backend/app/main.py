@@ -31,6 +31,7 @@ from app.models_academic_catalog import (
     AcademicDiscipline,
     AcademicOffering,
 )
+from app import models_financial
 from app.search import search_service
 from app.retention import RetentionService
 from app import auth

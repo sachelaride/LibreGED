@@ -13,6 +13,7 @@ from app import models
 from app.academic_history import current_enrollment_academic_link
 from app.auth import require_module_access
 from app.database import get_db
+from app.financial_services import create_transfer_financial_review
 from app.models_academic_catalog import (
     AcademicClass,
     AcademicCoordinatorAssignment,
@@ -331,6 +332,10 @@ class StaffUpdate(BaseModel):
     email: str | None = Field(default=None, min_length=5, max_length=254)
     staff_type: Literal["professor", "coordenador", "tutor"] | None = None
     status: Literal["ativo", "inativo"] | None = None
+
+
+class StudentAccountLink(BaseModel):
+    user_id: str | None
 
 
 class CoordinatorAssignmentCreate(BaseModel):
@@ -944,6 +949,17 @@ def create_course(payload: CourseCreate, db: Session = Depends(get_db), user: An
     values["campus_id"] = values["campus_id"] or _user_campus_id(user)
     _check_campus(db, values["campus_id"], institution_id, user)
     record = AcademicCourse(id=uuid4().hex, institution_id=institution_id, **values)
+    _audit_catalog_change(
+        db,
+        user,
+        "academic_course",
+        record.id,
+        "academic_course_created",
+        {"after": {key: values[key] for key in (
+            "campus_id", "code", "name", "degree", "modality",
+            "duration_periods", "status",
+        )}},
+    )
     return {"module": "secretaria", "course": _model_dict(_save(db, record), ("id", "campus_id", "code", "name", "degree", "modality", "duration_periods", "status"))}
 
 
@@ -956,9 +972,31 @@ def update_course(course_id: str, payload: CourseUpdate, db: Session = Depends(g
         _check_campus(db, data["campus_id"], institution_id, user)
     if not data:
         return {"module": "secretaria", "course": _model_dict(record, ("id", "campus_id", "code", "name", "degree", "modality", "duration_periods", "status"))}
+    before = {
+        field: getattr(record, field)
+        for field in data
+        if field in {
+            "campus_id", "code", "name", "degree", "modality",
+            "duration_periods", "status",
+        }
+    }
+    changes = {
+        field: {"before": before[field], "after": value}
+        for field, value in data.items()
+        if value is not None and before.get(field) != value
+    }
     for field, value in data.items():
         if value is not None:
             setattr(record, field, value)
+    if changes:
+        _audit_catalog_change(
+            db,
+            user,
+            "academic_course",
+            record.id,
+            "academic_course_updated",
+            changes,
+        )
     record = _save(db, record)
     return {"module": "secretaria", "course": _model_dict(record, ("id", "campus_id", "code", "name", "degree", "modality", "duration_periods", "status"))}
 
@@ -973,7 +1011,16 @@ def list_disciplines(db: Session = Depends(get_db), user: Any = SecretaryUser):
 @router.post("/disciplinas", status_code=status.HTTP_201_CREATED)
 def create_discipline(payload: DisciplineCreate, db: Session = Depends(get_db), user: Any = SecretaryUser):
     institution_id = _institution_id(user)
-    record = AcademicDiscipline(id=uuid4().hex, institution_id=institution_id, **payload.model_dump())
+    values = payload.model_dump()
+    record = AcademicDiscipline(id=uuid4().hex, institution_id=institution_id, **values)
+    _audit_catalog_change(
+        db,
+        user,
+        "academic_discipline",
+        record.id,
+        "academic_discipline_created",
+        {"after": values},
+    )
     return {"module": "secretaria", "discipline": _model_dict(_save(db, record), ("id", "code", "name", "workload_hours", "credits", "syllabus", "status"))}
 
 
@@ -984,9 +1031,30 @@ def update_discipline(discipline_id: str, payload: DisciplineUpdate, db: Session
     data = payload.model_dump(exclude_unset=True)
     if not data:
         return {"module": "secretaria", "discipline": _model_dict(record, ("id", "code", "name", "workload_hours", "credits", "syllabus", "status"))}
+    before = {
+        field: getattr(record, field)
+        for field in data
+        if field in {
+            "code", "name", "workload_hours", "credits", "syllabus", "status",
+        }
+    }
+    changes = {
+        field: {"before": before[field], "after": value}
+        for field, value in data.items()
+        if value is not None and before.get(field) != value
+    }
     for field, value in data.items():
         if value is not None:
             setattr(record, field, value)
+    if changes:
+        _audit_catalog_change(
+            db,
+            user,
+            "academic_discipline",
+            record.id,
+            "academic_discipline_updated",
+            changes,
+        )
     record = _save(db, record)
     return {"module": "secretaria", "discipline": _model_dict(record, ("id", "code", "name", "workload_hours", "credits", "syllabus", "status"))}
 
@@ -2199,6 +2267,33 @@ def list_staff(
     return {"module": "secretaria", "items": [_model_dict(r, ("id", "campus_id", "user_id", "staff_code", "full_name", "email", "staff_type", "status")) for r in records]}
 
 
+@router.get("/alunos-vinculaveis")
+def list_linkable_students(
+    db: Session = Depends(get_db),
+    user: Any = SecretaryUser,
+):
+    institution_id = _institution_id(user)
+    query = db.query(models.Student).filter(
+        models.Student.institution_id == institution_id
+    )
+    campus_id = _user_campus_id(user)
+    if campus_id:
+        query = query.filter(models.Student.campus_id == campus_id)
+    records = query.order_by(models.Student.full_name).all()
+    return {
+        "module": "secretaria",
+        "items": [
+            {
+                "id": record.id,
+                "full_name": record.full_name,
+                "campus_id": record.campus_id,
+                "user_id": record.user_id,
+            }
+            for record in records
+        ],
+    }
+
+
 @router.get("/usuarios-vinculaveis")
 def list_linkable_staff_users(
     staff_id: str | None = None,
@@ -2230,6 +2325,119 @@ def list_linkable_staff_users(
     return {
         "module": "secretaria",
         "items": [{"id": record.id, "username": record.username} for record in records],
+    }
+
+
+@router.get("/alunos/{student_id}/usuarios-vinculaveis")
+def list_linkable_student_users(
+    student_id: str,
+    db: Session = Depends(get_db),
+    user: Any = SecretaryUser,
+):
+    institution_id = _institution_id(user)
+    student = _get_scoped(
+        db, models.Student, student_id, institution_id, "Aluno", user
+    )
+    campus_id = _user_campus_id(user)
+    if campus_id and student.campus_id != campus_id:
+        raise HTTPException(status_code=403, detail="Acesso restrito ao campus vinculado ao usuário")
+
+    query = db.query(models.User).filter(
+        models.User.institution_id == institution_id,
+        models.User.role == "aluno",
+        models.User.is_active.is_(True),
+    )
+    if student.campus_id:
+        query = query.filter(
+            or_(models.User.campus_id.is_(None), models.User.campus_id == student.campus_id)
+        )
+    else:
+        query = query.filter(models.User.campus_id.is_(None))
+    linked_to_other_student = db.query(models.Student.user_id).filter(
+        models.Student.user_id.is_not(None),
+        models.Student.id != student.id,
+    )
+    records = query.filter(
+        or_(
+            models.User.id.not_in(linked_to_other_student),
+            models.User.id == (student.user_id or ""),
+        )
+    ).order_by(models.User.username).all()
+    return {
+        "module": "secretaria",
+        "current_user_id": student.user_id,
+        "items": [{"id": record.id, "username": record.username} for record in records],
+    }
+
+
+@router.put("/alunos/{student_id}/conta")
+def link_student_user(
+    student_id: str,
+    payload: StudentAccountLink,
+    db: Session = Depends(get_db),
+    user: Any = SecretaryUser,
+):
+    if getattr(user, "role", None) not in {
+        "admin_global",
+        "admin_instituicao",
+        "secretaria",
+        "academico",
+    }:
+        raise HTTPException(status_code=403, detail="Apenas a Secretaria pode vincular a conta do aluno")
+
+    institution_id = _institution_id(user)
+    student = _get_scoped(
+        db, models.Student, student_id, institution_id, "Aluno", user
+    )
+    campus_id = _user_campus_id(user)
+    if campus_id and student.campus_id != campus_id:
+        raise HTTPException(status_code=403, detail="Acesso restrito ao campus vinculado ao usuário")
+
+    if payload.user_id is None:
+        student.user_id = None
+    else:
+        account = db.query(models.User).filter(
+            models.User.id == payload.user_id,
+            models.User.institution_id == institution_id,
+            models.User.role == "aluno",
+            models.User.is_active.is_(True),
+        ).first()
+        if account is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Selecione uma conta de aluno ativa da mesma instituição",
+            )
+        if account.campus_id and account.campus_id != student.campus_id:
+            raise HTTPException(
+                status_code=422,
+                detail="A conta e o aluno devem pertencer ao mesmo campus",
+            )
+        existing_link = db.query(models.Student).filter(
+            models.Student.user_id == account.id,
+            models.Student.id != student.id,
+        ).first()
+        if existing_link:
+            raise HTTPException(status_code=409, detail="A conta já está vinculada a outro aluno")
+        student.user_id = account.id
+
+    _audit_catalog_change(
+        db,
+        user,
+        "student_account_link",
+        student.id,
+        "student_account_link_updated",
+        {"changed_fields": ["user_id"], "linked": student.user_id is not None},
+    )
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A conta já está vinculada a outro aluno") from exc
+    db.refresh(student)
+    return {
+        "module": "secretaria",
+        "student_id": student.id,
+        "user_id": student.user_id,
     }
 
 
@@ -3018,6 +3226,12 @@ def transfer_enrollment(
     db.add(target)
     db.flush()
     target_link, _ = current_enrollment_academic_link(db, target)
+    financial_review = create_transfer_financial_review(
+        db,
+        user,
+        source,
+        target,
+    )
     _audit_catalog_change(
         db,
         user,
@@ -3070,6 +3284,10 @@ def transfer_enrollment(
             "id": target.id,
             "status": target.status,
             "academic_link": target_link,
+        },
+        "financial_review": {
+            "id": financial_review.id,
+            "status": financial_review.status,
         },
     }
 
@@ -3202,6 +3420,8 @@ def list_academic_schedules(db: Session = Depends(get_db), user: Any = Secretary
 @router.get("/historico-alteracoes/{entity_type}/{entity_id}")
 def get_academic_change_history(
     entity_type: Literal[
+        "curso",
+        "disciplina",
         "oferta",
         "turma",
         "horario",
@@ -3213,7 +3433,13 @@ def get_academic_change_history(
     user: Any = SecretaryUser,
 ):
     institution_id = _institution_id(user)
-    if entity_type == "oferta":
+    if entity_type == "curso":
+        _get_scoped(db, AcademicCourse, entity_id, institution_id, "Curso", user)
+        audit_entity = "academic_course"
+    elif entity_type == "disciplina":
+        _get_scoped(db, AcademicDiscipline, entity_id, institution_id, "Disciplina", user)
+        audit_entity = "academic_discipline"
+    elif entity_type == "oferta":
         _get_scoped(db, AcademicOffering, entity_id, institution_id, "Oferta", user)
         audit_entity = "academic_offering"
     elif entity_type == "turma":

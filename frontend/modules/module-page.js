@@ -284,6 +284,7 @@ const moduleActions = {
     { key: 'gerar-boleto', label: 'Gerar boleto', kind: 'form' },
     { key: 'cobranca', label: 'Cobrança', kind: 'form' },
     { key: 'pagamento', label: 'Pagamento', kind: 'form' },
+    { key: 'revisoes', label: 'Revisões acadêmicas', kind: 'refresh' },
     { key: 'extrato', label: 'Extrato', kind: 'refresh' }
   ],
   coordenacao: [
@@ -330,7 +331,7 @@ function showStatusMessage(message, type = 'info') {
   panel.appendChild(statusNode);
 }
 
-function openActionForm(actionKey) {
+function openActionForm(actionKey, initialValues = {}) {
   ensureFormPanel();
   const panel = document.getElementById('module-form-panel');
   const actionMap = {
@@ -550,21 +551,25 @@ function openActionForm(actionKey) {
       method: 'POST',
       fields: [
         { name: 'student_id', label: 'Aluno', type: 'text', value: 'ALU-1001' },
-        { name: 'amount', label: 'Valor', type: 'number', value: '1500', step: '0.01' },
-        { name: 'due_date', label: 'Vencimento', type: 'date', value: '2026-12-10' },
-        { name: 'status', label: 'Status', type: 'select', options: ['pendente', 'quitado', 'atrasado'], value: 'pendente' },
+        { name: 'responsible_financial_id', label: 'Responsável financeiro cadastrado', type: 'select', options: [{ value: '', label: 'Informe o aluno para carregar responsáveis' }], value: '', loadGuardians: true },
+        { name: 'amount', label: 'Valor total', type: 'number', value: '1500', step: '0.01' },
+        { name: 'discount', label: 'Desconto', type: 'number', value: '0', min: '0', step: '0.01' },
+        { name: 'plan', label: 'Plano', type: 'select', options: ['mensalidade', 'anuidade_semestre', 'taxa_matricula', 'personalizado'], value: 'anuidade_semestre' },
+        { name: 'installments_count', label: 'Número de parcelas', type: 'number', value: '1', min: '1', max: '36', step: '1' },
+        { name: 'due_date', label: 'Vencimento da primeira parcela', type: 'date', value: '2026-12-10' },
         { name: 'issuer', label: 'Emissor', type: 'text', value: 'Secretaria' },
-        { name: 'payment_method', label: 'Forma de pagamento', type: 'select', options: ['boleto', 'pix', 'cartão', 'transferência'], value: 'boleto' },
-        { name: 'installment', label: 'Parcela', type: 'text', value: '1/1' }
+        { name: 'payment_method', label: 'Forma de pagamento', type: 'select', options: ['boleto', 'pix', 'cartão', 'transferência'], value: 'boleto' }
       ],
       transform: (formData) => ({
         student_id: formData.student_id,
+        responsible_financial_id: formData.responsible_financial_id || null,
         amount: Number(formData.amount),
+        discount: Number(formData.discount),
+        plan: formData.plan,
+        installments_count: Number(formData.installments_count),
         due_date: formData.due_date,
-        status: formData.status,
         issuer: formData.issuer,
-        payment_method: formData.payment_method,
-        installment: formData.installment
+        payment_method: formData.payment_method
       })
     },
     'cobranca': {
@@ -573,21 +578,25 @@ function openActionForm(actionKey) {
       method: 'POST',
       fields: [
         { name: 'student_id', label: 'Aluno', type: 'text', value: 'ALU-1002' },
-        { name: 'amount', label: 'Valor', type: 'number', value: '1320', step: '0.01' },
-        { name: 'due_date', label: 'Vencimento', type: 'date', value: '2026-11-30' },
-        { name: 'status', label: 'Status', type: 'select', options: ['pendente', 'quitado', 'atrasado'], value: 'atrasado' },
+        { name: 'responsible_financial_id', label: 'Responsável financeiro cadastrado', type: 'select', options: [{ value: '', label: 'Informe o aluno para carregar responsáveis' }], value: '', loadGuardians: true },
+        { name: 'amount', label: 'Valor total', type: 'number', value: '1320', step: '0.01' },
+        { name: 'discount', label: 'Desconto', type: 'number', value: '0', min: '0', step: '0.01' },
+        { name: 'plan', label: 'Plano', type: 'select', options: ['mensalidade', 'anuidade_semestre', 'taxa_matricula', 'personalizado'], value: 'anuidade_semestre' },
+        { name: 'installments_count', label: 'Número de parcelas', type: 'number', value: '4', min: '1', max: '36', step: '1' },
+        { name: 'due_date', label: 'Vencimento da primeira parcela', type: 'date', value: '2026-11-30' },
         { name: 'issuer', label: 'Emissor', type: 'text', value: 'Financeiro' },
-        { name: 'payment_method', label: 'Forma de pagamento', type: 'select', options: ['boleto', 'pix', 'cartão', 'transferência'], value: 'pix' },
-        { name: 'installment', label: 'Parcela', type: 'text', value: '2/4' }
+        { name: 'payment_method', label: 'Forma de pagamento', type: 'select', options: ['boleto', 'pix', 'cartão', 'transferência'], value: 'pix' }
       ],
       transform: (formData) => ({
         student_id: formData.student_id,
+        responsible_financial_id: formData.responsible_financial_id || null,
         amount: Number(formData.amount),
+        discount: Number(formData.discount),
+        plan: formData.plan,
+        installments_count: Number(formData.installments_count),
         due_date: formData.due_date,
-        status: formData.status,
         issuer: formData.issuer,
-        payment_method: formData.payment_method,
-        installment: formData.installment
+        payment_method: formData.payment_method
       })
     },
     'nova-pendencia': {
@@ -709,17 +718,26 @@ function openActionForm(actionKey) {
     },
     'pagamento': {
       title: 'Pagamento',
-      endpoint: '/financeiro/boletos',
-      method: 'POST',
+      endpointTemplate: '/financeiro/boletos/{invoice_id}/status',
+      method: 'PATCH',
       fields: [
-        { name: 'student_id', label: 'Aluno', type: 'text', value: 'ALU-1001' },
-        { name: 'amount', label: 'Valor', type: 'number', value: '1450', step: '0.01' },
-        { name: 'due_date', label: 'Vencimento', type: 'date', value: '2026-11-20' }
+        { name: 'invoice_id', label: 'ID da cobrança', type: 'text', value: '' },
+        { name: 'status', label: 'Novo status', type: 'select', options: ['quitado', 'cancelado'], value: 'quitado' }
       ],
       transform: (formData) => ({
-        student_id: formData.student_id,
-        amount: Number(formData.amount),
-        due_date: formData.due_date
+        status: formData.status
+      })
+    },
+    'resolver-revisao': {
+      title: 'Concluir revisão financeira',
+      endpointTemplate: '/financeiro/revisoes-academicas/{review_id}/resolver',
+      method: 'PATCH',
+      fields: [
+        { name: 'review_id', label: 'ID da revisão', type: 'text', value: '', readOnly: true },
+        { name: 'resolution_note', label: 'Observação da análise', type: 'text', value: '', placeholder: 'Descreva a análise realizada' }
+      ],
+      transform: (formData) => ({
+        resolution_note: formData.resolution_note
       })
     }
   };
@@ -749,9 +767,15 @@ function openActionForm(actionKey) {
 
   const form = document.createElement('form');
   form.innerHTML = config.fields.map((field) => {
+    const value = initialValues[field.name] ?? field.value ?? '';
+    const readOnly = field.readOnly ? 'readonly' : '';
     const inputMarkup = field.type === 'select'
-      ? `<select name="${field.name}" style="width:100%; padding:10px; border-radius:8px;">${field.options.map((option) => `<option value="${option}" ${option === field.value ? 'selected' : ''}>${option}</option>`).join('')}</select>`
-      : `<input type="${field.type}" name="${field.name}" value="${field.value || ''}" placeholder="${field.placeholder || ''}" step="${field.step || 'any'}" style="width:100%; padding:10px; border-radius:8px;">`;
+      ? `<select name="${field.name}" ${field.loadGuardians ? 'data-financial-guardian="true" disabled' : ''} style="width:100%; padding:10px; border-radius:8px;">${field.options.map((option) => {
+        const optionValue = typeof option === 'object' ? option.value : option;
+        const optionLabel = typeof option === 'object' ? option.label : option;
+        return `<option value="${optionValue}" ${String(optionValue) === String(field.value) ? 'selected' : ''}>${optionLabel}</option>`;
+      }).join('')}</select>`
+      : `<input type="${field.type}" name="${field.name}" value="${value}" placeholder="${field.placeholder || ''}" min="${field.min || ''}" max="${field.max || ''}" step="${field.step || 'any'}" ${readOnly} style="width:100%; padding:10px; border-radius:8px;">`;
     return `
       <div style="margin-bottom: 12px;">
         <label style="display:block; margin-bottom:6px; font-weight:600;">${field.label}</label>
@@ -770,6 +794,9 @@ function openActionForm(actionKey) {
     event.preventDefault();
     const formData = Object.fromEntries(new FormData(form).entries());
     const payload = config.transform(formData);
+    const endpoint = config.endpointTemplate
+      ? config.endpointTemplate.replace(/\{([^}]+)\}/g, (_match, fieldName) => encodeURIComponent(formData[fieldName] || ''))
+      : config.endpoint;
 
     if (config.method === 'GET') {
       const query = new URLSearchParams(payload).toString();
@@ -786,7 +813,7 @@ function openActionForm(actionKey) {
     }
 
     try {
-      const response = await fetch(buildApiUrl(config.endpoint), {
+      const response = await fetch(buildApiUrl(endpoint), {
         method: config.method,
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload)
@@ -797,7 +824,11 @@ function openActionForm(actionKey) {
         return;
       }
       showStatusMessage(`${config.title} registrado com sucesso.`, 'info');
-      await loadModulePageData();
+      if (actionKey === 'resolver-revisao') {
+        await loadFinancialReviews();
+      } else {
+        await loadModulePageData();
+      }
       window.dispatchEvent(new CustomEvent('module-action-saved', {
         detail: { module: currentModule }
       }));
@@ -807,6 +838,46 @@ function openActionForm(actionKey) {
   });
 
   panel.appendChild(form);
+  const guardianSelect = form.querySelector('[data-financial-guardian]');
+  const studentInput = form.querySelector('[name="student_id"]');
+  if (guardianSelect && studentInput) {
+    studentInput.addEventListener('change', async () => {
+      const studentId = studentInput.value.trim();
+      guardianSelect.replaceChildren();
+      guardianSelect.disabled = true;
+      if (!studentId) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Informe o aluno para carregar responsáveis';
+        guardianSelect.appendChild(option);
+        return;
+      }
+      try {
+        const response = await fetch(
+          buildApiUrl(`/financeiro/alunos/${encodeURIComponent(studentId)}/responsaveis-financeiros`),
+          { headers: getAuthHeaders() }
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          showStatusMessage(data.detail || 'Não foi possível carregar os responsáveis do aluno.', 'error');
+          return;
+        }
+        const noResponsibleOption = document.createElement('option');
+        noResponsibleOption.value = '';
+        noResponsibleOption.textContent = 'Sem responsável financeiro vinculado';
+        guardianSelect.appendChild(noResponsibleOption);
+        data.items.forEach((guardian) => {
+          const option = document.createElement('option');
+          option.value = guardian.id;
+          option.textContent = `${guardian.full_name} (${guardian.relationship_type})`;
+          guardianSelect.appendChild(option);
+        });
+        guardianSelect.disabled = false;
+      } catch (error) {
+        showStatusMessage('Falha ao carregar os responsáveis do aluno.', 'error');
+      }
+    });
+  }
   panel.querySelector('[data-close-form]').addEventListener('click', () => { panel.style.display = 'none'; panel.innerHTML = ''; });
 }
 
@@ -823,6 +894,10 @@ function renderQuickActions() {
   container.querySelectorAll('[data-module-action]').forEach((button) => {
     button.addEventListener('click', () => {
       const actionKey = button.getAttribute('data-module-action');
+      if (actionKey === 'revisoes') {
+        loadFinancialReviews();
+        return;
+      }
       if (actionKey === 'relatorio' || actionKey === 'documentos' || actionKey === 'extrato' || actionKey === 'ajuda' || actionKey === 'buscar-doc') {
         showStatusMessage('Painel atualizado com sucesso.', 'info');
         loadModulePageData();
@@ -831,6 +906,86 @@ function renderQuickActions() {
       openActionForm(actionKey);
     });
   });
+}
+
+async function loadFinancialReviews() {
+  try {
+    const response = await fetch(
+      buildApiUrl('/financeiro/revisoes-academicas?status_filter=pendente'),
+      { headers: getAuthHeaders() }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      showStatusMessage(data.detail || 'Não foi possível carregar as revisões financeiras.', 'error');
+      return;
+    }
+    renderFinancialReviews(resolveListItems(data));
+    showStatusMessage('Revisões financeiras pendentes carregadas.', 'info');
+  } catch (error) {
+    showStatusMessage('Falha ao carregar as revisões financeiras.', 'error');
+  }
+}
+
+function renderFinancialReviews(items) {
+  const listEl = document.getElementById('primary-list');
+  if (!listEl) return;
+  listEl.replaceChildren();
+
+  if (!items.length) {
+    const emptyMessage = document.createElement('p');
+    emptyMessage.className = 'text-muted';
+    emptyMessage.textContent = 'Nenhuma revisão financeira pendente.';
+    listEl.appendChild(emptyMessage);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'data-table';
+  table.style.width = '100%';
+  table.style.minWidth = '640px';
+  const headers = ['Aluno', 'Tipo', 'Detalhes', 'Criada em', 'Ação'];
+  const headerRow = document.createElement('tr');
+  headers.forEach((label) => {
+    const header = document.createElement('th');
+    header.textContent = label;
+    headerRow.appendChild(header);
+  });
+  const thead = document.createElement('thead');
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  items.forEach((item) => {
+    const row = document.createElement('tr');
+    [
+      item.student_name,
+      item.review_type,
+      item.details,
+      item.created_at ? new Date(item.created_at).toLocaleString('pt-BR') : '-'
+    ].forEach((value) => {
+      const cell = document.createElement('td');
+      cell.textContent = value || '-';
+      row.appendChild(cell);
+    });
+
+    const actionCell = document.createElement('td');
+    const resolveButton = document.createElement('button');
+    resolveButton.type = 'button';
+    resolveButton.className = 'btn-secondary btn-small';
+    resolveButton.textContent = 'Analisar e concluir';
+    resolveButton.addEventListener('click', () => {
+      openActionForm('resolver-revisao', { review_id: item.id });
+    });
+    actionCell.appendChild(resolveButton);
+    row.appendChild(actionCell);
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+
+  const wrapper = document.createElement('div');
+  wrapper.style.overflow = 'auto';
+  wrapper.appendChild(table);
+  listEl.appendChild(wrapper);
 }
 
 async function loadModulePageData() {

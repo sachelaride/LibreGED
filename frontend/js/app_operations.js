@@ -1049,6 +1049,14 @@ async function handleFiles(files) {
         formData.append("document_type_id", docTypeId);
         if (classificationId) formData.append("classification_id", classificationId);
         formData.append("document_purpose", document.getElementById('upload-document-purpose').value);
+        const documentAuthor = document.getElementById('upload-document-author')?.value.trim();
+        const issuerName = document.getElementById('upload-document-issuer')?.value.trim();
+        const documentDate = document.getElementById('upload-document-date')?.value;
+        const documentPlace = document.getElementById('upload-document-place')?.value.trim();
+        if (documentAuthor) formData.append("document_author", documentAuthor);
+        if (issuerName) formData.append("issuer_name", issuerName);
+        if (documentDate) formData.append("document_date", documentDate);
+        if (documentPlace) formData.append("document_place", documentPlace);
         formData.append("student_id", currentStudentId || '');
         formData.append("group_id", groupId);
         formData.append("ocr_engine", ocrEngine);

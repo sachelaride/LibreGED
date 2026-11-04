@@ -48,6 +48,7 @@ def _serialize_student(student: models.Student) -> dict[str, Any]:
     enrollments_count = len(student.enrollments or [])
     return {
         "student_id": student.id,
+        "user_id": student.user_id,
         "person_id": None,
         "full_name": student.full_name,
         "cpf": student.cpf,
@@ -353,8 +354,10 @@ def update_enrollment_status(enrollment_id: str, payload: EnrollmentStatusUpdate
     }
     academic_link, link_source = current_enrollment_academic_link(db, enrollment)
     enrollment.status = payload.status
+    cancelled_financial_installments = 0
     if previous_state["status"] != enrollment.status:
         from app.main import add_audit
+        from app.financial_services import apply_enrollment_financial_policy
 
         add_audit(
             db,
@@ -376,6 +379,12 @@ def update_enrollment_status(enrollment_id: str, payload: EnrollmentStatusUpdate
             ),
             str(user.id),
         )
+        cancelled_financial_installments = apply_enrollment_financial_policy(
+            db,
+            enrollment,
+            payload.status,
+            str(user.id),
+        )
     db.commit()
     _append_student_journey(
         enrollment.student_id,
@@ -384,7 +393,14 @@ def update_enrollment_status(enrollment_id: str, payload: EnrollmentStatusUpdate
         payload.notes or "Status da matrícula atualizado pela secretaria.",
         responsible="secretaria",
     )
-    return {"message": "Status da matrícula atualizado com sucesso", "module": "secretaria", "enrollment": _serialize_enrollment(enrollment)}
+    return {
+        "message": "Status da matrícula atualizado com sucesso",
+        "module": "secretaria",
+        "enrollment": _serialize_enrollment(enrollment),
+        "financial_effects": {
+            "cancelled_future_installments": cancelled_financial_installments,
+        },
+    }
 
 
 @router.get("/fluxo")

@@ -120,6 +120,8 @@
       coordinator_assignments: ['coordinator_name', 'course_name', 'campus_name', 'starts_on', 'ends_on']
     };
     const historyEntityTypes = {
+      courses: 'curso',
+      disciplines: 'disciplina',
       offerings: 'oferta',
       classes: 'turma',
       schedules: 'horario',
@@ -208,6 +210,10 @@
     }
 
     const actionLabels = {
+      academic_course_created: 'Curso criado',
+      academic_course_updated: 'Curso atualizado',
+      academic_discipline_created: 'Disciplina criada',
+      academic_discipline_updated: 'Disciplina atualizada',
       academic_offering_created: 'Oferta criada',
       academic_offering_updated: 'Oferta atualizada',
       academic_class_created: 'Turma criada',
@@ -525,6 +531,9 @@
     requests.push(apiRequest(`${API_ROOT}/api/students`).then(result => {
       state.students = result;
     }));
+    requests.push(apiRequest('/alunos-vinculaveis').then(result => {
+      state.linkableStudents = result.items || [];
+    }));
     requests.push(apiRequest('/aproveitamentos').then(result => {
       state.creditRecognitions = result.items || [];
     }));
@@ -539,6 +548,36 @@
     updateSelects();
     renderLists();
     renderCreditRecognitions();
+    await loadStudentAccountLinkOptions();
+  }
+
+  async function loadStudentAccountLinkOptions() {
+    const form = document.getElementById('student-account-link-form');
+    if (!form) return;
+    const studentSelect = form.elements.namedItem('student_id');
+    const userSelect = form.elements.namedItem('user_id');
+    const currentStudentId = studentSelect.value;
+    const studentItems = state.linkableStudents || [];
+    studentSelect.innerHTML = studentItems.map(student =>
+      `<option value="${escapeHtml(student.id)}">${escapeHtml(student.full_name)} · ${escapeHtml(student.id)}</option>`
+    ).join('');
+    if (studentItems.some(student => student.id === currentStudentId)) {
+      studentSelect.value = currentStudentId;
+    }
+
+    const selectedStudentId = studentSelect.value;
+    if (!selectedStudentId) {
+      userSelect.innerHTML = '<option value="">Não vinculada</option>';
+      return;
+    }
+
+    const result = await apiRequest(
+      `/alunos/${encodeURIComponent(selectedStudentId)}/usuarios-vinculaveis`
+    );
+    userSelect.innerHTML = '<option value="">Não vinculada</option>' + (result.items || []).map(account =>
+      `<option value="${escapeHtml(account.id)}">${escapeHtml(account.username)}</option>`
+    ).join('');
+    userSelect.value = result.current_user_id || '';
   }
 
   function formPayload(form) {
@@ -578,6 +617,10 @@
     if (result === 'staff-update') {
       const { staff_id, ...body } = payload;
       body.user_id = body.user_id || null;
+      return body;
+    }
+    if (result === 'course-update' || result === 'discipline-update') {
+      const { course_id, discipline_id, ...body } = payload;
       return body;
     }
     if (result === 'coordinator-assignment-update') {
@@ -621,6 +664,49 @@
   }
 
   document.querySelectorAll('.catalog-form').forEach(form => {
+    if (form.id === 'student-account-link-form') {
+      const studentSelect = form.elements.namedItem('student_id');
+      studentSelect.addEventListener('change', () => {
+        loadStudentAccountLinkOptions().catch(error => showFeedback(form, error.message, true));
+      });
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const studentId = studentSelect.value;
+        const submit = form.querySelector('[type="submit"]');
+        submit.disabled = true;
+        try {
+          await apiRequest(
+            `/alunos/${encodeURIComponent(studentId)}/conta`,
+            {
+              method: 'PUT',
+              body: JSON.stringify({
+                user_id: form.elements.namedItem('user_id').value || null
+              })
+            }
+          );
+          showFeedback(form, 'Vínculo da conta do aluno salvo.');
+          await loadCatalog();
+        } catch (error) {
+          showFeedback(form, error.message, true);
+        } finally {
+          submit.disabled = false;
+        }
+      });
+      return;
+    }
+    if (form.dataset.result === 'course-update' || form.dataset.result === 'discipline-update') {
+      const resource = form.dataset.result === 'course-update' ? 'courses' : 'disciplines';
+      const idField = form.dataset.result === 'course-update' ? 'course_id' : 'discipline_id';
+      form.elements.namedItem(idField).addEventListener('change', event => {
+        const record = (state[resource] || []).find(item => item.id === event.currentTarget.value);
+        if (!record) return;
+        for (const field of form.elements) {
+          if (field.name && field.name !== idField) {
+            field.value = record[field.name] ?? '';
+          }
+        }
+      });
+    }
     if (form.dataset.result === 'staff-update') {
       const staffSelect = form.elements.namedItem('staff_id');
       const userSelect = form.elements.namedItem('user_id');

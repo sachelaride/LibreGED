@@ -1,486 +1,389 @@
-﻿# LibreGED — Portal modular de gestão universitária
+# EduGED Libre (LibreGED) — Portal Modular de Gestão Universitária, Acervo Acadêmico e Diploma Digital
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
-[![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Frontend](https://img.shields.io/badge/Frontend-HTML%2FCSS%2FJS-005E7C)](https://developer.mozilla.org/)
+[![Python: 3.13](https://img.shields.io/badge/Python-3.13-brightgreen.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/Framework-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791.svg)](https://www.postgresql.org/)
+[![Frontend](https://img.shields.io/badge/Frontend-HTML%2FCSS%2FJS-005E7C.svg)](https://developer.mozilla.org/)
+[![MEC Compliance](https://img.shields.io/badge/Compliance-Portarias%20MEC%20315%20%7C%20330%20%7C%20554-success.svg)](https://www.gov.br/mec)
 
-O LibreGED começou como uma solução de gestão documental e acadêmica e evoluiu para uma plataforma modular de gestão universitária, estruturada por áreas de negócio, com integração entre secretaria, professores, alunos, GED, financeiro, coordenação e administração.
+O **EduGED Libre** (também identificado como **LibreGED**) é uma plataforma modular integrada de Gestão Eletrônica de Documentos (**GED**), Gestão de Conteúdo Empresarial (**ECM**), Motor de Workflows (**BPMN**), Acervo Acadêmico Digital, Conformidade Regulatória (MEC/LGPD) e Portal de Gestão Universitária por Domínios Funcionais para Instituições de Ensino Superior (IES) e redes educacionais.
 
-A abordagem atual do projeto é diferente de um sistema monolítico com um único dashboard. Em vez disso, a aplicação foi organizada como um portal institucional com um núcleo compartilhado e módulos independentes, cada um com sua própria lógica, dados e interface. O objetivo é manter uma base comum para a instituição, mas permitir que cada área opere com autonomia funcional.
-
-A diferenciação entre SEAD e EAD também foi reforçada: a SEAD representa a Secretaria Acadêmica Digital, responsável pela vida acadêmica do aluno, matrículas, processos, históricos e documentos; o EAD representa a Educação a Distância, com polos, tutores, atividades, avaliações e acompanhamento virtual, funcionando como um domínio operacional paralelo e conectado à base acadêmica comum.
-
-O cadastro de alunos e responsáveis mantém eventos de criação e alteração na trilha de auditoria. A Secretaria consulta esses eventos pela ação “Histórico” na lista de alunos; os campos modificados e o usuário responsável são registrados sem gravar ou exibir valores pessoais na linha do tempo. A API autenticada `GET /api/students/{student_id}/history` respeita o escopo institucional e de campus do usuário.
-
-Essa mesma linha do tempo registra, para novas matrículas, snapshots do curso, versão da matriz curricular, disciplina, turma, período letivo e campus associados. Também registra a situação e o resultado quando a disciplina é concluída. Eventos de matrículas antigas que não possuam snapshot são identificados explicitamente como históricos incompletos.
-
-Professores, tutores e coordenadores podem ser mantidos na tela de cadastros acadêmicos, incluindo situação e campus. Criação e alterações registram os campos modificados sem valores pessoais; a linha do tempo fica disponível pela ação “Histórico”. Profissionais inativos não podem ser alocados em novas turmas.
-
-O módulo de Professores usa as turmas, matrículas e cadastros persistentes. A Secretaria vincula a conta ativa de perfil acadêmico ao registro do docente; assim, professores só consultam e alteram avaliações, notas e frequência das turmas atribuídas a eles, respeitando também o campus. Avaliações, notas e chamadas são persistidas e auditadas; as notas respeitam a pontuação máxima e a frequência é registrada por aluno e data.
-
-A Secretaria também pode vincular uma conta acadêmica a um coordenador. No módulo Coordenação, solicitações persistidas de aproveitamento de estudos ficam disponíveis apenas ao responsável pelo curso e campus durante a vigência da atribuição (ou a gestores dentro do seu escopo institucional/campus). A aprovação ou rejeição exige decisão registrada, identifica o usuário revisor e entra na auditoria; pedidos já decididos não podem ser alterados por esse fluxo.
-
-O formulário acadêmico da Secretaria registra matrículas de turma como `pending`, reservando a vaga até a decisão. O módulo Coordenação lista essas matrículas e permite aprová-las individualmente. O escopo segue a atribuição vigente de curso/campus do coordenador ou o escopo institucional/campus de gestores; matrículas sem turma acadêmica não podem ser aprovadas por esse fluxo. A aprovação altera a situação para `active` e registra situação anterior/nova e responsável na auditoria.
-
-O histórico do aluno reúne eventos de cadastro e auditoria das matrículas. Cada evento novo de matrícula preserva o vínculo acadêmico capturado no momento da operação; mudanças de situação também registram estado anterior e novo. Para registros legados sem snapshot, a consulta os apresenta como legado e distingue dados básicos gravados na matrícula de dados reconstruídos a partir do catálogo atual, sem apresentá-los como snapshots históricos.
-
-A Secretaria pode transferir uma matrícula ativa ou pendente para outra turma pelo endpoint `POST /secretaria/academico/matriculas/{enrollment_id}/transferir`, informando `target_class_id`. A operação valida escopo, disponibilidade, capacidade e matriz curricular, encerra o vínculo anterior como `transferred`, cria o destino como `pending` e audita ambos os lados com seus snapshots. Transferência entre campi também atualiza o campus acadêmico do aluno; é bloqueada se houver outras matrículas vigentes em campus incompatível.
-
-Na visão de Coordenação, alunos aparecem vinculados às matrículas, curso, disciplina, turma, período e campus da base acadêmica, dentro do escopo de responsabilidades vigente. Pendências são persistidas com curso/campus, prioridade, prazo, responsável e estados de criação/conclusão; criação, consulta e resolução respeitam as atribuições vigentes e geram eventos de auditoria.
-
-Coordenadores podem receber responsabilidades explícitas por curso e campus com datas inicial e final. A Secretaria permite criar e manter os vínculos; a API `GET/POST /secretaria/academico/responsabilidades-coordenacao` e `PATCH /secretaria/academico/responsabilidades-coordenacao/{assignment_id}` também os consulta e atualiza. Períodos sobrepostos para o mesmo curso/campus são rejeitados e as alterações entram na trilha de auditoria.
+O sistema une a **rigidez probatória e regulatória do acervo acadêmico e diploma digital** à **flexibilidade operacional de um portal universitário moderno**, estruturado em módulos independentes com login contextual e governança centralizada.
 
 ---
 
-## Visão geral
+## 📑 Sumário
 
-O LibreGED hoje funciona como um protótipo funcional de sistema universitário modular, com foco em:
-
-- seleção de módulo antes do login;
-- autenticação e autorização por papel e contexto de módulo;
-- dashboards dedicados para cada área funcional;
-- páginas de módulo com ações rápidas e formulários específicos;
-- organização do backend em módulos de negócio;
-- dados de demonstração para simular cenários reais de uma instituição de ensino.
-
-A arquitetura está preparada para crescer em direção a um sistema acadêmico completo, mas ainda não é uma solução de produção com persistência completa e regras de negócio totalmente formalizadas para todas as áreas.
-
----
-
-## Objetivo do projeto
-
-O objetivo principal do projeto é representar uma instituição de ensino como um conjunto de módulos interligados, em vez de um ERP acadêmico único e fragmentado. A ideia é que todos os módulos compartilhem a mesma base institucional, mas mantenham responsabilidades distintas.
-
-Exemplos:
-
-- Secretaria cuida de matrículas, alunos e cadastros;
-- Professores lidam com turmas, disciplinas e avaliações;
-- GED gerencia documentos, versões, status e arquivos;
-- Financeiro controla cobranças, pagamentos e boletos;
-- Coordenação acompanha pendências e ações acadêmicas;
-- Aluno acessa informações pessoais, matrículas e desempenho;
-- Administração centraliza governança e visão transversal.
-
-Esse desenho favorece a clareza organizacional e cria um modelo que pode evoluir para um ambiente com múltiplos perfis, permissões e integrações.
+1. [Visão Geral e Arquitetura](#-visão-geral-e-arquitetura)
+2. [Conformidade Regulatória (MEC & LGPD)](#-conformidade-regulatória-mec--lgpd)
+3. [Arquitetura Modular do Portal Universitário](#-arquitetura-modular-do-portal-universitário)
+4. [Módulos Implementados e Funcionalidades](#-módulos-implementados-e-funcionalidades)
+   - [1. SEAD — Secretaria Acadêmica Digital](#1-sead--secretaria-acadêmica-digital)
+   - [2. Coordenação de Cursos](#2-coordenação-de-cursos)
+   - [3. Professores e Corpo Docente](#3-professores-e-corpo-docente)
+   - [4. EAD — Educação a Distância e Polos](#4-ead--educação-a-distância-e-polos)
+   - [5. GED, ECM e Acervo Digital](#5-ged-ecm-e-acervo-digital)
+   - [6. Motor Visual de Workflows & Trânsito Documental](#6-motor-visual-de-workflows--trânsito-documental)
+   - [7. Dossiê Acadêmico e Trava Preventiva de Colação](#7-dossiê-acadêmico-e-trava-preventiva-de-colação)
+   - [8. Diploma Digital, Histórico Escolar e Validador XSD MEC](#8-diploma-digital-histórico-escolar-e-validador-xsd-mec)
+   - [9. Financeiro e Cobrança Integrada](#9-financeiro-e-cobrança-integrada)
+   - [10. Portal do Aluno](#10-portal-do-aluno)
+   - [11. Administração Institucional e Governança Global](#11-administração-institucional-e-governança-global)
+   - [12. OCR Multi-Engine e Pesquisa Avançada](#12-ocr-multi-engine-e-pesquisa-avançada)
+   - [13. Assinatura Digital ICP-Brasil e Auditoria Imutável](#13-assinatura-digital-icp-brasil-e-auditoria-imutável)
+   - [14. Ingestão Automatizada ERP & FileWatch](#14-ingestão-automatizada-erp--filewatch)
+5. [Segurança, Autenticação Contextual e RBAC](#-segurança-autenticação-contextual-e-rbac)
+6. [Roadmap de Evolução e Ideias Futuras](#-roadmap-de-evolução-e-ideias-futuras)
+7. [Guia de Instalação e Execução Local](#-guia-de-instalação-e-execução-local)
+8. [Estrutura do Repositório](#-estrutura-do-repositório)
+9. [Operação e Governança em Produção](#-operação-e-governança-em-produção)
+10. [Apoio e Contribuição ao Projeto](#-apoio-e-contribuição-ao-projeto)
 
 ---
 
-## Arquitetura atual
+## 🏛 Visão Geral e Arquitetura
 
-### Estrutura conceitual
-
-A aplicação segue um modelo de núcleo institucional + módulos de negócio.
+O LibreGED atua como o **motor central de conformidade, custódia documental e gestão operacional** de uma IES, posicionando-se tanto como portal modular de autosserviço (Secretaria, Coordenação, Docentes, Alunos, Financeiro) quanto middleware probatório integrado a sistemas ERP acadêmicos transacionais (TOTVS RM, Lyceum, Sophia, Mentor Web) e órgãos reguladores federais (MEC, Conector RNP, ICP-Brasil).
 
 ```
-Instituição
+                      ┌────────────────────────────────────────┐
+                      │        Sistemas ERP Acadêmicos         │
+                      │   (Alunos, Matrículas, Notas, Cargas)  │
+                      └───────────────────┬────────────────────┘
+                                          │ FileWatch / Webhooks / REST API
+                                          ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 LIBREGED / EDUGED LIBRE                                │
+│                                                                                        │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐  ┌────────────────────────┐  │
+│  │   Dossiê Acadêmico      │  │  Motor de Workflows     │  │   ECM & Repositório    │  │
+│  │   (Trava de Colação &   │  │  (BPMN, Swimlanes,      │  │   (Espaços, Pastas,    │  │
+│  │    Dossiê Completo)     │  │   Tarefas & Trânsitos)  │  │    Tags, Versões)      │  │
+│  └────────────┬────────────┘  └────────────┬────────────┘  └───────────┬────────────┘  │
+│               │                            │                           │               │
+│               ▼                            ▼                           ▼               │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                    Núcleo Institucional & Governança Multitenant                 │  │
+│  │         (Instituições, Campi, Auditoria Imutável Hash-Chain, RBAC/Políticas)     │  │
+│  └─────────────────────────────────────────┬────────────────────────────────────────┘  │
+│                                            │                                           │
+│         ┌──────────────────────────────────┴──────────────────────────────────┐        │
+│         ▼                                                                     ▼        │
+│  ┌──────────────────────────────┐                   ┌───────────────────────────────┐  │
+│  │  Portal Modular de Negócio   │                   │  Motor Regulatório & Probatório│ │
+│  │  • SEAD (Secretaria Digital) │                   │  • Validador XSD MEC v1.05    │  │
+│  │  • Coordenação de Cursos     │                   │  • Diploma Digital XML / XSD  │  │
+│  │  • Portal do Professor       │                   │  • Tabela Temporalidade (TTD) │  │
+│  │  • EAD & Gestão de Polos     │                   │  • Assinatura ICP-Brasil      │  │
+│  │  • Financeiro / Boletos      │                   │  • OCR Tesseract / AWS / Az.  │  │
+│  │  • Portal do Aluno           │                   │  • Barramento RNP / XML MEC   │  │
+│  └──────────────────────────────┘                   └───────────────────────────────┘  │
+└────────────────────────────────────────┬───────────────────────────────────────────────┘
+                                         │
+                    ┌────────────────────┼────────────────────┐
+                    ▼                    ▼                    ▼
+          ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+          │   MEC / SERES    │ │   ICP-Brasil     │ │   Conector RNP   │
+          │ (Validação XSD)  │ │ (Carimbo/Certif) │ │ (Diploma Digital)│
+          └──────────────────┘ └──────────────────┘ └──────────────────┘
+```
+
+---
+
+## ⚖ Conformidade Regulatória (MEC & LGPD)
+
+O LibreGED atende às exigências das principais portarias e normativas vigentes para o Ensino Superior Brasileiro:
+
+- **Portaria MEC nº 315/2018:** Digitalização e gestão integral do acervo acadêmico em formato digital com integridade e autenticidade.
+- **Portaria MEC nº 330/2018:** Emissão e registro de Diploma Digital em formato nativamente digital (XML padronizado).
+- **Portaria MEC nº 554/2019:** Especificações técnicas da assinatura digital no padrão ICP-Brasil e carimbo do tempo para emissão do Diploma Digital.
+- **Nota Técnica MEC nº 13/2022 (Histórico Escolar Digital v1.05):** Estrutura e validação de esquemas XSD MEC para histórico escolar digital com resolução local de esquemas e normalização de namespaces W3C.
+- **LGPD (Lei nº 13.709/2018):** Trilhas de auditoria que registram metadados de modificação sem expor dados pessoais sensíveis, anonimização seletiva e segregação de acesso por contexto.
+
+---
+
+## 🌐 Arquitetura Modular do Portal Universitário
+
+A aplicação foi organizada no modelo de **núcleo institucional compartilhado + módulos funcionais autônomos**, cada um com suas regras de negócio, APIs protegidas e interfaces dedicadas:
+
+```
+Instituição (IES)
 ├── SEAD — Secretaria Acadêmica Digital
-├── EAD — Educação a Distância
+├── Coordenação de Cursos
 ├── Professores
-├── GED e Documentos
+├── EAD — Educação a Distância e Polos
+├── GED & Documentos (ECM)
 ├── Financeiro
-├── Coordenação
-├── Aluno
-├── Administração
-└── Núcleo compartilhado (usuários, instituição, campus, documentos, dados acadêmicos)
+├── Portal do Aluno
+├── Administração (Transversal e Governança)
+└── Núcleo Compartilhado (Autenticação, Instituições, Campi, Trilha de Auditoria, Documentos e Dados Acadêmicos)
 ```
 
-### Princípios da arquitetura
-
-- Separação funcional por domínio;
-- reutilização de entidades compartilhadas;
-- autenticação contextual por módulo;
-- autorização por perfil e acesso ao módulo;
-- páginas independentes por área;
-- navegação integrada entre os módulos.
+### Princípios da Arquitetura:
+- **Login com Seleção Prévia de Módulo:** O usuário escolhe o domínio operacional no login; o token JWT recebe o contexto de módulo, papel (`role`), `institution_id` e `campus_id`.
+- **Autorização Contextual em Duas Camadas:** Acesso ao módulo no nível do gateway/rota, seguido de validação granular por instituição, campus e atribuição vigente do profissional.
+- **Auditoria Transparente e Segura:** Registro de eventos estruturados com histórico de mudanças de situação e campos alterados, preservando a privacidade dos dados de identificação.
 
 ---
 
-## Módulos implementados
+## 🧩 Módulos Implementados e Funcionalidades
 
-### 1) SEAD — Secretaria Acadêmica Digital
+### 1. SEAD — Secretaria Acadêmica Digital
+Módulo responsável pela vida acadêmica do estudante, registros institucionais e conformidade curricular:
+- **Gestão de Alunos e Responsáveis:** Cadastro completo com histórico de alterações auditado, dados exigidos pelo histórico MEC (nome social, naturalidade, nacionalidade e RG) e consulta de linha do tempo via `GET /api/students/{id}/history`.
+- **Matrículas e Rematrículas:** Fluxo de matrícula com reserva de vaga em estado `pending` para aprovação da Coordenação, conclusão com registro de situação e snapshots históricos completos.
+- **Transferência Acadêmica:** Endpoint `POST /secretaria/academico/matriculas/{id}/transferir` para transferência de turmas validando pré-requisitos, matriz curricular e capacidade de sala, com encerramento automático do vínculo de origem e auditoria completa.
+- **Matrizes Curriculares Versionadas:** Gestão de matrizes com controle de pré-requisitos, grupos optativos por créditos mínimos e regras de equivalência de disciplinas.
+- **Progresso Curricular do Aluno:** Painel de integralização curricular detalhando créditos obrigatórios e optativos cumpridos e pendentes.
+- **Aproveitamento de Estudos (Dispensa/Equivalência):** Solicitação, documentação probatória e análise com reflexo automático na integralização curricular.
+- **Extrato Acadêmico Informativo:** Reunião consolidada de notas, frequências e aproveitamentos deferidos com rastreabilidade de decisões e diagnóstico de inconsistências docentes.
+- **Perfis Regulatórios IES e Curso:** Cadastro persistido com códigos e-MEC, dados da mantenedora, endereços de oferta e atos autorizativos com datas e veículos de publicação.
+- **Atribuição de Responsabilidades:** Vínculo formal de coordenadores e docentes a cursos e campi com períodos de vigência, bloqueando sobreposições conflitantes.
 
-Foca na vida acadêmica institucional e no atendimento acadêmico.
+### 2. Coordenação de Cursos
+Focado na gestão pedagógica e operacional dos cursos sob responsabilidade do coordenador:
+- **Aprovação de Matrículas Pendentes:** Fila de matrículas em estado `pending` com validação de escopo por curso/campus e transição auditada para `active`.
+- **Deliberação de Aproveitamento de Estudos:** Painel de decisões para pedidos de dispensa e equivalência com registro formal de parecer, usuário revisor e trilha de auditoria imutável.
+- **Gestão de Pendências Acadêmicas:** Criação, atribuição, prazos de prioridade e resolução de pendências operacionais vinculadas aos alunos do curso.
+- **Acompanhamento Integrado do Aluno:** Visão integrada reunindo dados acadêmicos, matrículas vigentes, histórico de solicitações, pendências operacionais e status financeiro unificado (`matriculado` / `pendente`).
 
-Inclui:
+### 3. Professores e Corpo Docente
+Ambiente didático com escopo estrito às turmas sob responsabilidade do docente:
+- **Turmas e Frequência:** Chamada diária persistida por data e aluno, com registro de presença/ausência e auditoria.
+- **Lançamento de Avaliações e Notas:** Criação de avaliações com controle de pontuação máxima, notas por estudante e cálculo automático de desempenho.
+- **Segurança de Acesso Docente:** Bloqueio automático de turmas inativas ou fora do escopo de campus e alocação do docente autenticado.
+- **Dados Histórico Docente:** Registro de metadados obrigatórios exigidos pelo XSD do MEC (titulação acadêmica, CPF e Lattes opcional com privacidade preservada).
 
-- matrículas e rematrículas;
-- cadastros persistentes de departamentos e setores, organizados por instituição e campus;
-- matrizes curriculares versionadas com pré-requisitos, grupos optativos por créditos mínimos e equivalências que podem satisfazer os pré-requisitos da matriz;
-- consulta do progresso curricular do aluno, com créditos obrigatórios/optativos e indicação dos requisitos pendentes ou cumpridos;
-- solicitação e análise de aproveitamento de estudos, com decisão da Secretaria registrada e aprovação refletida no progresso curricular;
-- extrato acadêmico informativo por curso, reunindo resultados de turmas e aproveitamentos deferidos com identificação de origem e decisão; não substitui a emissão do histórico oficial;
-- cadastro dos dados de identificação pessoal exigidos no histórico escolar (nome social, naturalidade, nacionalidade e RG), como preparação para emissão;
-- cadastro persistido dos perfis regulatórios da IES/mantenedora e do curso (códigos e-MEC, endereços e atos autorizativos/publicações), com validação dos campos obrigatórios;
-- pacote MEC v1.05 do histórico escolar no backend, resolução local dos XSD auxiliares e rota de validação `POST /api/xsd/validator/historico/v1.05`; o validador normaliza em memória os identificadores W3C incorretos no pacote publicado, sem alterar os XSD originais. A Secretaria permite registrar ingresso por aluno/curso e metadados dos docentes responsáveis em `GET`/`PUT /secretaria/academico/profissionais/{staff_id}/dados-historico`; o XSD exige titulação e permite CPF e Lattes opcionais. CPF/Lattes não são retornados nas respostas do perfil nem expostos na listagem geral. O extrato aponta docentes não vinculados ou sem titulação. A rota legada de geração de XML do histórico continua bloqueada até que o mapeamento completo dos demais dados acadêmicos e a assinatura XML sejam implementados. Validação XSD isolada não equivale à emissão oficial;
-- alterações de ofertas, turmas, horários e alocação docente/coordenador são registradas na trilha de auditoria; horários podem ser editados com revalidação de sobreposição, sala, capacidade e conflito docente. A linha do tempo é consultável na interface da Secretaria pelos botões “Histórico” das listas e pela API `GET /secretaria/academico/historico-alteracoes/{entity_type}/{entity_id}` (`entity_type`: `oferta`, `turma` ou `horario`), respeitando os escopos de instituição/campus;
-- processos acadêmicos e requerimentos;
-- histórico escolar e documentos acadêmicos;
-- acompanhamento de alunos, pendências e validações;
-- integração com GED, financeiro e coordenação.
+### 4. EAD — Educação a Distância e Polos
+Operação de ensino remoto e acompanhamento de polos de apoio presencial:
+- **Polos e Tutores:** Alocação de tutores e coordenação de polos regionais conectados à base acadêmica comum da SEAD.
+- **Calendário e Atividades Remotas:** Acompanhamento de entregas de atividades virtuais, avaliações a distância e monitoramento de participação.
 
-### 2) EAD — Educação a Distância
+### 5. GED, ECM e Acervo Digital
+Gestão eletrônica de documentos e ciclo de vida probatório:
+- **Tabela de Temporalidade Documental (TTD):** Destinação final (guarda permanente, eliminação, microfilmagem), prazos na fase corrente e intermediária conforme normas do CONARQ e MEC.
+- **Estrutura ECM Colaborativa:** Organização em Espaços, Pastas, Tags e Metadados customizados por tipologia documental.
+- **Versionamento Rigoroso de Arquivos:** Histórico de versões numeradas sequencialmente com hash SHA-256 por versão, bloqueio de sobreescrita destrutiva e trilha de autoria.
+- **Legal Hold (Bloqueio Jurídico):** Congelamento preventivo de exclusão e expurgo para documentos vinculados a processos jurídicos ou auditorias.
+- **Emissão e Controle de 2ª Via:** Emissão com carimbo automático de segunda via, cancelamento formal da via anterior e justificativa auditada.
 
-Foca na operação de ensino remoto e polos/tutoria.
+### 6. Motor Visual de Workflows & Trânsito Documental
+- **Modelador Visual no Frontend:** Editor interativo de workflows com nós, transições de estado, condições de roteamento e raias de responsabilidade (*swimlanes*).
+- **Roteamento de Trânsito Documental:** Notificação automática, despacho entre setores acadêmicos, validação prévia de anexos e prazos de SLA.
 
-Inclui:
+### 7. Dossiê Acadêmico e Trava Preventiva de Colação
+- **Validação Estrutural Completa:** Verificação automática de documentos obrigatórios do aluno (Identidade, CPF, Certidão de Nascimento/Casamento, Histórico Escolar do Ensino Médio, Título de Eleitor, Certificado Militar, Quitação Eleitoral).
+- **Trava de Colação e Emissão:** Bloqueio sistêmico que impede a inclusão do formando em ata de colação de grau ou geração do diploma se o dossiê contiver pendências ou documentos não validados.
 
-- polos e tutores;
-- calendário de aulas e atividades;
-- avaliações, frequência e pendências;
-- acompanhamento de ensino virtual e integração com a base acadêmica do SEAD.
+### 8. Diploma Digital, Histórico Escolar e Validador XSD MEC
+- **Validador Local de Histórico v1.05 MEC:** Rota `POST /api/xsd/validator/historico/v1.05` com resolução local de esquemas auxiliares e normalização em memória de identificadores do W3C.
+- **Diploma Digital XML:** Preparação estrutural para geração dos XMLs de Emissão e Registro com conformidade aos esquemas oficiais da Portaria MEC 554/2019.
+- **Representação Visual do Diploma Digital (RVDD):** Geração e conferência de metadados para confecção da representação visual com QR Code e código de validação.
 
-### 3) Professores
+### 9. Financeiro e Cobrança Integrada
+- **Boletos e Cobranças:** Gestão de faturas, contratos acadêmicos, status de pagamento e inadimplência.
+- **Integração com a Matrícula:** Verificação cruzada entre financeiro, coordenação e secretaria na renovação de matrícula e rematrícula.
 
-Foca em atividades didáticas e acadêmicas.
+### 10. Portal do Aluno
+- **Autoatendimento:** Consulta de notas, faltas, situação cadastral e progresso curricular.
+- **Documentos e Requerimentos:** Envio de documentos comprobatórios para a Secretaria e solicitação de serviços acadêmicos.
 
-Inclui:
+### 11. Administração Institucional e Governança Global
+- **Multi-Tenancy e Campi:** Gestão multi-instituição com segregação rígida por campus e mantenedora.
+- **Governança de Usuários e Perfis:** Atribuição de permissões granulares respeitando a hierarquia institucional.
+- **Configurações Gerais do Sistema:** Parâmetros de armazenamento, políticas de senha e limites de upload.
 
-- turmas e disciplinas;
-- lançamento de notas;
-- acompanhamento de frequência;
-- visualização de avaliações e dados de turmas.
+### 12. OCR Multi-Engine e Pesquisa Avançada
+- **Multi-Engine OCR:** Suporte a Tesseract OCR (local/on-premise), AWS Textract e Azure Computer Vision para extração de texto em documentos digitalizados.
+- **Busca Semântica e Indexação:** Pesquisa textual completa por metadados, termos no corpo dos documentos digitalizados e filtros por período letivo.
 
-### 4) GED / Documentos
+### 13. Assinatura Digital ICP-Brasil e Auditoria Imutável
+- **Assinatura Padrão ICP-Brasil:** Preparado para assinaturas nos formatos CAdES, XAdES e PAdES com carimbo do tempo (*timestamping*).
+- **Trilha de Auditoria Imutável (Hash-Chain):** Encadeamento criptográfico onde cada registro de auditoria contém o hash do evento anterior, impedindo alterações retroativas nos logs.
 
-Foco em gestão documental e ciclo de vida de arquivos.
-
-Inclui:
-
-- documentos com status e categoria;
-- versionamento e histórico de documento;
-- informações de retenção e classificação;
-- painel de gestão documental e ações de operação.
-
-### 5) Financeiro
-
-Foco em fluxo financeiro e cobrança.
-
-Inclui:
-
-- boletos e pagamentos;
-- status de cobrança;
-- visão geral financeira;
-- dados demo para transações e pendências.
-
-### 6) Coordenação
-
-Foco em acompanhamento institucional e pendências acadêmicas.
-
-Inclui:
-
-- ações pendentes;
-- responsáveis e prazos;
-- classificação por categoria;
-- acompanhamento operacional e estratégico.
-
-### 7) Aluno
-
-Foco no portal do estudante.
-
-Inclui:
-
-- painel do aluno;
-- matrícula e processos acadêmicos;
-- informações pessoais e acadêmicas;
-- visão de desempenho e acompanhamento do curso.
-
-### 8) Administração
-
-Trata-se como módulo transversal de governança.
-
-Inclui:
-
-- visão geral administrativa;
-- acesso a informações consolidadas;
-- suporte a gestão de todos os módulos;
-- modelo de administração institucional em conjunto.
+### 14. Ingestão Automatizada ERP & FileWatch
+- **Daemon FileWatch:** Monitoramento de diretórios de rede para captura automática de documentos e relatórios gerados por ERPs acadêmicos legados.
+- **Integração via REST API:** Webhooks e rotas autenticadas para alimentação de cadastros e importação de bases de estudantes.
 
 ---
 
-## Segurança e autenticação
+## 🔐 Segurança, Autenticação Contextual e RBAC
 
-A camada de autenticação foi atualizada para refletir o novo modelo modular.
+O controle de acesso combina papéis do usuário com escopos de contexto institucional:
 
-### Fluxo de login
-
-O processo começa com a seleção do módulo antes do login.
-
-1. Usuário escolhe o módulo no portal;
-2. informa usuário e senha;
-3. o backend valida as credenciais;
-4. o JWT recebe contexto de módulo e papel;
-5. rotas protegidas validam o módulo e a permissão do usuário.
-
-### Estratégia atual
-
-Cada token inclui dados como:
-
-- `sub` (identidade do usuário);
-- `role` (papel do usuário);
-- `module` (módulo ativo);
-- `institution_id`;
-- `campus_id`.
-
-Isso permite que o sistema aplique regras de acesso, evitando que um usuário accesse um módulo que não pertença ao seu contexto de autenticação.
-
-### Mapeamento de acesso atual
-
-Os papéis operacionais `secretaria`, `coordenador`, `professor`, `tutor` e `aluno` têm acesso apenas aos módulos de sua função: Secretaria/SEAD, Coordenação, Professores, EAD e Portal do Aluno, respectivamente. Professores também podem acessar o módulo EAD. Usuários administrativos (`admin_global` e `admin_instituicao`) mantêm acesso a todos os módulos; os papéis legados `operador`, `academico`, `leitor` e `auditor` continuam aceitos segundo a matriz de compatibilidade centralizada em `backend/app/auth.py`.
-
-O login e as dependências das rotas usam a mesma matriz. A criação e a alteração de usuários rejeitam papéis não reconhecidos. A autorização de módulo é uma primeira camada: as rotas acadêmicas também verificam instituição, campus e vínculos vigentes de professor ou coordenador antes de revelar registros.
+| Papel | Módulos Autorizados | Escopo de Acesso |
+| :--- | :--- | :--- |
+| `admin_global` | Todos os módulos | Transversal / Global em todas as IES |
+| `admin_instituicao` | Todos os módulos | Restrito à sua Instituição e Campi |
+| `secretaria` | SEAD, GED | Instituição e Campus vinculados |
+| `coordenador` | Coordenação, SEAD (consulta) | Cursos e Campi sob sua responsabilidade vigente |
+| `professor` | Professores, EAD | Turmas ativas atribuídas ao docente |
+| `tutor` | EAD | Polos e atividades sob sua tutoria |
+| `aluno` | Portal do Aluno | Exclusivo para seus dados e matrículas |
 
 ---
 
-## Backend
+## 🚀 Roadmap de Evolução e Ideias Futuras
 
-O backend principal está localizado em `backend/app` e usa FastAPI como núcleo da aplicação.
+O LibreGED possui um plano contínuo de aprimoramentos para atender a cenários de grande escala e conformidade total:
 
-### Estrutura relevante
-
-- `backend/app/main.py` — aplicação principal e registro dos routers;
-- `backend/app/auth.py` — regras de autenticação e autorização;
-- `backend/app/modules/` — módulos por área funcional;
-- `backend/app/modules/data_store.py` — dados demo e contexto do protótipo.
-
-### Routers por módulo
-
-Os módulos foram organizados em arquivos separados:
-
-- `backend/app/modules/secretaria/routes.py`
-- `backend/app/modules/professores/routes.py`
-- `backend/app/modules/ged/routes.py`
-- `backend/app/modules/financeiro/routes.py`
-- `backend/app/modules/coordenacao/routes.py`
-- `backend/app/modules/aluno/routes.py`
-
-Esses arquivos expõem endpoints para:
-
-- dashboard do módulo;
-- listagem de registros;
-- criação de novos itens;
-- consulta de detalhes;
-- fluxo de ações por área.
-
----
-
-## Frontend
-
-O frontend está organizado em páginas HTML e scripts compartilhados.
-
-### Arquivos centrais
-
-- `frontend/login.html` — primeiro passo do fluxo; módulo + autenticação
-- `frontend/app.html` — portal principal da instituição
-- `frontend/admin.html` — administrador como módulo de gestão geral
-- `frontend/modules/*.html` — páginas por domínio
-- `frontend/modules/module-page.js` — comportamento compartilhado das telas
-- `frontend/css/style.css` — identidade visual do portal
-
-### Fluxo do usuário
-
-O fluxo principal é:
-
-1. abrir `login.html`;
-2. escolher o módulo;
-3. autenticar;
-4. ser redirecionado para a área correspondente;
-5. navegar pelo dashboard e telas do módulo;
-6. usar ações, detalhes e formulários específicos.
-
----
-
-## Dados do protótipo
-
-A versão atual usa dados em memória para simular a operação real da instituição.
-
-### Dados simulados incluídos
-
-- alunos e matrículas;
-- estudantes e históricos básicos;
-- requisitos acadêmicos e pendências;
-- documentos com versões e status;
-- fichas de turmas e notas;
-- boletos e movimentação financeira;
-- ações de coordenação;
-- catálogo de módulos e usuários de exemplo.
-
-Esse conjunto permite validar arquitetura, fluxos de navegação, permissões e interfaces, sem exigir que o sistema esteja totalmente conectado a um banco de produção.
-
----
-
-## Como executar localmente
-
-### 1) Backend
-
-No diretório raiz do projeto:
-
-```bash
-cd backend
-python -m venv .venv
+```
+[Fase Atual: Protótipo Funcional Modular & Validador MEC Local]
+                                │
+                                ▼
+[Fase 1: Persistência Robusta & Migrações Completas]
+  ├── Transição completa de dados em memória para PostgreSQL com Alembic
+  ├── Expansão de modelos relacionais para Matrizes Curriculares, Dossiês e TTD
+  └── Conexão total das páginas web aos endpoints REST persistidos
+                                │
+                                ▼
+[Fase 2: Conector Oficial RNP & Diploma Digital ICP-Brasil]
+  ├── Assinatura XML em lote com certificados ICP-Brasil (A1 / A3 / HSM)
+  ├── Integração com barramento do Conector do Diploma Digital da RNP
+  └── Emissão automática do XML de Registro e XML de Histórico validado
+                                │
+                                ▼
+[Fase 3: Reconhecimento Inteligente por IA (Vision & NLP)]
+  ├── OCR com classificação automática de tipologia documental via IA
+  ├── Extração automática de dados de RGs, CPFs e Históricos Escolares
+  └── Detecção preventiva de fraudes documentais em diplomas externos
+                                │
+                                ▼
+[Fase 4: Portal Mobile & Experiência Omnichannel]
+  ├── Aplicativo mobile PWA para o Portal do Aluno e Professor
+  ├── Notificações via WhatsApp/Push de pendências acadêmicas e boletos
+  └── Carteirinha Estudantil Digital com padrão nacional (ITIE/DNE)
 ```
 
-No Windows PowerShell:
+---
 
+## 💻 Guia de Instalação e Execução Local
+
+### Pré-requisitos
+- **Python 3.13+** instalado
+- **PostgreSQL 14+** (opcional para persistência avançada)
+- Navegador web atualizado (Chrome, Firefox, Edge)
+
+### 1. Clonar o Repositório e Preparar o Ambiente
+No terminal (PowerShell no Windows ou Bash no Linux):
 ```powershell
+git clone https://github.com/sachelaride/LibreGED.git
+cd LibreGED
+
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r backend\requirements.txt
 ```
 
-No Linux/macOS:
-
-```bash
-source .venv/bin/activate
+### 2. Configurar Variáveis de Ambiente
+Crie o arquivo `backend/.env` caso deseje conexão com banco relacional:
+```env
+DATABASE_URL=postgresql://postgres:suasenha@localhost:5432/eduged_libre
+SECRET_KEY=sua_chave_secreta_jwt_super_segura_32_bytes_minimo
+ALGORITHM=HS256
+MAX_UPLOAD_SIZE_BYTES=10485760
 ```
 
-Em seguida:
+### 3. Execução dos Serviços
 
-```bash
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+> [!IMPORTANT]
+> O backend e o frontend devem ser iniciados manualmente pelo usuário em terminais separados conforme sua conveniência.
+
+**Terminal 1 — Backend (FastAPI):**
+```powershell
+Set-Location backend
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
+- API Docs interativa (Swagger): `http://localhost:8000/docs`
+- Validador XSD MEC: `http://localhost:8000/api/xsd/validator/historico/v1.05`
 
-O backend ficará disponível em:
-
-- http://localhost:8000
-- documentação automática: http://localhost:8000/docs
-
-### 2) Frontend
-
-Você pode abrir os arquivos diretamente em um navegador ou servir a pasta com um pequeno servidor local.
-
-```bash
-cd frontend
+**Terminal 2 — Frontend:**
+```powershell
+Set-Location frontend
 python -m http.server 5500
 ```
+- Acesso ao Portal: `http://localhost:5500/login.html`
+- Painel Administrativo: `http://localhost:5500/admin.html`
+- Painel Operacional: `http://localhost:5500/app.html`
 
-Depois acesse:
+### 4. Credenciais de Demonstração
+| Usuário | Senha | Módulo Recomendado |
+| :--- | :--- | :--- |
+| `admin` | `admin123` | Administração / Transversal |
+| `secretaria` | `secretaria123` | SEAD (Secretaria Digital) |
+| `coordenador` | `coordenacao123` | Coordenação de Cursos |
+| `professor` | `professor123` | Portal do Professor |
+| `ged` | `ged123` | GED & Documentos |
+| `financeiro` | `financeiro123` | Financeiro |
+| `aluno` | `aluno123` | Portal do Aluno |
 
-- http://localhost:5500/login.html
-
-### 3) Usuários demo
-
-O projeto inclui exemplos de autenticação para facilitar testes locais.
-
-Exemplos comuns:
-
-- `admin` / `admin123`
-- `secretaria` / `secretaria123`
-- `professor` / `professor123`
-- `ged` / `ged123`
-- `financeiro` / `financeiro123`
-- `coordenacao` / `coordenacao123`
-- `aluno` / `aluno123`
+### 5. Execução dos Testes Automatizados
+```powershell
+Set-Location backend
+..\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
+```
 
 ---
 
-## Estrutura principal do repositório
+## 📂 Estrutura do Repositório
 
 ```text
 LibreGED/
 ├── backend/
 │   ├── app/
-│   │   ├── auth.py
-│   │   ├── main.py
-│   │   ├── modules/
-│   │   │   ├── aluno/
-│   │   │   ├── coordenacao/
-│   │   │   ├── financeiro/
-│   │   │   ├── ged/
-│   │   │   ├── professores/
-│   │   │   ├── secretaria/
-│   │   │   └── data_store.py
-│   │   └── ...
-│   ├── requirements.txt
-│   └── ...
+│   │   ├── main.py                     # Inicialização da aplicação e roteamento central
+│   │   ├── auth.py                     # Regras de autenticação JWT, papéis e RBAC
+│   │   ├── models.py                   # Modelos relacionais (Usuários, Instituições, etc.)
+│   │   ├── models_academic.py          # Modelos de matrículas, turmas, alunos e históricos
+│   │   ├── models_academic_catalog.py  # Modelos de matrizes curriculares e equivalências
+│   │   ├── modules/                    # Routers e regras funcionais por domínio
+│   │   │   ├── secretaria/             # Endpoints da Secretaria Acadêmica Digital (SEAD)
+│   │   │   ├── coordenacao/            # Endpoints da Coordenação de Cursos
+│   │   │   ├── professores/            # Endpoints de turmas, notas e chamadas
+│   │   │   ├── ged/                    # Endpoints de gestão documental e TTD
+│   │   │   ├── financeiro/             # Endpoints financeiros e boletos
+│   │   │   ├── aluno/                  # Endpoints do portal do estudante
+│   │   │   └── data_store.py           # Repositório de dados em memória e dados demo
+│   │   ├── services/                   # Serviços de OCR, auditoria e diploma digital
+│   │   └── schemas/                    # Validação de schemas Pydantic
+│   ├── tests/                          # Suíte de testes automatizados unitários e integração
+│   └── requirements.txt                # Dependências Python
 ├── frontend/
-│   ├── app.html
-│   ├── login.html
-│   ├── admin.html
-│   ├── css/
-│   ├── js/
-│   └── modules/
-├── LICENSE
-├── README.md
-├── run_html.py
-└── ...
+│   ├── login.html                      # Tela de seleção de módulo e autenticação
+│   ├── app.html                        # Portal central da instituição
+│   ├── admin.html                      # Painel administrativo transversal
+│   ├── css/                            # Folhas de estilo do portal
+│   ├── js/                             # Controladores JavaScript do frontend
+│   └── modules/                        # Interfaces específicas por domínio funcional
+├── docs/                               # Manuais de governança e guias operacionais
+├── LICENSE                             # Licença GPL v3
+└── README.md                           # Documentação central do projeto
 ```
 
 ---
 
-## Status atual do projeto
+## 🔒 Operação e Governança em Produção
 
-O sistema já se encontra em um estado de protótipo funcional e modular, com os seguintes avanços concretos:
-
-- portal institucional com múltiplos módulos;
-- autenticação contextual por módulo;
-- autorização por papel e área funcional;
-- backend organizado por domínio;
-- páginas dedicadas para cada módulo;
-- dashboards com indicadores e ações;
-- dados demo para validação de comportamento;
-- expansão da experiência de administração como módulo institucional.
-
-### O que ainda precisa evoluir
-
-Embora a arquitetura seja coerente e funcional como protótipo, ainda há pontos importantes para amadurecimento:
-
-- persistência real em banco de dados;
-- modelagem completa de cursos, disciplinas, matrículas e documentos;
-- regras mais refinadas de acesso e papéis;
-- CRUD completo por domínio;
-- integrações com ERP acadêmico real;
-- auditoria e rastreabilidade mais robustas;
-- gestão documental e retenção com regras operacionais mais profundas;
-- evolução para um ambiente de produção institucional.
+Para orientações avançadas sobre sustentação e conformidade institucional:
+- [Runbook de Produção (docs/PRODUCTION_RUNBOOK.md)](./docs/PRODUCTION_RUNBOOK.md)
+- [Governança de Segurança e Acessos (docs/SECURITY_GOVERNANCE.md)](./docs/SECURITY_GOVERNANCE.md)
+- [Checklist do Projeto e Manuais (projeto - manual e dicas/)](./projeto%20-%20manual%20e%20dicas/)
 
 ---
 
-## Roadmap recomendado
+## 🤝 Apoio e Contribuição ao Projeto
 
-### Fase 1 — consolidação da base modular
+O **EduGED Libre** é um projeto de código aberto disponibilizado para fortalecer a gestão universitária e facilitar o cumprimento das exigências do MEC pelas IES brasileiras.
 
-- manter a separação por módulo;
-- ampliar CRUD dos principais processos;
-- conectar frontend com backend real;
-- melhorar consistência de dados e autenticação.
+- **Mantenedor Principal:** German Sachelaride
+- **E-mail de Contato:** [sachelaride@gmail.com](mailto:sachelaride@gmail.com)
 
-### Fase 2 — operação acadêmica
-
-- criar modelos sólidos de alunos, turmas e disciplinas;
-- expandir fluxo de matrículas e avaliações;
-- operacionalizar financeiro e coordenação com regras reais.
-
-### Fase 3 — governança e conformidade
-
-- uma auditoria mais completa;
-- regras de retenção e arquivamento;
-- versionamento documental e rastreabilidade;
-- controle de histórico por ação e usuário.
-
-### Fase 4 — integração e produção
-
-- conexão com ERP acadêmico;
-- autenticação avançada e SSO;
-- observabilidade e acompanhamento de operação;
-- expansão para ambiente institucional real.
+Contribuições voluntárias para manutenção contínua e expansão dos validadores MEC:
+- **Chave PIX (Telefone/Aleatória):** `558252491-68`
+- **Favorecido:** German Sachelaride
 
 ---
 
-## Contribuição
-
-Contribuições são bem-vindas. O projeto está em uma fase de evolução arquitetural e funcional, e a estrutura modular facilita a expansão por domínio.
-
-Ao colaborar, é importante:
-
-- preservar a separação por módulo;
-- manter o núcleo institucional compartilhado;
-- respeitar as regras de autorização por contexto;
-- garantir que cada área e endpoint acompanhe o domínio de negócio correto.
-
----
-
-## Resumo executivo
-
-O LibreGED já avançou de uma visão conceitual de GED acadêmico para uma proposta funcional de portal universitário modular. A base atual oferece uma arquitetura consistente, navegação por módulos, autenticação contextual, lógica de papéis e experiências dedicadas para diferentes áreas da instituição.
-
-Esse estado é suficiente para demonstrar o modelo de negócios e a direção estratégica do sistema, e também oferece uma base sólida para a próxima etapa: transformar o protótipo em um software acadêmico completo, persistente, integrado e pronto para operação institucional.
+*Licenciado sob os termos da GNU General Public License v3.0 ([LICENSE](./LICENSE)).*

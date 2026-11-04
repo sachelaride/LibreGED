@@ -1,4 +1,5 @@
 """Operações documentais protegidas pelos privilégios concedidos no admin."""
+import hashlib
 import io
 import json
 import mimetypes
@@ -305,6 +306,16 @@ def caminho_seguro(documento):
         raise HTTPException(409, "O arquivo não pertence ao armazenamento local configurado.")
     if not caminho.is_file():
         raise HTTPException(404, "Arquivo não encontrado.")
+    if documento.file_hash:
+        digest = hashlib.sha256()
+        with caminho.open("rb") as arquivo:
+            for bloco in iter(lambda: arquivo.read(1024 * 1024), b""):
+                digest.update(bloco)
+        if digest.hexdigest() != documento.file_hash:
+            raise HTTPException(
+                409,
+                "A integridade do arquivo diverge do hash registrado; acesso bloqueado.",
+            )
     return caminho
 
 
@@ -410,7 +421,9 @@ def exportar_cadeia_documental(documento_id: str, db: Session = Depends(get_db),
 
         try:
             caminho = caminho_seguro(documento)
-        except HTTPException:
+        except HTTPException as erro:
+            if erro.status_code != 404:
+                raise
             caminho = None
 
         if caminho is not None:

@@ -70,6 +70,7 @@ class User(Base):
 
     institution = relationship("Institution", back_populates="users")
     campus = relationship("Campus", back_populates="users")
+    student = relationship("Student", back_populates="user", uselist=False)
 
 
 class Student(Base):
@@ -90,6 +91,7 @@ class Student(Base):
     rg_state = Column(String(2), nullable=True)
     cpf = Column(String, nullable=False, unique=True, index=True)
     email = Column(String, nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
     phone = Column(String(32), nullable=True)
     address_street = Column(String(160), nullable=True)
     address_number = Column(String(20), nullable=True)
@@ -103,6 +105,7 @@ class Student(Base):
 
     institution = relationship("Institution", back_populates="students")
     campus = relationship("Campus", back_populates="students")
+    user = relationship("User", back_populates="student")
     guardians = relationship("Guardian", back_populates="student", cascade="all, delete-orphan")
     enrollments = relationship("Enrollment", back_populates="student", cascade="all, delete-orphan")
 

@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import uuid
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -35,6 +36,10 @@ async def upload_document(
     document_purpose: str = Form("official"),
     student_id: Optional[str] = Form(None),
     group_id: Optional[str] = Form(None),
+    document_author: Optional[str] = Form(None, max_length=200),
+    issuer_name: Optional[str] = Form(None, max_length=200),
+    document_date: Optional[date] = Form(None),
+    document_place: Optional[str] = Form(None, max_length=200),
     ocr_engine: str = Form("auto"),
     ocr_enabled: bool = Form(True),
     file: UploadFile = File(...),
@@ -140,6 +145,25 @@ async def upload_document(
         "ocr_reason": ocr_result.get("reason"),
         "ocr_text": ocr_text[:4000],
         "indices": [{"index_id": indice.id, "value": valor} for indice, valor in indices],
+        "preservation_metadata": {
+            "author": document_author.strip() if document_author else None,
+            "issuer": issuer_name.strip() if issuer_name else None,
+            "document_date": document_date.isoformat() if document_date else None,
+            "document_place": document_place.strip() if document_place else None,
+            "responsible_user_id": persisted_user_id,
+            "captured_at": datetime.now(UTC).isoformat(),
+            "original_filename": nome_arquivo,
+            "source_media_type": file.content_type,
+            "file_sha256": file_hash,
+            "metadata_complete": all((
+                bool(document_author and document_author.strip()),
+                bool(issuer_name and issuer_name.strip()),
+                document_date is not None,
+                bool(document_place and document_place.strip()),
+                persisted_user_id is not None,
+            )),
+            "icp_brasil_signature_status": "not_verified",
+        },
     }
 
     db_doc = GEDDocument(

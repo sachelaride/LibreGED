@@ -1,4 +1,5 @@
 """Aceite do CRUD administrativo e concessão de privilégios documentais."""
+import hashlib
 from datetime import timedelta
 from uuid import uuid4
 import pytest
@@ -227,6 +228,7 @@ def test_visualizacao_documental_exige_consulta_e_exibe_arquivo(
     with SessionLocal() as db:
         documento = db.get(GEDDocument, cenario["documento"])
         documento.file_path = str(arquivo)
+        documento.file_hash = hashlib.sha256(content).hexdigest()
         db.commit()
 
     url = f"/api/documents/{cenario['documento']}/preview"
@@ -243,6 +245,10 @@ def test_visualizacao_documental_exige_consulta_e_exibe_arquivo(
     assert resposta.status_code == 200
     assert resposta.content == content
     assert resposta.headers["content-type"].startswith(media_type)
+    arquivo.write_bytes(content + b"conteudo adulterado")
+    integrity_error = cliente.get(url)
+    assert integrity_error.status_code == 409
+    assert "integridade" in integrity_error.json()["detail"].lower()
     assert resposta.headers["content-disposition"].startswith("inline")
     assert resposta.headers["x-content-type-options"] == "nosniff"
 

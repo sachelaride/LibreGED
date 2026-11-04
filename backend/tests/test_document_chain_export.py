@@ -1,6 +1,8 @@
+import hashlib
 import io
 import json
 import zipfile
+from uuid import uuid4
 
 from app import storage
 from app.database import SessionLocal
@@ -24,41 +26,44 @@ client = TestClient(app)
 
 
 def test_document_chain_export_includes_manifest_and_related_audit_data():
+    suffix = uuid4().hex
     with SessionLocal() as db:
         institution = Institution(
-            id="inst-chain-export",
+            id=f"inst-chain-{suffix}",
             name="IES Teste",
-            cnpj="12.345.678/0001-90",
+            cnpj=f"test-{suffix[:12]}",
             legal_name="IES Teste Ltda",
         )
         user = User(
-            id="user-chain-export",
-            username="chain_export_user",
+            id=f"user-chain-{suffix}",
+            username=f"chain_export_{suffix}",
             hashed_password="hash",
             role="admin_global",
             institution_id=institution.id,
         )
         category = DocumentCategory(
-            id="cat-chain-export",
+            id=f"cat-chain-{suffix}",
             name="Diploma",
-            index_code="9001",
+            index_code=f"CHAIN-{suffix[:8]}",
         )
         db.add_all([institution, user, category])
         db.commit()
 
-        file_path = storage.STORAGE_ROOT / "chain_export_doc.txt"
-        file_path.write_text("conteudo do documento", encoding="utf-8")
+        original_content = b"conteudo do documento"
+        file_path = storage.STORAGE_ROOT / f"chain_export_{suffix}.txt"
+        file_path.write_bytes(original_content)
 
         document = GEDDocument(
-            id="doc-chain-export",
+            id=f"doc-chain-{suffix}",
             title="Diploma Export Test",
             file_path=str(file_path),
+            file_hash=hashlib.sha256(original_content).hexdigest(),
             category_id=category.id,
             institution_id=institution.id,
             status=GEDDocumentStatus.VALIDO,
             document_purpose="official",
             is_official=True,
-            public_code="public-chain-export",
+            public_code=f"public-chain-{suffix}",
             extracted_metadata=json.dumps({"tipo": "diploma"}),
         )
         db.add(document)
@@ -76,7 +81,7 @@ def test_document_chain_export_includes_manifest_and_related_audit_data():
         )
         db.add(
             AuditEvent(
-                id="audit-chain-export",
+                id=f"audit-chain-{suffix}",
                 document_id=document.id,
                 entity="document",
                 entity_id=document.id,
@@ -98,13 +103,13 @@ def test_document_chain_export_includes_manifest_and_related_audit_data():
             )
         )
         service = RepresentationService(
-            id="svc-chain",
-            code="svc-chain",
+            id=f"svc-chain-{suffix}",
+            code=f"svc-chain-{suffix}",
             name="Exportação de diploma",
             document_type="diploma",
         )
         version = RepresentationServiceVersion(
-            id="ver-chain",
+            id=f"ver-chain-{suffix}",
             service_id=service.id,
             revision=1,
             version_label="1.0.0",
@@ -116,7 +121,7 @@ def test_document_chain_export_includes_manifest_and_related_audit_data():
         db.add_all([service, version])
         db.add(
             RepresentationExecution(
-                id="rep-chain-export",
+                id=f"rep-chain-{suffix}",
                 service_id=service.id,
                 service_version_id=version.id,
                 document_id=document.id,
@@ -155,5 +160,11 @@ def test_document_chain_export_includes_manifest_and_related_audit_data():
 
             representation_payload = json.loads(zipped.read("representations/representation_executions.json"))
             assert representation_payload[0]["document_id"] == document.id
+
+        file_path.write_bytes(original_content + b"adulterado")
+        integrity_failure = client.get(
+            f"/api/documents/{document.id}/export-chain"
+        )
+        assert integrity_failure.status_code == 409
 
         file_path.unlink(missing_ok=True)

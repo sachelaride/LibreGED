@@ -38,17 +38,54 @@ class DossierDocumentLink(BaseModel):
     version_number: int = 1
 
 
-def _resolve_student(student_id: str | None) -> str:
-    if student_id and student_id in students:
-        return student_id
-    return "ALU-1001"
+def _resolve_student(db: Session, user: Any, requested_student_id: str | None) -> str:
+    if user.role == "aluno":
+        if not user.institution_id:
+            raise HTTPException(status_code=403, detail="Conta de aluno sem instituição vinculada")
+        student = db.query(models.Student).filter(
+            models.Student.user_id == user.id,
+            models.Student.institution_id == user.institution_id,
+        ).first()
+        if student is None:
+            raise HTTPException(status_code=403, detail="Conta de aluno ainda não vinculada ao cadastro acadêmico")
+        if user.campus_id and student.campus_id != user.campus_id:
+            raise HTTPException(status_code=403, detail="Cadastro acadêmico fora do campus da conta")
+        if requested_student_id and requested_student_id != student.id:
+            raise HTTPException(status_code=403, detail="Acesso restrito ao próprio cadastro acadêmico")
+        return student.id
+
+    resolved_student_id = requested_student_id or "ALU-1001"
+    student = db.get(models.Student, resolved_student_id)
+    if student is not None:
+        if user.role != "admin_global":
+            if not user.institution_id:
+                raise HTTPException(status_code=403, detail="Usuário sem instituição vinculada")
+            if student.institution_id != user.institution_id:
+                raise HTTPException(status_code=404, detail="Aluno não encontrado")
+            if user.campus_id and student.campus_id != user.campus_id:
+                raise HTTPException(status_code=404, detail="Aluno não encontrado")
+        return student.id
+    if user.role == "admin_global" and resolved_student_id in students:
+        return resolved_student_id
+    if (
+        user.role == "admin_global"
+        and requested_student_id is None
+        and "ALU-1001" in students
+    ):
+        return "ALU-1001"
+    raise HTTPException(status_code=404, detail="Aluno não encontrado")
 
 
 @router.get("/dashboard")
-def aluno_dashboard(student_id: str | None = Query(default=None), user: Any = Depends(require_module_access("aluno"))):
-    resolved_student_id = _resolve_student(student_id)
+def aluno_dashboard(
+    student_id: str | None = Query(default=None),
+    user: Any = Depends(require_module_access("aluno")),
+    db: Session = Depends(get_db),
+):
+    resolved_student_id = _resolve_student(db, user, student_id)
     detail = get_student_detail(resolved_student_id)
     enrollment = detail.get("enrollment") if detail else None
+    student_record = db.get(models.Student, resolved_student_id)
     student_grades = grades.get(resolved_student_id, {})
     values = list(student_grades.values())
     total_disciplines = len(values)
@@ -58,7 +95,10 @@ def aluno_dashboard(student_id: str | None = Query(default=None), user: Any = De
         "module": "aluno",
         "title": "Portal do Aluno",
         "student_id": resolved_student_id,
-        "student_name": students.get(resolved_student_id, {}).get("full_name", "Aluno"),
+        "student_name": (
+            student_record.full_name if student_record
+            else students.get(resolved_student_id, {}).get("full_name", "Aluno")
+        ),
         "stats": {
             "documentos_disponiveis": sum(1 for doc in documents.values() if doc.get("student_id") == resolved_student_id),
             "disciplinas": total_disciplines,
@@ -81,17 +121,23 @@ def aluno_dashboard(student_id: str | None = Query(default=None), user: Any = De
 
 
 @router.get("/boletim")
-def boletim(student_id: str | None = Query(default=None), user: Any = Depends(require_module_access("aluno"))):
-    resolved_student_id = _resolve_student(student_id)
+def boletim(
+    student_id: str | None = Query(default=None),
+    user: Any = Depends(require_module_access("aluno")),
+    db: Session = Depends(get_db),
+):
+    resolved_student_id = _resolve_student(db, user, student_id)
     grades_for_student = grades.get(resolved_student_id, {})
     student = students.get(resolved_student_id, {})
+    student_record = db.get(models.Student, resolved_student_id)
+    student_name = student_record.full_name if student_record else student.get("full_name")
     if not grades_for_student:
-        return {"module": "aluno", "student_id": resolved_student_id, "student_name": student.get("full_name"), "grades": {}}
+        return {"module": "aluno", "student_id": resolved_student_id, "student_name": student_name, "grades": {}}
     values = list(grades_for_student.values())
     return {
         "module": "aluno",
         "student_id": resolved_student_id,
-        "student_name": student.get("full_name"),
+        "student_name": student_name,
         "course_name": student.get("course"),
         "average": round(sum(values) / len(values), 2),
         "status": student.get("enrollment_status", "matriculado"),
@@ -100,23 +146,52 @@ def boletim(student_id: str | None = Query(default=None), user: Any = Depends(re
 
 
 @router.get("/documentos")
-def documentos(student_id: str | None = Query(default=None), user: Any = Depends(require_module_access("aluno"))):
-    resolved_student_id = _resolve_student(student_id)
+def documentos(
+    student_id: str | None = Query(default=None),
+    user: Any = Depends(require_module_access("aluno")),
+    db: Session = Depends(get_db),
+):
+    resolved_student_id = _resolve_student(db, user, student_id)
+    persisted_documents = db.query(models_ged.GEDDocument).filter(
+        models_ged.GEDDocument.student_id == resolved_student_id
+    ).all()
+    persisted_items = [{
+        "id": document.id,
+        "student_id": document.student_id,
+        "title": document.title,
+        "document_type": document.category.name if document.category else "Acadêmico",
+        "status": document.status.value if hasattr(document.status, "value") else str(document.status),
+    } for document in persisted_documents]
+    legacy_items = [
+        doc for doc in documents.values()
+        if doc.get("student_id") == resolved_student_id
+    ]
+    persisted_ids = {item["id"] for item in persisted_items}
     return {
         "module": "aluno",
         "student_id": resolved_student_id,
-        "items": [doc for doc in documents.values() if doc.get("student_id") == resolved_student_id],
+        "items": persisted_items + [
+            item for item in legacy_items if item.get("id") not in persisted_ids
+        ],
     }
 
 
 @router.get("/historico")
-def historico(student_id: str | None = Query(default=None), user: Any = Depends(require_module_access("aluno"))):
-    resolved_student_id = _resolve_student(student_id)
+def historico(
+    student_id: str | None = Query(default=None),
+    user: Any = Depends(require_module_access("aluno")),
+    db: Session = Depends(get_db),
+):
+    resolved_student_id = _resolve_student(db, user, student_id)
     detail = get_student_detail(resolved_student_id)
+    student_record = db.get(models.Student, resolved_student_id)
     return {
         "module": "aluno",
         "student_id": resolved_student_id,
-        "student_name": students.get(resolved_student_id, {}).get("full_name"),
+        "student_name": (
+            student_record.full_name if student_record
+            else students.get(resolved_student_id, {}).get("full_name")
+        ),
         "journey": detail.get("journey", []) if detail else [],
         "documents": detail.get("documents", []) if detail else [],
         "finances": detail.get("finances", []) if detail else [],
@@ -124,19 +199,29 @@ def historico(student_id: str | None = Query(default=None), user: Any = Depends(
 
 
 @router.post("/matricula")
-def request_enrollment(payload: EnrollmentRequest, user: Any = Depends(require_module_access("aluno"))):
+def request_enrollment(
+    payload: EnrollmentRequest,
+    user: Any = Depends(require_module_access("aluno")),
+    db: Session = Depends(get_db),
+):
     if not payload.student_id:
         raise HTTPException(status_code=400, detail="Código do aluno obrigatório")
-    detail = get_student_detail(payload.student_id)
+    resolved_student_id = _resolve_student(db, user, payload.student_id)
+    detail = get_student_detail(resolved_student_id)
+    student_record = db.get(models.Student, resolved_student_id)
     return {
         "message": "Solicitação de matrícula enviada",
         "module": "aluno",
         "request": {
-            "student_id": payload.student_id,
+            "student_id": resolved_student_id,
             "course": payload.course,
             "semester": payload.semester,
             "status": payload.status or "pendente",
-            "student_profile": detail.get("student") if detail else None,
+            "student_profile": (
+                detail.get("student") if detail
+                else {"id": student_record.id, "full_name": student_record.full_name}
+                if student_record else None
+            ),
             "enrollment": detail.get("enrollment") if detail else None,
         },
     }
@@ -144,7 +229,7 @@ def request_enrollment(payload: EnrollmentRequest, user: Any = Depends(require_m
 
 @router.get("/dossie")
 def get_student_dossier(student_id: str | None = Query(default=None), user: Any = Depends(require_module_access("aluno")), db: Session = Depends(get_db)):
-    resolved_student_id = _resolve_student(student_id)
+    resolved_student_id = _resolve_student(db, user, student_id)
     student = db.query(models.Student).filter(models.Student.id == resolved_student_id).first()
     if student is None:
         legacy_student = students.get(resolved_student_id)
@@ -197,18 +282,25 @@ def get_student_dossier(student_id: str | None = Query(default=None), user: Any 
 
 @router.post("/dossie")
 def create_student_dossier(payload: DossierCreate, user: Any = Depends(require_module_access("aluno")), db: Session = Depends(get_db)):
-    student = db.query(models.Student).filter(models.Student.id == payload.student_id).first()
+    resolved_student_id = _resolve_student(db, user, payload.student_id)
+    student = db.query(models.Student).filter(models.Student.id == resolved_student_id).first()
     if student is None:
         raise HTTPException(status_code=404, detail="Aluno não encontrado")
 
-    enrollment = (
-        db.query(models.Enrollment)
-        .filter(models.Enrollment.student_id == payload.student_id)
-        .order_by(models.Enrollment.created_at.desc())
-        .first()
+    enrollment_query = db.query(models.Enrollment).filter(
+        models.Enrollment.student_id == student.id,
+        models.Enrollment.institution_id == student.institution_id,
     )
-    if not enrollment and payload.enrollment_id:
-        enrollment = db.query(models.Enrollment).filter(models.Enrollment.id == payload.enrollment_id).first()
+    if payload.enrollment_id:
+        enrollment = db.query(models.Enrollment).filter(
+            models.Enrollment.id == payload.enrollment_id,
+            models.Enrollment.student_id == student.id,
+            models.Enrollment.institution_id == student.institution_id,
+        ).first()
+    else:
+        enrollment = enrollment_query.order_by(
+            models.Enrollment.created_at.desc()
+        ).first()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Matrícula não encontrada para o aluno")
 
@@ -237,10 +329,13 @@ def link_document_to_student_dossier(dossier_id: str, payload: DossierDocumentLi
     dossier = db.query(models_academic_dossier.AcademicDossier).filter(models_academic_dossier.AcademicDossier.id == dossier_id).first()
     if not dossier:
         raise HTTPException(status_code=404, detail="Dossiê não encontrado")
+    _resolve_student(db, user, dossier.student_id)
 
     document = db.query(models_ged.GEDDocument).filter(models_ged.GEDDocument.id == payload.document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Documento GED não encontrado")
+    if document.student_id != dossier.student_id:
+        raise HTTPException(status_code=409, detail="Documento não pertence ao aluno do dossiê")
 
     relationship = models_academic_dossier.DossierDocument(
         id=str(uuid4()),

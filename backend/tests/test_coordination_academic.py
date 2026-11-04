@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from decimal import Decimal
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -20,6 +21,7 @@ from app.models_academic_catalog import (
     AcademicStaff,
     AcademicTerm,
 )
+from app.models_financial import FinancialContract, FinancialInvoice
 
 
 client = TestClient(app)
@@ -244,7 +246,7 @@ def _create_request_scope():
 
 
 def test_coordinator_can_decide_pending_credit_request_within_current_assignment():
-    institution_id, user_id, campus_id, recognition_id, _enrollment_id = _create_request_scope()
+    institution_id, user_id, campus_id, recognition_id, enrollment_id = _create_request_scope()
     coordinator_user = models.User(
         id=user_id,
         username="coordinator-test",
@@ -276,6 +278,60 @@ def test_coordinator_can_decide_pending_credit_request_within_current_assignment
         assert len(scoped_academic_links) == 1
         assert scoped_academic_links[0]["course_id"] == academic_student["course_id"]
         assert len(student_integration.json()["student"]["matriculas"]) == 1
+        assert student_integration.json()["enrollment"]["enrollment_id"] == enrollment_id
+        assert student_integration.json()["enrollment"]["status"] == "pendente"
+
+        course_id = scoped_academic_links[0]["course_id"]
+        contract_id = uuid4().hex
+        invoice_id = uuid4().hex
+        with SessionLocal() as db:
+            db.add(FinancialContract(
+                id=contract_id,
+                institution_id=institution_id,
+                student_id=academic_student["student_id"],
+                enrollment_id=enrollment_id,
+                course_id=course_id,
+                period="2026.1",
+                status="em_validacao",
+                plan="anuidade_semestre",
+                total_amount=Decimal("1200.00"),
+                discount=Decimal("0.00"),
+                responsible_financial="Responsável pendente",
+                created_by=user_id,
+            ))
+            db.add(FinancialInvoice(
+                id=invoice_id,
+                institution_id=institution_id,
+                student_id=academic_student["student_id"],
+                contract_id=contract_id,
+                enrollment_id=enrollment_id,
+                course_id=course_id,
+                amount=Decimal("600.00"),
+                due_date=date.today() + timedelta(days=30),
+                status="pendente",
+                issuer="Financeiro",
+                payment_method="boleto",
+                installment="1/2",
+                responsible_financial="Responsável pendente",
+                created_by=user_id,
+            ))
+            db.commit()
+
+        student_integration = client.get(
+            f"/coordenacao/matriculas/{academic_student['student_id']}/integracao",
+            headers=headers,
+        )
+        assert student_integration.status_code == 200, student_integration.text
+        assert student_integration.json()["financeiro"]["boletos"][0]["invoice_id"] == invoice_id
+        assert student_integration.json()["financeiro"]["contratos"][0]["contract_id"] == contract_id
+
+        integrated_students = client.get("/coordenacao/integracao", headers=headers)
+        assert integrated_students.status_code == 200, integrated_students.text
+        integrated_student = integrated_students.json()["items"][0]
+        assert integrated_student["enrollment"]["enrollment_id"] == enrollment_id
+        assert integrated_student["status_integrado"] == "pendente"
+        assert integrated_student["boletos"][0]["invoice_id"] == invoice_id
+        assert integrated_student["contratos"][0]["contract_id"] == contract_id
 
         dashboard = client.get("/coordenacao/dashboard", headers=headers)
         assert dashboard.status_code == 200, dashboard.text

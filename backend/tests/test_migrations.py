@@ -38,6 +38,9 @@ EXPECTED_TABLES = {
     "academic_staff",
     "academic_coordinator_assignments",
     "academic_coordination_actions",
+    "financial_contracts",
+    "financial_invoices",
+    "financial_academic_reviews",
     "academic_assessments",
     "academic_grades",
     "academic_attendance",
@@ -85,6 +88,19 @@ def test_migration_upgrade_matches_models_and_downgrades_cleanly():
         engine = create_engine(database_url)
         try:
             assert EXPECTED_TABLES.issubset(set(inspect(engine).get_table_names()))
+            student_columns = {
+                column["name"] for column in inspect(engine).get_columns("students")
+            }
+            assert "user_id" in student_columns
+            student_foreign_keys = {
+                tuple(foreign_key["constrained_columns"])
+                for foreign_key in inspect(engine).get_foreign_keys("students")
+            }
+            assert ("user_id",) in student_foreign_keys
+            assert any(
+                index["name"] == "ix_students_user_id" and index["unique"]
+                for index in inspect(engine).get_indexes("students")
+            )
             staff_columns = {column["name"] for column in inspect(engine).get_columns("academic_staff")}
             assert {"transcript_title", "transcript_cpf", "transcript_lattes"} <= staff_columns
             assignment_columns = {
@@ -115,6 +131,51 @@ def test_migration_upgrade_matches_models_and_downgrades_cleanly():
                 "resolved_by",
                 "resolved_at",
             } <= action_columns
+            invoice_columns = {
+                column["name"]
+                for column in inspect(engine).get_columns("financial_invoices")
+            }
+            assert {
+                "student_id",
+                "responsible_financial_id",
+                "contract_id",
+                "enrollment_id",
+                "course_id",
+                "amount",
+                "due_date",
+                "status",
+                "payment_recorded_at",
+                "created_by",
+            } <= invoice_columns
+            contract_columns = {
+                column["name"]
+                for column in inspect(engine).get_columns("financial_contracts")
+            }
+            assert "responsible_financial_id" in contract_columns
+            contract_foreign_keys = {
+                tuple(foreign_key["constrained_columns"])
+                for foreign_key in inspect(engine).get_foreign_keys("financial_contracts")
+            }
+            assert ("responsible_financial_id",) in contract_foreign_keys
+            invoice_foreign_keys = {
+                tuple(foreign_key["constrained_columns"])
+                for foreign_key in inspect(engine).get_foreign_keys("financial_invoices")
+            }
+            assert ("responsible_financial_id",) in invoice_foreign_keys
+            review_columns = {
+                column["name"]
+                for column in inspect(engine).get_columns("financial_academic_reviews")
+            }
+            assert {
+                "institution_id",
+                "student_id",
+                "enrollment_id",
+                "review_type",
+                "status",
+                "created_by",
+                "resolved_by",
+                "resolution_note",
+            } <= review_columns
         finally:
             engine.dispose()
 

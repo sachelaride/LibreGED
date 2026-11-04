@@ -646,6 +646,15 @@
                                         <option value="official">Oficial</option>
                                         <option value="conference">Conferência (não oficial)</option>
                                     </select>
+                                    <small id="upload-document-purpose-help" class="text-muted">Informe os metadados de origem quando disponíveis. A assinatura ICP-Brasil não é verificada por este envio.</small>
+                                    <label for="upload-document-author" style="display:block; margin-top:12px;">Autor do documento</label>
+                                    <input type="text" id="upload-document-author" class="form-control" maxlength="200">
+                                    <label for="upload-document-issuer" style="display:block; margin-top:12px;">Emissor</label>
+                                    <input type="text" id="upload-document-issuer" class="form-control" maxlength="200">
+                                    <label for="upload-document-date" style="display:block; margin-top:12px;">Data do documento</label>
+                                    <input type="date" id="upload-document-date" class="form-control">
+                                    <label for="upload-document-place" style="display:block; margin-top:12px;">Local do documento</label>
+                                    <input type="text" id="upload-document-place" class="form-control" maxlength="200">
                                     <label for="upload-ocr-engine" style="display:block; margin-top:12px;">Motor OCR</label>
                                     <select id="upload-ocr-engine" class="form-control" onchange="updateOcrHelp()">
                                         <option value="auto">Auto (recomendado)</option>

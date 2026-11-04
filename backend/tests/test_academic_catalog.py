@@ -18,6 +18,7 @@ from app.models_academic_catalog import (
     AcademicOffering,
     AcademicTerm,
 )
+from app.models_financial import FinancialAcademicReview
 
 
 client = TestClient(app)
@@ -762,6 +763,8 @@ def test_secretaria_can_build_academic_catalog_and_reject_schedule_conflicts(cat
     assert transfer_response.json()["source_enrollment"]["status"] == "transferred"
     assert transfer_response.json()["target_enrollment"]["status"] == "pending"
     assert transfer_response.json()["target_enrollment"]["academic_link"]["class_id"] == target_class_id
+    financial_review_id = transfer_response.json()["financial_review"]["id"]
+    assert transfer_response.json()["financial_review"]["status"] == "pendente"
     with SessionLocal() as db:
         source_enrollment = db.get(models.Enrollment, enrollment_response.json()["id"])
         target_enrollment = db.get(
@@ -771,6 +774,54 @@ def test_secretaria_can_build_academic_catalog_and_reject_schedule_conflicts(cat
         assert source_enrollment.status == "transferred"
         assert target_enrollment.academic_class_id == target_class_id
         assert target_enrollment.student_id == student_id
+        financial_review = db.get(FinancialAcademicReview, financial_review_id)
+        assert financial_review is not None
+        assert financial_review.enrollment_id == source_enrollment.id
+
+    finance_headers = {
+        "Authorization": f"Bearer {create_access_token({
+            'sub': 'test',
+            'role': 'admin_global',
+            'module': 'financeiro',
+        })}"
+    }
+    financial_reviews = client.get(
+        "/financeiro/revisoes-academicas?status_filter=pendente",
+        headers=finance_headers,
+    )
+    assert financial_reviews.status_code == 200, financial_reviews.text
+    assert [item["id"] for item in financial_reviews.json()["items"]] == [
+        financial_review_id
+    ]
+    invalid_resolution = client.patch(
+        f"/financeiro/revisoes-academicas/{financial_review_id}/resolver",
+        headers=finance_headers,
+        json={"resolution_note": "  "},
+    )
+    assert invalid_resolution.status_code == 422
+    resolved_review = client.patch(
+        f"/financeiro/revisoes-academicas/{financial_review_id}/resolver",
+        headers=finance_headers,
+        json={"resolution_note": "Saldo verificado e plano financeiro mantido."},
+    )
+    assert resolved_review.status_code == 200, resolved_review.text
+    assert resolved_review.json()["review"]["status"] == "resolvida"
+    assert resolved_review.json()["review"]["resolved_by"] == "test-admin-id"
+    repeated_resolution = client.patch(
+        f"/financeiro/revisoes-academicas/{financial_review_id}/resolver",
+        headers=finance_headers,
+        json={"resolution_note": "Revisão repetida."},
+    )
+    assert repeated_resolution.status_code == 409
+    with SessionLocal() as db:
+        review_audits = db.query(models.AuditEvent).filter(
+            models.AuditEvent.entity == "financial_academic_review",
+            models.AuditEvent.entity_id == financial_review_id,
+        ).all()
+        assert {event.action for event in review_audits} == {
+            "financial_transfer_review_requested",
+            "financial_academic_review_resolved",
+        }
 
     transfer_history = client.get(
         f"/api/students/{student_id}/history",
@@ -888,6 +939,23 @@ def test_secretaria_can_update_academic_catalog_records(catalog_scope):
     assert updated_course.status_code == 200, updated_course.text
     assert updated_course.json()["course"]["name"] == "Engenharia atualizada"
     assert updated_course.json()["course"]["status"] == "inativo"
+    listed_courses = client.get("/secretaria/academico/cursos", headers=headers)
+    assert listed_courses.status_code == 200, listed_courses.text
+    persisted_course = next(
+        item for item in listed_courses.json()["items"]
+        if item["id"] == course_id
+    )
+    assert persisted_course["name"] == "Engenharia atualizada"
+    assert persisted_course["status"] == "inativo"
+    course_history = client.get(
+        f"/secretaria/academico/historico-alteracoes/curso/{course_id}",
+        headers=headers,
+    )
+    assert course_history.status_code == 200, course_history.text
+    assert {item["action"] for item in course_history.json()["items"]} == {
+        "academic_course_updated",
+        "academic_course_created",
+    }
 
     updated_discipline = client.patch(f"/secretaria/academico/disciplinas/{discipline_id}", headers=headers, json={
         "credits": 6,
@@ -896,6 +964,15 @@ def test_secretaria_can_update_academic_catalog_records(catalog_scope):
     assert updated_discipline.status_code == 200, updated_discipline.text
     assert updated_discipline.json()["discipline"]["credits"] == 6
     assert updated_discipline.json()["discipline"]["status"] == "inativo"
+    discipline_history = client.get(
+        f"/secretaria/academico/historico-alteracoes/disciplina/{discipline_id}",
+        headers=headers,
+    )
+    assert discipline_history.status_code == 200, discipline_history.text
+    assert {item["action"] for item in discipline_history.json()["items"]} == {
+        "academic_discipline_updated",
+        "academic_discipline_created",
+    }
 
     updated_term = client.patch(f"/secretaria/academico/periodos/{term_id}", headers=headers, json={
         "name": "2028.1 - ajustado",
@@ -935,6 +1012,7 @@ def test_campus_scoped_secretaria_cannot_access_other_campus_catalog():
     own_campus_id = uuid4().hex
     other_campus_id = uuid4().hex
     username = f"campus-{uuid4().hex}"
+    user_id = uuid4().hex
     db.add(models.Institution(
         id=institution_id,
         name="Instituição com escopo de campus",
@@ -945,6 +1023,15 @@ def test_campus_scoped_secretaria_cannot_access_other_campus_catalog():
     db.add_all([
         models.Campus(id=own_campus_id, institution_id=institution_id, name="Campus autorizado"),
         models.Campus(id=other_campus_id, institution_id=institution_id, name="Campus restrito"),
+        models.User(
+            id=user_id,
+            username=username,
+            hashed_password="not-used",
+            role="admin_instituicao",
+            institution_id=institution_id,
+            campus_id=own_campus_id,
+            is_active=True,
+        ),
     ])
     db.commit()
     db.close()
@@ -953,7 +1040,7 @@ def test_campus_scoped_secretaria_cannot_access_other_campus_catalog():
     headers = {"Authorization": f"Bearer {token}"}
     previous_override = app.dependency_overrides[get_current_active_user]
     app.dependency_overrides[get_current_active_user] = lambda: models.User(
-        id=uuid4().hex,
+        id=user_id,
         username=username,
         hashed_password="not-used",
         role="admin_instituicao",

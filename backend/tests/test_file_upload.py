@@ -1,5 +1,6 @@
 from pathlib import Path
 import hashlib
+import json
 
 from fastapi.testclient import TestClient
 
@@ -67,10 +68,45 @@ def test_document_upload_and_audit():
     assert payload["status"] == "PENDENTE_VALIDACAO"
     assert payload["file_hash"] == hashlib.sha256(b"conteudo do historico escolar").hexdigest()
     assert Path(payload["file_path"]).read_bytes() == b"conteudo do historico escolar"
+    preservation_metadata = json.loads(payload["extracted_metadata"])["preservation_metadata"]
+    assert preservation_metadata["file_sha256"] == payload["file_hash"]
+    assert preservation_metadata["metadata_complete"] is False
+    assert preservation_metadata["icp_brasil_signature_status"] == "not_verified"
 
     audit = client.get("/api/audit")
     assert audit.status_code == 200
     assert len(audit.json()) > 0
+
+
+def test_upload_records_preservation_metadata_and_unverified_signature_status():
+    create_institution("IES Metadados", "11.222.333/0001-44")
+    document_type_id = create_document_type("Documento com metadados")
+    response = client.post(
+        "/api/documents/upload",
+        data={
+            "title": "Declaração de vínculo",
+            "document_type_id": document_type_id,
+            "indices_json": "[]",
+            "document_author": "Secretaria Acadêmica",
+            "issuer_name": "IES Metadados",
+            "document_date": "2026-10-15",
+            "document_place": "Recife - PE",
+        },
+        files={"file": ("declaracao.txt", b"documento original", "text/plain")},
+    )
+
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+    metadata = json.loads(payload["extracted_metadata"])["preservation_metadata"]
+    assert metadata["author"] == "Secretaria Acadêmica"
+    assert metadata["issuer"] == "IES Metadados"
+    assert metadata["document_date"] == "2026-10-15"
+    assert metadata["document_place"] == "Recife - PE"
+    assert metadata["responsible_user_id"]
+    assert metadata["captured_at"]
+    assert metadata["file_sha256"] == hashlib.sha256(b"documento original").hexdigest()
+    assert metadata["metadata_complete"] is True
+    assert metadata["icp_brasil_signature_status"] == "not_verified"
 
 
 def test_upload_rejects_unknown_document_type():

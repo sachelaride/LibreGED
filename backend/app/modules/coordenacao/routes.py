@@ -11,6 +11,12 @@ from sqlalchemy.orm import Session
 from app import models
 from app.auth import require_module_access
 from app.database import get_db
+from app.financial_services import (
+    accessible_contracts_query,
+    accessible_invoices_query,
+    serialize_financial_contract,
+    serialize_financial_invoice,
+)
 from app.models_academic_catalog import (
     AcademicClass,
     AcademicCoordinationAction,
@@ -20,11 +26,7 @@ from app.models_academic_catalog import (
     AcademicOffering,
     AcademicStaff,
 )
-from app.modules.data_store import (
-    enrollments,
-    financial_contracts,
-    invoices,
-)
+from app.models_financial import FinancialContract, FinancialInvoice
 
 router = APIRouter(prefix="/coordenacao", tags=["Coordenação"])
 
@@ -284,6 +286,14 @@ def _coordination_enrollment_response(enrollment: models.Enrollment) -> dict[str
         "campus": offering.campus.name,
         "status": enrollment.status,
     }
+
+
+def _integrated_enrollment_status(enrollment: models.Enrollment) -> str:
+    if enrollment.status in {"active", "matriculado", "ativo"}:
+        return "matriculado"
+    if enrollment.status in {"pending", "pendente"}:
+        return "pendente"
+    return enrollment.status
 
 
 def _pending_enrollment_response(enrollment: models.Enrollment) -> dict[str, Any]:
@@ -589,31 +599,30 @@ def integrated_student_flow(user: Any = Depends(require_module_access("coordenac
             "campus": student.campus.name if student.campus else None,
         }
         course_id = academic_enrollment.academic_class.offering.course_id
-        enrollment = next((
-            item for item in enrollments.values()
-            if item.get("student_id") == student_id
-            and item.get("course_id") == course_id
-        ), None)
         pending = _scoped_pending_actions(db, user, str(student_id))
         invoice_entries = [
-            value for value in invoices.values()
-            if value.get("student_id") == student_id
-            and value.get("course_id") == course_id
+            serialize_financial_invoice(item)
+            for item in accessible_invoices_query(db, user).filter(
+                FinancialInvoice.student_id == student_id,
+                FinancialInvoice.course_id == course_id,
+            ).all()
         ]
         contract_entries = [
-            value for value in financial_contracts.values()
-            if value.get("student_id") == student_id
-            and value.get("course_id") == course_id
+            serialize_financial_contract(item)
+            for item in accessible_contracts_query(db, user).filter(
+                FinancialContract.student_id == student_id,
+                FinancialContract.course_id == course_id,
+            ).all()
         ]
         result.append({
             "student_id": student_id,
             "student": student_data,
             "academic_enrollment": _coordination_enrollment_response(academic_enrollment),
-            "enrollment": enrollment,
+            "enrollment": _coordination_enrollment_response(academic_enrollment),
             "pendencias": pending,
             "boletos": invoice_entries,
             "contratos": contract_entries,
-            "status_integrado": "matriculado" if enrollment else "pendente",
+            "status_integrado": _integrated_enrollment_status(academic_enrollment),
         })
     return {"module": "coordenacao", "items": result}
 
@@ -630,21 +639,20 @@ def get_student_integration(student_id: str, user: Any = Depends(require_module_
         item.academic_class.offering.course_id
         for item in scoped_enrollments
     }
-    enrollment = next((
-        item for item in enrollments.values()
-        if item.get("student_id") == student_id
-        and item.get("course_id") in scoped_course_ids
-    ), None)
     financial = {
         "boletos": [
-            item for item in invoices.values()
-            if item.get("student_id") == student_id
-            and item.get("course_id") in scoped_course_ids
+            serialize_financial_invoice(item)
+            for item in accessible_invoices_query(db, user).filter(
+                FinancialInvoice.student_id == student_id,
+                FinancialInvoice.course_id.in_(scoped_course_ids),
+            ).all()
         ],
         "contratos": [
-            item for item in financial_contracts.values()
-            if item.get("student_id") == student_id
-            and item.get("course_id") in scoped_course_ids
+            serialize_financial_contract(item)
+            for item in accessible_contracts_query(db, user).filter(
+                FinancialContract.student_id == student_id,
+                FinancialContract.course_id.in_(scoped_course_ids),
+            ).all()
         ],
     }
     return {
@@ -655,7 +663,7 @@ def get_student_integration(student_id: str, user: Any = Depends(require_module_
             _coordination_enrollment_response(item)
             for item in scoped_enrollments
         ],
-        "enrollment": enrollment,
+        "enrollment": _coordination_enrollment_response(scoped_enrollments[0]),
         "pendencias": _scoped_pending_actions(db, user, student_id),
         "financeiro": financial,
     }
